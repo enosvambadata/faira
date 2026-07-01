@@ -1,0 +1,23 @@
+# Faira CODEOWNERS
+# Determines who is automatically requested to review PRs by path.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — catches anything not matched below
+*                          @enosvambadata
+
+# Backend API
+/apps/api/                 @enosvambadata
+
+# Mobile app
+/apps/mobile/              @enosvambadata
+
+# Infrastructure / deployment
+/infra/                    @enosvambadata
+/apps/api/Dockerfile       @enosvambadata
+/apps/api/.env.example     @enosvambadata
+
+# GitHub Actions and repo config
+/.github/                  @enosvambadata
+
+# Documentation
+/docs/                     @enosvambadata
