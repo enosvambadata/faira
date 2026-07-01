@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Faira",
+    "slug": "faira",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09B1BA"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.vambadata.faira"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09B1BA"
+      },
+      "package": "com.vambadata.faira"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset"
+    ],
+    "scheme": "faira",
+    "extra": {
+      "eas": {
+        "projectId": "faira"
+      }
+    }
+  }
+}
