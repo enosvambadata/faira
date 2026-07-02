@@ -14,7 +14,7 @@
       "channel": "staging",
       "environment": "preview",
       "env": {
-        "APP_ENV": "staging"
+        "EXPO_PUBLIC_APP_ENV": "staging"
       }
     },
     "production": {
@@ -22,7 +22,7 @@
       "channel": "production",
       "environment": "production",
       "env": {
-        "APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production"
       }
     }
   },

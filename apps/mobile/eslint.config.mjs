@@ -16,6 +16,9 @@ export default [
         project: './tsconfig.json',
         ecmaFeatures: { jsx: true },
       },
+      globals: {
+        process: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
