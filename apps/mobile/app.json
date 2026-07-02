@@ -31,9 +31,13 @@
     ],
     "scheme": "faira",
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
-        "projectId": "faira"
+        "projectId": "5e47ed62-638f-4c2b-986a-98bacab3ca97"
       }
-    }
+    },
+    "owner": "enosvambadata.com"
   }
 }
