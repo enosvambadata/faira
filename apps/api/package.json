@@ -14,8 +14,11 @@
   },
   "dependencies": {
     "@prisma/client": "^7.8.0",
+    "@sentry/node": "^10.63.0",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

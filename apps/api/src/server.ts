@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './instrument';
 import { createApp } from './app';
 
 const PORT = process.env.PORT ?? 3000;
