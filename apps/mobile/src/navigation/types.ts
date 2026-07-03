@@ -8,8 +8,16 @@ export type TabParamList = {
   Profile: undefined;
 };
 
+// 3-step onboarding flow, shown once before a new user reaches the tabs
+export type OnboardingStackParamList = {
+  Welcome: undefined;
+  City: undefined;
+  Interests: undefined;
+};
+
 // Root stack — sits above the tabs for modal/push screens
 export type RootStackParamList = {
+  Onboarding: NavigatorScreenParams<OnboardingStackParamList>;
   Tabs: NavigatorScreenParams<TabParamList>;
   ListingDetail: { listingId: string };
   Chat: { conversationId: string };
