@@ -1,8 +1,9 @@
-# Faira
+# Faira Market
 
-> Zimbabwe's trusted marketplace for quality second-hand fashion.
+> Zimbabwe's trusted marketplace for buying and selling secondhand and imported goods.
 
-Buy and sell preloved clothes, shoes, bags, and imported fashion items.
+Buy and sell anything — secondhand or new, imported or local — safely, with escrow-protected
+local payments (EcoCash, OneMoney, Zimswitch), verified sellers, and tracked delivery.
 
 ## Tech Stack
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, typography } from '@/theme';
+import { colors, textStyles } from '@/theme';
 
 export default function HomeScreen() {
   return (
@@ -20,12 +20,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: typography.fontSizes.xxxl,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.teal,
+    ...textStyles.h1,
+    color: colors.primary,
   },
   subtitle: {
-    fontSize: typography.fontSizes.md,
+    ...textStyles.body,
     color: colors.muted,
   },
 });
