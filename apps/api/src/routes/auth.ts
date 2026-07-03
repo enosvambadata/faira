@@ -38,6 +38,21 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+const passwordResetRequestSchema = z
+  .object({
+    email: z.email().optional(),
+    phone: phoneSchema.optional(),
+  })
+  .refine(data => Boolean(data.email) !== Boolean(data.phone), {
+    message: 'Provide exactly one of email or phone',
+  });
+
+const passwordResetVerifySchema = z.object({
+  phone: phoneSchema,
+  token: z.string().regex(/^\d{6}$/, 'OTP must be a 6-digit code'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 const router = Router();
 
 function sessionResponse(session: {
@@ -197,6 +212,90 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
   }
 
   res.status(200).json({ data: sessionResponse({ ...data.session, user: data.user }) });
+});
+
+router.post('/password/reset-request', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = passwordResetRequestSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(
+      new ApiError(
+        'VALIDATION_ERROR',
+        'Invalid password reset request payload',
+        400,
+        z.flattenError(parsed.error),
+      ),
+    );
+    return;
+  }
+
+  const { email, phone } = parsed.data;
+
+  if (email) {
+    // Supabase's Free tier can't send a short code by email (see reset-verify
+    // for the phone flow); email-based reset needs deep-linking or custom
+    // SMTP first. Tracked as a follow-up, not built yet.
+    next(
+      new ApiError(
+        'NOT_SUPPORTED',
+        'Password reset via email is not supported yet — use your phone number instead',
+        400,
+      ),
+    );
+    return;
+  }
+
+  const { error } = await supabasePublic.auth.signInWithOtp({
+    phone: phone!,
+    options: { shouldCreateUser: false },
+  });
+
+  if (error && error.code === 'over_sms_send_rate_limit') {
+    next(new ApiError('RATE_LIMITED', 'Please wait before requesting another code', 429));
+    return;
+  }
+
+  // Generic response either way — don't reveal whether the phone number
+  // has an account (error is otherwise swallowed; e.g. "user not found").
+  res.status(200).json({ data: { message: 'If this phone number has an account, a code was sent' } });
+});
+
+router.post('/password/reset-verify', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = passwordResetVerifySchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(
+      new ApiError(
+        'VALIDATION_ERROR',
+        'Invalid password reset verify payload',
+        400,
+        z.flattenError(parsed.error),
+      ),
+    );
+    return;
+  }
+
+  const { phone, token, newPassword } = parsed.data;
+  const { data, error } = await supabasePublic.auth.verifyOtp({ phone, token, type: 'sms' });
+
+  if (error || !data.user) {
+    next(new ApiError('INVALID_OTP', 'Code is invalid or expired', 400));
+    return;
+  }
+
+  // Updating the password via the admin API kills the user's other
+  // sessions/refresh tokens as a side effect, satisfying "old sessions
+  // invalidated after password reset" without an extra sign-out call.
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+    password: newPassword,
+  });
+
+  if (updateError) {
+    next(new ApiError('PASSWORD_RESET_FAILED', updateError.message, updateError.status ?? 500));
+    return;
+  }
+
+  res.status(200).json({ data: { message: 'Password reset successfully' } });
 });
 
 export default router;

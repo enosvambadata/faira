@@ -6,12 +6,14 @@ const signInWithOtpMock = vi.fn();
 const verifyOtpMock = vi.fn();
 const signInWithPasswordMock = vi.fn();
 const refreshSessionMock = vi.fn();
+const updateUserByIdMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
     auth: {
       admin: {
         createUser: (...args: unknown[]) => createUserMock(...args),
+        updateUserById: (...args: unknown[]) => updateUserByIdMock(...args),
       },
     },
   },
@@ -388,5 +390,130 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(refreshSessionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/auth/password/reset-request', () => {
+  beforeEach(() => {
+    signInWithOtpMock.mockReset();
+  });
+
+  it('sends a reset code for a phone number, without creating a new user', async () => {
+    signInWithOtpMock.mockResolvedValue({ data: {}, error: null });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-request')
+      .send({ phone: '+263771234567' });
+
+    expect(res.status).toBe(200);
+    expect(signInWithOtpMock).toHaveBeenCalledWith({
+      phone: '+263771234567',
+      options: { shouldCreateUser: false },
+    });
+  });
+
+  it('returns the same generic response even if the phone has no account', async () => {
+    signInWithOtpMock.mockResolvedValue({
+      data: {},
+      error: { message: 'Signups not allowed for otp', status: 422 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-request')
+      .send({ phone: '+263779999999' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe('If this phone number has an account, a code was sent');
+  });
+
+  it('returns 429 when rate limited', async () => {
+    signInWithOtpMock.mockResolvedValue({
+      data: {},
+      error: { message: 'rate limited', code: 'over_sms_send_rate_limit', status: 429 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-request')
+      .send({ phone: '+263771234567' });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('RATE_LIMITED');
+  });
+
+  it('returns a clear NOT_SUPPORTED error for email requests', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-request')
+      .send({ email: 'buyer@example.com' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('NOT_SUPPORTED');
+    expect(signInWithOtpMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects when neither email nor phone is provided', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/auth/password/reset-request').send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/v1/auth/password/reset-verify', () => {
+  beforeEach(() => {
+    verifyOtpMock.mockReset();
+    updateUserByIdMock.mockReset();
+  });
+
+  it('verifies the code and sets the new password', async () => {
+    verifyOtpMock.mockResolvedValue({
+      data: { user: { id: 'user-1', phone: '+263771234567' } },
+      error: null,
+    });
+    updateUserByIdMock.mockResolvedValue({ data: { user: {} }, error: null });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-verify')
+      .send({ phone: '+263771234567', token: '123456', newPassword: 'newlongenough1' });
+
+    expect(res.status).toBe(200);
+    expect(verifyOtpMock).toHaveBeenCalledWith({
+      phone: '+263771234567',
+      token: '123456',
+      type: 'sms',
+    });
+    expect(updateUserByIdMock).toHaveBeenCalledWith('user-1', { password: 'newlongenough1' });
+  });
+
+  it('returns 400 for an incorrect or expired code', async () => {
+    verifyOtpMock.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Token has expired or is invalid', status: 400 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-verify')
+      .send({ phone: '+263771234567', token: '000000', newPassword: 'newlongenough1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_OTP');
+    expect(updateUserByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a new password shorter than 8 characters', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/password/reset-verify')
+      .send({ phone: '+263771234567', token: '123456', newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(verifyOtpMock).not.toHaveBeenCalled();
   });
 });
