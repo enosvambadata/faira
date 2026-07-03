@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,7 @@ import {
 } from '@expo-google-fonts/inter';
 import RootNavigator from '@/navigation/RootNavigator';
 import { colors } from '@/theme';
+import { hasCompletedOnboarding } from '@/lib/onboarding';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -29,14 +30,23 @@ function App() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const [initialRoute, setInitialRoute] = useState<'Onboarding' | 'Tabs' | null>(null);
 
   useEffect(() => {
-    if (fontsLoaded) {
+    hasCompletedOnboarding().then(completed => {
+      setInitialRoute(completed ? 'Tabs' : 'Onboarding');
+    });
+  }, []);
+
+  const ready = fontsLoaded && initialRoute !== null;
+
+  useEffect(() => {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
-  if (!fontsLoaded) {
+  if (!ready) {
     return null;
   }
 
@@ -44,7 +54,7 @@ function App() {
     <SafeAreaProvider>
       <NavigationContainer>
         <StatusBar style="dark" backgroundColor={colors.white} />
-        <RootNavigator />
+        <RootNavigator initialRouteName={initialRoute} />
       </NavigationContainer>
     </SafeAreaProvider>
   );
