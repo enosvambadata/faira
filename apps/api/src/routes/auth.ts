@@ -29,7 +29,34 @@ const otpVerifySchema = z.object({
   token: z.string().regex(/^\d{6}$/, 'OTP must be a 6-digit code'),
 });
 
+const loginSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+});
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
 const router = Router();
+
+function sessionResponse(session: {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  user: { id: string; email?: string | null; phone?: string | null };
+}) {
+  return {
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresIn: session.expires_in,
+    user: {
+      id: session.user.id,
+      email: session.user.email || null,
+      phone: session.user.phone || null,
+    },
+  };
+}
 
 router.post('/signup', async (req: Request, res: Response, next: NextFunction) => {
   const parsed = signupSchema.safeParse(req.body);
@@ -47,7 +74,10 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     email,
     phone,
     password,
-    email_confirm: false,
+    // Email accounts are auto-confirmed since there's no email confirmation
+    // flow yet (only phone gets OTP-verified, see SCRUM-24). Revisit if/when
+    // email ownership needs to be proven before login.
+    email_confirm: true,
     phone_confirm: false,
   });
 
@@ -117,13 +147,56 @@ router.post('/otp/verify', async (req: Request, res: Response, next: NextFunctio
     return;
   }
 
+  if (!data.session || !data.user) {
+    next(new ApiError('OTP_VERIFY_FAILED', 'Verification succeeded but no session was returned', 500));
+    return;
+  }
+
   res.status(200).json({
     data: {
-      id: data.user?.id,
-      phone: data.user?.phone || null,
-      phoneConfirmed: Boolean(data.user?.phone_confirmed_at),
+      ...sessionResponse({ ...data.session, user: data.user }),
+      phoneConfirmed: Boolean(data.user.phone_confirmed_at),
     },
   });
+});
+
+router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = loginSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid login payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { email, password } = parsed.data;
+  const { data, error } = await supabasePublic.auth.signInWithPassword({ email, password });
+
+  if (error || !data.session || !data.user) {
+    next(new ApiError('INVALID_CREDENTIALS', 'Invalid email or password', 401));
+    return;
+  }
+
+  res.status(200).json({ data: sessionResponse({ ...data.session, user: data.user }) });
+});
+
+router.post('/refresh', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = refreshSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid refresh payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { data, error } = await supabasePublic.auth.refreshSession({
+    refresh_token: parsed.data.refreshToken,
+  });
+
+  if (error || !data.session || !data.user) {
+    next(new ApiError('INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired', 401));
+    return;
+  }
+
+  res.status(200).json({ data: sessionResponse({ ...data.session, user: data.user }) });
 });
 
 export default router;

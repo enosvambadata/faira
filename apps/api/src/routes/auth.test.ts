@@ -4,6 +4,8 @@ import request from 'supertest';
 const createUserMock = vi.fn();
 const signInWithOtpMock = vi.fn();
 const verifyOtpMock = vi.fn();
+const signInWithPasswordMock = vi.fn();
+const refreshSessionMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -17,9 +19,17 @@ vi.mock('../supabase', () => ({
     auth: {
       signInWithOtp: (...args: unknown[]) => signInWithOtpMock(...args),
       verifyOtp: (...args: unknown[]) => verifyOtpMock(...args),
+      signInWithPassword: (...args: unknown[]) => signInWithPasswordMock(...args),
+      refreshSession: (...args: unknown[]) => refreshSessionMock(...args),
     },
   },
 }));
+
+const fakeSession = {
+  access_token: 'access-token-1',
+  refresh_token: 'refresh-token-1',
+  expires_in: 900,
+};
 
 // Imported after the mock so the route picks up the mocked client.
 const { createApp } = await import('../app');
@@ -208,9 +218,10 @@ describe('POST /api/v1/auth/otp/verify', () => {
     verifyOtpMock.mockReset();
   });
 
-  it('verifies a correct OTP', async () => {
+  it('verifies a correct OTP and returns a session', async () => {
     verifyOtpMock.mockResolvedValue({
       data: {
+        session: fakeSession,
         user: { id: 'user-2', phone: '+263771234567', phone_confirmed_at: '2026-07-02T00:00:00Z' },
       },
       error: null,
@@ -223,6 +234,8 @@ describe('POST /api/v1/auth/otp/verify', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.phoneConfirmed).toBe(true);
+    expect(res.body.data.accessToken).toBe('access-token-1');
+    expect(res.body.data.refreshToken).toBe('refresh-token-1');
     expect(verifyOtpMock).toHaveBeenCalledWith({
       phone: '+263771234567',
       token: '123456',
@@ -254,5 +267,126 @@ describe('POST /api/v1/auth/otp/verify', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_OTP');
+  });
+});
+
+describe('POST /api/v1/auth/login', () => {
+  beforeEach(() => {
+    signInWithPasswordMock.mockReset();
+  });
+
+  it('logs in with correct credentials and returns a session', async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { session: fakeSession, user: { id: 'user-1', email: 'buyer@example.com', phone: null } },
+      error: null,
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'buyer@example.com', password: 'longenough1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      accessToken: 'access-token-1',
+      refreshToken: 'refresh-token-1',
+      expiresIn: 900,
+      user: { id: 'user-1', email: 'buyer@example.com', phone: null },
+    });
+    expect(signInWithPasswordMock).toHaveBeenCalledWith({
+      email: 'buyer@example.com',
+      password: 'longenough1',
+    });
+  });
+
+  it('returns a generic 401 for a nonexistent account', async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { message: 'Invalid login credentials', code: 'invalid_credentials', status: 400 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'nobody@example.com', password: 'longenough1' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+    expect(res.body.error.message).toBe('Invalid email or password');
+  });
+
+  it('returns the identical generic 401 for a wrong password on a real account', async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { message: 'Invalid login credentials', code: 'invalid_credentials', status: 400 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'buyer@example.com', password: 'wrongpassword1' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+    expect(res.body.error.message).toBe('Invalid email or password');
+  });
+
+  it('rejects a malformed payload', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'not-an-email', password: 'longenough1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(signInWithPasswordMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/auth/refresh', () => {
+  beforeEach(() => {
+    refreshSessionMock.mockReset();
+  });
+
+  it('rotates the refresh token and returns a new session', async () => {
+    const rotatedSession = { ...fakeSession, access_token: 'access-token-2', refresh_token: 'refresh-token-2' };
+    refreshSessionMock.mockResolvedValue({
+      data: { session: rotatedSession, user: { id: 'user-1', email: 'buyer@example.com', phone: null } },
+      error: null,
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'refresh-token-1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBe('access-token-2');
+    expect(res.body.data.refreshToken).toBe('refresh-token-2');
+    expect(refreshSessionMock).toHaveBeenCalledWith({ refresh_token: 'refresh-token-1' });
+  });
+
+  it('returns 401 for an invalid or reused refresh token', async () => {
+    refreshSessionMock.mockResolvedValue({
+      data: { session: null, user: null },
+      error: { message: 'Invalid Refresh Token', status: 401 },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'stale-token' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_REFRESH_TOKEN');
+  });
+
+  it('rejects an empty refresh token', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(refreshSessionMock).not.toHaveBeenCalled();
   });
 });
