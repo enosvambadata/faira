@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Faira",
+    "name": "Faira Market",
     "slug": "faira",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#09B1BA"
+      "backgroundColor": "#2E1A0D"
     },
     "ios": {
       "supportsTablet": false,
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#09B1BA"
+        "backgroundColor": "#2E1A0D"
       },
       "package": "com.vambadata.faira"
     },

@@ -21,7 +21,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...textStyles.h1,
-    color: colors.teal,
+    color: colors.primary,
   },
   subtitle: {
     ...textStyles.body,
