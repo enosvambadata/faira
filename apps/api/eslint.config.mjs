@@ -16,6 +16,7 @@ export default [
       globals: {
         process: 'readonly',
         console: 'readonly',
+        Buffer: 'readonly',
       },
     },
     plugins: {
