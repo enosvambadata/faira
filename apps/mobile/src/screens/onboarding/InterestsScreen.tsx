@@ -8,15 +8,9 @@ import { colors, textStyles } from '@/theme';
 import ProgressIndicator from '@/components/onboarding/ProgressIndicator';
 import { useOnboarding } from './OnboardingContext';
 import { completeOnboarding } from '@/lib/onboarding';
+import { resolvePostOnboardingRoute } from '@/lib/postOnboardingRoute';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'Interests'>;
-
-function finishToTabs(navigation: Nav) {
-  navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.reset({
-    index: 0,
-    routes: [{ name: 'Tabs' }],
-  });
-}
 
 export default function InterestsScreen() {
   const navigation = useNavigation<Nav>();
@@ -26,7 +20,11 @@ export default function InterestsScreen() {
   const handleFinish = async () => {
     setSaving(true);
     await completeOnboarding(city, interests);
-    finishToTabs(navigation);
+    const route = await resolvePostOnboardingRoute();
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.reset({
+      index: 0,
+      routes: [{ name: route }],
+    });
   };
 
   return (

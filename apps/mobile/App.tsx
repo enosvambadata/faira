@@ -14,8 +14,7 @@ import {
 import RootNavigator from '@/navigation/RootNavigator';
 import { colors } from '@/theme';
 import { hasCompletedOnboarding } from '@/lib/onboarding';
-import { getSession } from '@/lib/session';
-import { resolvePostAuthRoute } from '@/lib/postAuthRoute';
+import { resolvePostOnboardingRoute } from '@/lib/postOnboardingRoute';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -39,18 +38,7 @@ function App() {
   useEffect(() => {
     (async () => {
       const onboarded = await hasCompletedOnboarding();
-      if (!onboarded) {
-        setInitialRoute('Onboarding');
-        return;
-      }
-
-      const session = await getSession();
-      if (!session) {
-        setInitialRoute('Auth');
-        return;
-      }
-
-      setInitialRoute(await resolvePostAuthRoute());
+      setInitialRoute(onboarded ? await resolvePostOnboardingRoute() : 'Onboarding');
     })();
   }, []);
 

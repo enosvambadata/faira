@@ -111,10 +111,14 @@ export const profile = {
   update: (payload: { displayName?: string; city?: string }) =>
     request<Profile>('/api/v1/profile', { method: 'PATCH', body: payload, auth: true }),
 
-  uploadAvatar: (fileUri: string, mimeType: string, fileName: string) => {
+  async uploadAvatar(fileUri: string, fileName: string) {
+    // Converting to a real Blob (rather than passing RN's {uri,type,name}
+    // shape straight to FormData) works correctly on both native and web —
+    // a plain object isn't a valid FormData part in a real browser. The
+    // blob already carries the correct MIME type from the source URI.
+    const blob = await fetch(fileUri).then(r => r.blob());
     const formData = new FormData();
-    // React Native's fetch/FormData accepts this {uri, type, name} shape for files.
-    formData.append('avatar', { uri: fileUri, type: mimeType, name: fileName } as unknown as Blob);
+    formData.append('avatar', blob, fileName || 'avatar.jpg');
     return request<Profile>('/api/v1/profile/avatar', { method: 'POST', formData, auth: true });
   },
 };

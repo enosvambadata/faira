@@ -64,11 +64,7 @@ export default function ProfileForm({ submitLabel, onSaved }: Props) {
     setUploadingAvatar(true);
     setError(null);
     try {
-      const updated = await profileApi.uploadAvatar(
-        asset.uri,
-        asset.mimeType ?? 'image/jpeg',
-        asset.fileName ?? 'avatar.jpg',
-      );
+      const updated = await profileApi.uploadAvatar(asset.uri, asset.fileName ?? 'avatar.jpg');
       setAvatarUrl(updated.avatarUrl);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not upload the image');

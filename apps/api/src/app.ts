@@ -1,4 +1,5 @@
 import express, { Express, Request } from 'express';
+import cors from 'cors';
 import * as Sentry from '@sentry/node';
 import pinoHttp from 'pino-http';
 import healthRouter from './routes/health';
@@ -16,6 +17,10 @@ export function createApp(): Express {
   const app = express();
 
   app.use(pinoHttp({ logger }));
+  // Auth is Bearer-token based (no cookies), so a permissive CORS policy
+  // doesn't expose ambient credentials the way it would for cookie auth —
+  // needed so the Expo web build (and any other web client) can call this API.
+  app.use(cors());
   app.use(
     express.json({
       verify: (req, _res, buf) => {
