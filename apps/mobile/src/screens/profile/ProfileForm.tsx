@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, textStyles } from '@/theme';
@@ -43,10 +44,17 @@ export default function ProfileForm({ submitLabel, onSaved }: Props) {
   }, []);
 
   const handlePickAvatar = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError('Photo library access is needed to set an avatar');
-      return;
+    // Web's file input handles its own OS-level access — no explicit
+    // permission request needed, and (critically) awaiting anything before
+    // launchImageLibraryAsync on web loses the trusted user gesture the
+    // browser requires to actually open the file picker, so it silently
+    // "cancels" instead. Only check on native, where this doesn't apply.
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('Photo library access is needed to set an avatar');
+        return;
+      }
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -96,7 +104,12 @@ export default function ProfileForm({ submitLabel, onSaved }: Props) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.avatarWrap} onPress={handlePickAvatar} disabled={uploadingAvatar}>
+      <TouchableOpacity
+        testID="avatar-picker"
+        style={styles.avatarWrap}
+        onPress={handlePickAvatar}
+        disabled={uploadingAvatar}
+      >
         {avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatar} />
         ) : (
