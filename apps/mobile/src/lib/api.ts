@@ -206,6 +206,7 @@ export interface ListingDetail {
 }
 
 export interface ListingFilters {
+  q?: string;
   categoryIds: string[];
   conditions: string[];
   cities: string[];
@@ -224,6 +225,7 @@ export const EMPTY_LISTING_FILTERS: ListingFilters = {
 function filtersToQuery(filters?: ListingFilters): string {
   if (!filters) return '';
   const params = new URLSearchParams();
+  if (filters.q) params.set('q', filters.q);
   if (filters.categoryIds.length) params.set('categoryIds', filters.categoryIds.join(','));
   if (filters.conditions.length) params.set('conditions', filters.conditions.join(','));
   if (filters.cities.length) params.set('cities', filters.cities.join(','));

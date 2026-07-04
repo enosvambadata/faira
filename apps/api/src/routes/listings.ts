@@ -33,6 +33,7 @@ const csv = () =>
 
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
+  q: z.string().trim().max(200).optional(),
   categoryIds: csv(),
   conditions: csv().pipe(z.array(z.enum(CONDITIONS))),
   cities: csv(),
@@ -42,6 +43,26 @@ const listQuerySchema = z.object({
 });
 
 const PAGE_SIZE = 20;
+
+// Search results are capped at this many DB matches before in-app relevance
+// sorting — bounds cost since there's no full-text-search index yet. Fine at
+// this app's scale; would need a real ranking query (e.g. pg_trgm / tsvector)
+// if the catalog grows past a few thousand active listings.
+const SEARCH_MATCH_CAP = 500;
+
+function brandOf(listing: { attributes: { key: string; value: string }[] }): string | undefined {
+  return listing.attributes.find(a => a.key === 'brand')?.value;
+}
+
+// "Relevance then recency": a title match ranks above a brand match, which
+// ranks above a description-only match; ties break by newest first.
+function relevanceScore(listing: { title: string; description: string | null; attributes: { key: string; value: string }[] }, q: string): number {
+  const needle = q.toLowerCase();
+  if (listing.title.toLowerCase().includes(needle)) return 3;
+  if (brandOf(listing)?.toLowerCase().includes(needle)) return 2;
+  if (listing.description?.toLowerCase().includes(needle)) return 1;
+  return 0;
+}
 
 const router = Router();
 
@@ -53,7 +74,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
+  const { page, q, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
 
   const price: { gte?: number; lte?: number } = {};
   if (minPrice !== undefined) price.gte = minPrice;
@@ -67,20 +88,54 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     ...(cities.length && { city: { in: cities } }),
     ...(Object.keys(price).length && { price }),
     ...(sizes.length && { attributes: { some: { key: 'size', value: { in: sizes } } } }),
+    ...(q && {
+      OR: [
+        { title: { contains: q, mode: 'insensitive' as const } },
+        { description: { contains: q, mode: 'insensitive' as const } },
+        { attributes: { some: { key: 'brand', value: { contains: q, mode: 'insensitive' as const } } } },
+      ],
+    }),
   };
 
-  const [listings, total] = await Promise.all([
-    prisma.listing.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE + 1,
-    }),
-    prisma.listing.count({ where }),
-  ]);
+  let pageItems;
+  let hasMore;
+  let total;
 
-  const hasMore = listings.length > PAGE_SIZE;
-  const pageItems = listings.slice(0, PAGE_SIZE);
+  if (q) {
+    const [matches, matchTotal] = await Promise.all([
+      prisma.listing.findMany({
+        where,
+        include: { attributes: true },
+        orderBy: { createdAt: 'desc' },
+        take: SEARCH_MATCH_CAP,
+      }),
+      prisma.listing.count({ where }),
+    ]);
+
+    const ranked = matches
+      .map(listing => ({ listing, score: relevanceScore(listing, q) }))
+      .sort((a, b) => b.score - a.score || b.listing.createdAt.getTime() - a.listing.createdAt.getTime())
+      .map(({ listing }) => listing);
+
+    const start = (page - 1) * PAGE_SIZE;
+    pageItems = ranked.slice(start, start + PAGE_SIZE);
+    hasMore = start + PAGE_SIZE < ranked.length;
+    total = matchTotal;
+  } else {
+    const [listings, browseTotal] = await Promise.all([
+      prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE + 1,
+      }),
+      prisma.listing.count({ where }),
+    ]);
+
+    hasMore = listings.length > PAGE_SIZE;
+    pageItems = listings.slice(0, PAGE_SIZE);
+    total = browseTotal;
+  }
 
   res.status(200).json({
     data: pageItems.map(listing => ({

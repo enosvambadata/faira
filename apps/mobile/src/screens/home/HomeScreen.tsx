@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
@@ -31,10 +31,29 @@ export default function HomeScreen() {
   const [wishlisted, setWishlisted] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<Category[]>([]);
   const [filters, setFilters] = useState<ListingFilters>(EMPTY_LISTING_FILTERS);
+  const [searchText, setSearchText] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     categoriesApi.list().then(setCategories).catch(() => setCategories([]));
   }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setFilters(current => {
+        const nextQ = searchText.trim() || undefined;
+        // Skip the update (and the refetch it would trigger) if a chip
+        // removal or other direct edit already applied this exact value —
+        // otherwise clearing search via its chip double-fetches once here
+        // and once from that immediate update.
+        return current.q === nextQ ? current : { ...current, q: nextQ };
+      });
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchText]);
 
   const loadPage = useCallback(async (pageToLoad: number, activeFilters: ListingFilters) => {
     const result = await listingsApi.browse(pageToLoad, activeFilters);
@@ -84,6 +103,18 @@ export default function HomeScreen() {
   };
 
   const activeChips: ActiveChip[] = [
+    ...(filters.q
+      ? [
+          {
+            key: 'search',
+            label: `"${filters.q}"`,
+            onRemove: () => {
+              setSearchText('');
+              setFilters(current => ({ ...current, q: undefined }));
+            },
+          },
+        ]
+      : []),
     ...filters.categoryIds.map(id => ({
       key: `category:${id}`,
       label: categories.find(c => c.id === id)?.name ?? id,
@@ -132,6 +163,17 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.header}>Faira</Text>
+      </View>
+
+      <View style={styles.searchRow}>
+        <TextInput
+          testID="search-input"
+          style={styles.searchInput}
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder="Search listings..."
+          placeholderTextColor={colors.muted}
+        />
         <TouchableOpacity testID="open-filters-btn" style={styles.filterButton} onPress={openFilters}>
           <Text style={styles.filterButtonText}>Filters{activeChips.length > 0 ? ` (${activeChips.length})` : ''}</Text>
         </TouchableOpacity>
@@ -159,7 +201,11 @@ export default function HomeScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
-              {activeChips.length > 0 ? 'No listings match these filters.' : 'No listings yet — be the first to sell something!'}
+              {filters.q
+                ? `No listings match "${filters.q}". Try a different search.`
+                : activeChips.length > 0
+                  ? 'No listings match these filters.'
+                  : 'No listings yet — be the first to sell something!'}
             </Text>
           </View>
         }
@@ -193,14 +239,24 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   container: { flex: 1, backgroundColor: colors.bg },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, position: 'relative' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 16 },
   header: { ...textStyles.h2, color: colors.primary, textAlign: 'center' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12 },
+  searchInput: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    ...textStyles.body,
+    color: colors.text,
+  },
   filterButton: {
-    position: 'absolute',
-    right: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.white,
