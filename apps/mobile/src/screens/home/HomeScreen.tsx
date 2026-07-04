@@ -41,7 +41,14 @@ export default function HomeScreen() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setFilters(current => ({ ...current, q: searchText.trim() || undefined }));
+      setFilters(current => {
+        const nextQ = searchText.trim() || undefined;
+        // Skip the update (and the refetch it would trigger) if a chip
+        // removal or other direct edit already applied this exact value —
+        // otherwise clearing search via its chip double-fetches once here
+        // and once from that immediate update.
+        return current.q === nextQ ? current : { ...current, q: nextQ };
+      });
     }, 400);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
