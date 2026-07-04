@@ -4,6 +4,7 @@ import pinoHttp from 'pino-http';
 import healthRouter from './routes/health';
 import authRouter from './routes/auth';
 import webhooksRouter from './routes/webhooks';
+import profileRouter from './routes/profile';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -25,6 +26,7 @@ export function createApp(): Express {
   app.use('/health', healthRouter);
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
+  app.use('/api/v1/profile', profileRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);

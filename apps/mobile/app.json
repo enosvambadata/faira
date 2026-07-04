@@ -35,6 +35,13 @@
           "project": "faira-mobile",
           "organization": "vambadata"
         }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Faira Market needs access to your photos so you can set a profile picture."
+        }
       ]
     ],
     "scheme": "faira",

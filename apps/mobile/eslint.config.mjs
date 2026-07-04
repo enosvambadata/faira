@@ -18,6 +18,9 @@ export default [
       },
       globals: {
         process: 'readonly',
+        fetch: 'readonly',
+        FormData: 'readonly',
+        Blob: 'readonly',
       },
     },
     plugins: {

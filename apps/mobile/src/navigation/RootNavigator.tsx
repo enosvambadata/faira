@@ -3,13 +3,15 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
 import TabNavigator from './TabNavigator';
 import OnboardingNavigator from './OnboardingNavigator';
+import AuthNavigator from './AuthNavigator';
+import ProfileSetupScreen from '@/screens/profile/ProfileSetupScreen';
 import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
 import { colors } from '@/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 interface Props {
-  initialRouteName: 'Onboarding' | 'Tabs';
+  initialRouteName: 'Onboarding' | 'Auth' | 'ProfileSetup' | 'Tabs';
 }
 
 export default function RootNavigator({ initialRouteName }: Props) {
@@ -26,6 +28,12 @@ export default function RootNavigator({ initialRouteName }: Props) {
       <Stack.Screen
         name="Onboarding"
         component={OnboardingNavigator}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen name="Auth" component={AuthNavigator} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="ProfileSetup"
+        component={ProfileSetupScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
