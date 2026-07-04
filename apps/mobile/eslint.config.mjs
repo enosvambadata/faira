@@ -21,6 +21,8 @@ export default [
         fetch: 'readonly',
         FormData: 'readonly',
         Blob: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
     plugins: {

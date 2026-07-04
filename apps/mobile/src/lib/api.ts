@@ -205,9 +205,48 @@ export interface ListingDetail {
   createdAt: string;
 }
 
+export interface ListingFilters {
+  categoryIds: string[];
+  conditions: string[];
+  cities: string[];
+  sizes: string[];
+  minPrice?: number;
+  maxPrice?: number;
+}
+
+export const EMPTY_LISTING_FILTERS: ListingFilters = {
+  categoryIds: [],
+  conditions: [],
+  cities: [],
+  sizes: [],
+};
+
+function filtersToQuery(filters?: ListingFilters): string {
+  if (!filters) return '';
+  const params = new URLSearchParams();
+  if (filters.categoryIds.length) params.set('categoryIds', filters.categoryIds.join(','));
+  if (filters.conditions.length) params.set('conditions', filters.conditions.join(','));
+  if (filters.cities.length) params.set('cities', filters.cities.join(','));
+  if (filters.sizes.length) params.set('sizes', filters.sizes.join(','));
+  if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
+  if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
+  const qs = params.toString();
+  return qs ? `&${qs}` : '';
+}
+
+export interface FilterOptions {
+  cities: string[];
+  sizes: string[];
+}
+
 export const listings = {
-  browse: (page: number) =>
-    request<{ data: ListingSummary[]; hasMore: boolean }>(`/api/v1/listings?page=${page}`, { raw: true }),
+  browse: (page: number, filters?: ListingFilters) =>
+    request<{ data: ListingSummary[]; hasMore: boolean; total: number }>(
+      `/api/v1/listings?page=${page}${filtersToQuery(filters)}`,
+      { raw: true },
+    ),
+
+  filterOptions: () => request<FilterOptions>('/api/v1/listings/filter-options'),
 
   get: (id: string) => request<ListingDetail>(`/api/v1/listings/${id}`),
 

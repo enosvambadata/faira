@@ -23,8 +23,22 @@ const updateListingSchema = z.object({
   imageUrls: z.array(z.string().url()).min(1).max(6).optional(),
 });
 
+const CONDITIONS = ['NEW', 'LIKE_NEW', 'GOOD', 'FAIR'] as const;
+
+const csv = () =>
+  z
+    .string()
+    .optional()
+    .transform(value => (value ? value.split(',').map(v => v.trim()).filter(Boolean) : []));
+
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
+  categoryIds: csv(),
+  conditions: csv().pipe(z.array(z.enum(CONDITIONS))),
+  cities: csv(),
+  sizes: csv(),
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
 });
 
 const PAGE_SIZE = 20;
@@ -39,14 +53,31 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page } = parsed.data;
+  const { page, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
 
-  const listings = await prisma.listing.findMany({
-    where: { status: 'ACTIVE', deletedAt: null },
-    orderBy: { createdAt: 'desc' },
-    skip: (page - 1) * PAGE_SIZE,
-    take: PAGE_SIZE + 1,
-  });
+  const price: { gte?: number; lte?: number } = {};
+  if (minPrice !== undefined) price.gte = minPrice;
+  if (maxPrice !== undefined) price.lte = maxPrice;
+
+  const where = {
+    status: 'ACTIVE' as const,
+    deletedAt: null,
+    ...(categoryIds.length && { categoryId: { in: categoryIds } }),
+    ...(conditions.length && { condition: { in: conditions } }),
+    ...(cities.length && { city: { in: cities } }),
+    ...(Object.keys(price).length && { price }),
+    ...(sizes.length && { attributes: { some: { key: 'size', value: { in: sizes } } } }),
+  };
+
+  const [listings, total] = await Promise.all([
+    prisma.listing.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE + 1,
+    }),
+    prisma.listing.count({ where }),
+  ]);
 
   const hasMore = listings.length > PAGE_SIZE;
   const pageItems = listings.slice(0, PAGE_SIZE);
@@ -61,6 +92,29 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       createdAt: listing.createdAt,
     })),
     hasMore,
+    total,
+  });
+});
+
+router.get('/filter-options', async (_req: Request, res: Response) => {
+  const [cityRows, sizeRows] = await Promise.all([
+    prisma.listing.findMany({
+      where: { status: 'ACTIVE', deletedAt: null },
+      select: { city: true },
+      distinct: ['city'],
+    }),
+    prisma.listingAttribute.findMany({
+      where: { key: 'size', listing: { status: 'ACTIVE', deletedAt: null } },
+      select: { value: true },
+      distinct: ['value'],
+    }),
+  ]);
+
+  res.status(200).json({
+    data: {
+      cities: cityRows.map(row => row.city).sort(),
+      sizes: sizeRows.map(row => row.value).sort(),
+    },
   });
 });
 

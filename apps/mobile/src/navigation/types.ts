@@ -1,4 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
+import { ListingFilters } from '@/lib/api';
 
 // Bottom tab param list
 export type TabParamList = {
@@ -30,6 +31,7 @@ export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList>;
   ListingDetail: { listingId: string };
   EditListing: { listingId: string };
+  Filters: { current: ListingFilters; onApply: (filters: ListingFilters) => void };
   Chat: { conversationId: string };
   SellerProfile: { sellerId: string };
 };
