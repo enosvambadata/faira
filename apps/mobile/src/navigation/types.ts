@@ -29,6 +29,7 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   Tabs: NavigatorScreenParams<TabParamList>;
   ListingDetail: { listingId: string };
+  EditListing: { listingId: string };
   Chat: { conversationId: string };
   SellerProfile: { sellerId: string };
 };

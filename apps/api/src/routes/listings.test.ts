@@ -6,6 +6,7 @@ const categoryFindUniqueMock = vi.fn();
 const listingCreateMock = vi.fn();
 const listingFindManyMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
+const listingUpdateMock = vi.fn();
 const signListingUploadMock = vi.fn();
 
 vi.mock('../supabase', () => ({
@@ -25,6 +26,7 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => listingCreateMock(...args),
       findMany: (...args: unknown[]) => listingFindManyMock(...args),
       findUnique: (...args: unknown[]) => listingFindUniqueMock(...args),
+      update: (...args: unknown[]) => listingUpdateMock(...args),
     },
   },
 }));
@@ -193,7 +195,7 @@ describe('GET /api/v1/listings', () => {
     expect(res.body.hasMore).toBe(false);
     expect(listingFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', deletedAt: null },
         orderBy: { createdAt: 'desc' },
         skip: 0,
       }),
@@ -263,5 +265,185 @@ describe('GET /api/v1/listings/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('LISTING_NOT_FOUND');
+  });
+
+  it('returns 404 for a soft-deleted listing', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), deletedAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/listing-1');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('LISTING_NOT_FOUND');
+  });
+});
+
+describe('GET /api/v1/listings/mine', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    listingFindManyMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+  });
+
+  it('returns only the authenticated seller\'s own listings', async () => {
+    listingFindManyMock.mockResolvedValue([fakeListing({ status: 'SOLD' })]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/mine').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].status).toBe('SOLD');
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { sellerId: 'user-1', deletedAt: null } }),
+    );
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/mine');
+
+    expect(res.status).toBe(401);
+    expect(listingFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/listings/:id', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    listingFindUniqueMock.mockReset();
+    listingUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+  });
+
+  it('updates price, description, and photos for the owner', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'user-1', deletedAt: null });
+    listingUpdateMock.mockResolvedValue({
+      ...fakeListing(),
+      price: { toString: () => '30' },
+      description: 'Updated description',
+      condition: 'GOOD',
+      deliveryOptions: ['Seller delivers'],
+      status: 'ACTIVE',
+      attributes: [],
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .patch('/api/v1/listings/listing-1')
+      .set(AUTH_HEADER)
+      .send({ price: 30, description: 'Updated description' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.price).toBe('30');
+    expect(res.body.data.description).toBe('Updated description');
+    expect(listingUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { price: 30, description: 'Updated description' } }),
+    );
+  });
+
+  it('rejects a request from a non-owner', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'someone-else', deletedAt: null });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/listings/listing-1').set(AUTH_HEADER).send({ price: 30 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(listingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a deleted listing', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'user-1', deletedAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/listings/listing-1').set(AUTH_HEADER).send({ price: 30 });
+
+    expect(res.status).toBe(404);
+    expect(listingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid payload', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/listings/listing-1').set(AUTH_HEADER).send({ price: -5 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/listings/:id/sold', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    listingFindUniqueMock.mockReset();
+    listingUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+  });
+
+  it('marks the owner\'s listing as sold', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'user-1', deletedAt: null });
+    listingUpdateMock.mockResolvedValue({ id: 'listing-1', status: 'SOLD' });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/listings/listing-1/sold').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('SOLD');
+    expect(listingUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'SOLD' } }),
+    );
+  });
+
+  it('rejects a request from a non-owner', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'someone-else', deletedAt: null });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/listings/listing-1/sold').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(listingUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/v1/listings/:id', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    listingFindUniqueMock.mockReset();
+    listingUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+  });
+
+  it('soft-deletes the owner\'s listing', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'user-1', deletedAt: null });
+    listingUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).delete('/api/v1/listings/listing-1').set(AUTH_HEADER);
+
+    expect(res.status).toBe(204);
+    expect(listingUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { deletedAt: expect.any(Date) } }),
+    );
+  });
+
+  it('rejects a request from a non-owner', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'someone-else', deletedAt: null });
+
+    const app = createApp();
+    const res = await request(app).delete('/api/v1/listings/listing-1').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(listingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for an already-deleted listing', async () => {
+    listingFindUniqueMock.mockResolvedValue({ ...fakeListing(), sellerId: 'user-1', deletedAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app).delete('/api/v1/listings/listing-1').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+    expect(listingUpdateMock).not.toHaveBeenCalled();
   });
 });
