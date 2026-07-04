@@ -334,3 +334,40 @@ export const wishlist = {
     return true;
   },
 };
+
+export interface ConversationParticipant {
+  id: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface Conversation {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: { id: string; title: string; price: string; imageUrl: string | null };
+  otherParticipant: ConversationParticipant;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  body: string | null;
+  imageUrl: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export const conversations = {
+  start: (listingId: string) => request<Conversation>('/api/v1/conversations', { method: 'POST', body: { listingId }, auth: true }),
+
+  get: (id: string) => request<Conversation>(`/api/v1/conversations/${id}`, { auth: true }),
+
+  messages: (id: string) => request<Message[]>(`/api/v1/conversations/${id}/messages`, { auth: true }),
+
+  sendMessage: (id: string, payload: { body?: string; imageUrl?: string }) =>
+    request<Message>(`/api/v1/conversations/${id}/messages`, { method: 'POST', body: payload, auth: true }),
+};

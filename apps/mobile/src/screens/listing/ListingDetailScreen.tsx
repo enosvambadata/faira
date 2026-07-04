@@ -12,7 +12,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { listings as listingsApi, wishlist as wishlistApi, ListingDetail, ApiError } from '@/lib/api';
+import { listings as listingsApi, wishlist as wishlistApi, profile as profileApi, ListingDetail, ApiError } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ListingDetail'>;
 
@@ -33,15 +33,21 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [activePhoto, setActivePhoto] = useState(0);
+  const [isOwnListing, setIsOwnListing] = useState(false);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const [data, savedIds] = await Promise.all([listingsApi.get(listingId), wishlistApi.ids()]);
+        const [data, savedIds, myProfile] = await Promise.all([
+          listingsApi.get(listingId),
+          wishlistApi.ids(),
+          profileApi.get(),
+        ]);
         setListing(data);
         setSaved(savedIds.includes(listingId));
+        setIsOwnListing(myProfile.id === data.seller.id);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Could not load this listing');
       } finally {
@@ -56,7 +62,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   };
 
   const handleMessageSeller = () => {
-    navigation.navigate('Chat', { conversationId: `listing-${listingId}` });
+    navigation.navigate('Chat', { listingId });
   };
 
   if (loading) {
@@ -145,9 +151,11 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.messageButton} onPress={handleMessageSeller}>
-          <Text style={styles.messageButtonText}>Message Seller</Text>
-        </TouchableOpacity>
+        {!isOwnListing && (
+          <TouchableOpacity testID="message-seller-btn" style={styles.messageButton} onPress={handleMessageSeller}>
+            <Text style={styles.messageButtonText}>Message Seller</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </ScrollView>
   );
