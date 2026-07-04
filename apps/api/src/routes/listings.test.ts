@@ -385,6 +385,72 @@ describe('GET /api/v1/listings', () => {
       }),
     );
   });
+
+  it('defaults to newest-first when no sort is given', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { createdAt: 'desc' } }));
+  });
+
+  it('sorts by price ascending', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?sort=price_asc');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { price: 'asc' } }));
+  });
+
+  it('sorts by price descending', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?sort=price_desc');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { price: 'desc' } }));
+  });
+
+  it('rejects an invalid sort value', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?sort=cheapest');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps active filters (price range) while sorting', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?sort=price_desc&minPrice=10&maxPrice=100&cities=Harare');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ price: { gte: 10, lte: 100 }, city: { in: ['Harare'] } }),
+        orderBy: { price: 'desc' },
+      }),
+    );
+  });
+
+  it('lets an explicit price sort override search relevance ranking', async () => {
+    const cheap = fakeListing({ id: 'cheap', title: 'Nike shoes', price: { toString: () => '10' } });
+    const expensive = fakeListing({ id: 'expensive', title: 'Nike jacket', price: { toString: () => '90' } });
+    listingFindManyMock.mockResolvedValue([expensive, cheap]);
+    listingCountMock.mockResolvedValue(2);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?q=nike&sort=price_asc');
+
+    expect(res.status).toBe(200);
+    // With an explicit sort, this should go through the plain DB-ordered
+    // path (orderBy price asc), not the in-app relevance ranking path.
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { price: 'asc' } }));
+    expect(listingFindManyMock).not.toHaveBeenCalledWith(expect.objectContaining({ include: { attributes: true } }));
+  });
 });
 
 describe('GET /api/v1/listings/filter-options', () => {

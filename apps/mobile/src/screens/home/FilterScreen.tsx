@@ -51,6 +51,7 @@ export default function FilterScreen({ route, navigation }: Props) {
   }, []);
 
   const draft: ListingFilters = {
+    sort: current.sort,
     categoryIds,
     conditions,
     cities: selectedCities,

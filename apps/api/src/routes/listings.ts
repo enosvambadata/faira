@@ -31,9 +31,12 @@ const csv = () =>
     .optional()
     .transform(value => (value ? value.split(',').map(v => v.trim()).filter(Boolean) : []));
 
+const SORTS = ['newest', 'price_asc', 'price_desc'] as const;
+
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   q: z.string().trim().max(200).optional(),
+  sort: z.enum(SORTS).default('newest'),
   categoryIds: csv(),
   conditions: csv().pipe(z.array(z.enum(CONDITIONS))),
   cities: csv(),
@@ -74,7 +77,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page, q, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
+  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
 
   const price: { gte?: number; lte?: number } = {};
   if (minPrice !== undefined) price.gte = minPrice;
@@ -101,7 +104,12 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   let hasMore;
   let total;
 
-  if (q) {
+  // An explicit sort choice (price low-high / high-low) overrides relevance
+  // ranking even while searching — picking a sort is a deliberate request to
+  // reorder, which should win over the implicit relevance order. "Newest" is
+  // both the default sort and search's own tiebreaker, so it keeps the
+  // existing relevance-then-recency behavior from SCRUM-38 when searching.
+  if (q && sort === 'newest') {
     const [matches, matchTotal] = await Promise.all([
       prisma.listing.findMany({
         where,
@@ -122,10 +130,13 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     hasMore = start + PAGE_SIZE < ranked.length;
     total = matchTotal;
   } else {
+    const orderBy =
+      sort === 'price_asc' ? { price: 'asc' as const } : sort === 'price_desc' ? { price: 'desc' as const } : { createdAt: 'desc' as const };
+
     const [listings, browseTotal] = await Promise.all([
       prisma.listing.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE + 1,
       }),

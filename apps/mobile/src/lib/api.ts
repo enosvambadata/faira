@@ -205,8 +205,11 @@ export interface ListingDetail {
   createdAt: string;
 }
 
+export type ListingSort = 'newest' | 'price_asc' | 'price_desc';
+
 export interface ListingFilters {
   q?: string;
+  sort: ListingSort;
   categoryIds: string[];
   conditions: string[];
   cities: string[];
@@ -216,6 +219,7 @@ export interface ListingFilters {
 }
 
 export const EMPTY_LISTING_FILTERS: ListingFilters = {
+  sort: 'newest',
   categoryIds: [],
   conditions: [],
   cities: [],
@@ -226,6 +230,7 @@ function filtersToQuery(filters?: ListingFilters): string {
   if (!filters) return '';
   const params = new URLSearchParams();
   if (filters.q) params.set('q', filters.q);
+  if (filters.sort !== 'newest') params.set('sort', filters.sort);
   if (filters.categoryIds.length) params.set('categoryIds', filters.categoryIds.join(','));
   if (filters.conditions.length) params.set('conditions', filters.conditions.join(','));
   if (filters.cities.length) params.set('cities', filters.cities.join(','));
