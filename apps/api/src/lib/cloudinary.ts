@@ -18,17 +18,13 @@ export async function uploadAvatar(buffer: Buffer, mimetype: string, userId: str
   });
 }
 
-// Listing photos upload directly from the client to Cloudinary (not routed
-// through our server) — this just signs the exact params the client will
-// send, so Cloudinary can verify the upload is authorized without us ever
-// handling the image bytes.
-export function signListingUpload() {
+// Client-direct uploads (listing photos, chat images) never pass through our
+// server — this just signs the exact params the client will send, so
+// Cloudinary can verify the upload is authorized without us ever handling
+// the image bytes ourselves.
+function signUpload(folder: string, transformation: string) {
   const timestamp = Math.round(Date.now() / 1000);
-  const paramsToSign = {
-    timestamp,
-    folder: 'listings',
-    transformation: 'w_1600,h_1600,c_limit',
-  };
+  const paramsToSign = { timestamp, folder, transformation };
 
   const signature = cloudinary.utils.api_sign_request(
     paramsToSign,
@@ -43,4 +39,12 @@ export function signListingUpload() {
     folder: paramsToSign.folder,
     transformation: paramsToSign.transformation,
   };
+}
+
+export function signListingUpload() {
+  return signUpload('listings', 'w_1600,h_1600,c_limit');
+}
+
+export function signChatUpload() {
+  return signUpload('chat', 'w_1600,h_1600,c_limit');
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,46 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { conversations as conversationsApi, profile as profileApi, Conversation, Message, ApiError } from '@/lib/api';
+import {
+  conversations as conversationsApi,
+  profile as profileApi,
+  uploadImageToCloudinary,
+  Conversation,
+  Message,
+  ApiError,
+} from '@/lib/api';
+import { getSession } from '@/lib/session';
+import { supabase, setRealtimeAuth } from '@/lib/supabase';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
+
+interface DisplayMessage extends Message {
+  pending?: boolean;
+}
+
+// Postgres Changes payloads use the DB's snake_case column names, not our
+// API's camelCase response shape — this keeps both sources of messages
+// (REST fetch and realtime events) in the same local shape.
+function mapRealtimeRow(row: Record<string, unknown>): Message {
+  return {
+    id: row.id as string,
+    senderId: row.sender_id as string,
+    body: (row.body as string | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
+    readAt: (row.read_at as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
 
 export default function ChatScreen({ route, navigation }: Props) {
   const { listingId } = route.params;
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,17 +81,97 @@ export default function ChatScreen({ route, navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId]);
 
+  // Subscribes once both the conversation and our own user id are known —
+  // the INSERT handler needs myUserId to skip messages we sent ourselves
+  // (those are already added optimistically and reconciled via the POST
+  // response, so appending them again here would duplicate the bubble).
+  useEffect(() => {
+    if (!conversation || !myUserId) return undefined;
+
+    let active = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    (async () => {
+      const session = await getSession();
+      if (!active || !session) return;
+      setRealtimeAuth(session.accessToken);
+
+      channel = supabase
+        .channel(`messages-${conversation.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversation.id}` },
+          payload => {
+            const row = mapRealtimeRow(payload.new as Record<string, unknown>);
+            if (row.senderId === myUserId) return;
+            setMessages(current => (current.some(m => m.id === row.id) ? current : [...current, row]));
+          },
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversation.id}` },
+          payload => {
+            const row = mapRealtimeRow(payload.new as Record<string, unknown>);
+            setMessages(current => current.map(m => (m.id === row.id ? { ...m, readAt: row.readAt } : m)));
+          },
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      active = false;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [conversation, myUserId]);
+
+  const sendPayload = useCallback(
+    async (payload: { body?: string; imageUrl?: string }, tempId: string) => {
+      try {
+        const real = await conversationsApi.sendMessage(conversation!.id, payload);
+        setMessages(current => current.map(m => (m.id === tempId ? real : m)));
+      } catch {
+        setMessages(current => current.filter(m => m.id !== tempId));
+        setError('Could not send your message. Please try again.');
+        if (payload.body) setComposerText(payload.body);
+      }
+    },
+    [conversation],
+  );
+
   const handleSend = async () => {
     const body = composerText.trim();
-    if (!body || !conversation || sending) return;
+    if (!body || !conversation || !myUserId) return;
+
+    const tempId = `temp-${Date.now()}`;
+    setMessages(current => [
+      ...current,
+      { id: tempId, senderId: myUserId, body, imageUrl: null, readAt: null, createdAt: new Date().toISOString(), pending: true },
+    ]);
+    setComposerText('');
+    await sendPayload({ body }, tempId);
+  };
+
+  const handleAttachImage = async () => {
+    if (!conversation || !myUserId || sending) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.8 });
+    if (result.canceled) return;
 
     setSending(true);
+    const uri = result.assets[0].uri;
+    const tempId = `temp-${Date.now()}`;
+    setMessages(current => [
+      ...current,
+      { id: tempId, senderId: myUserId, body: null, imageUrl: uri, readAt: null, createdAt: new Date().toISOString(), pending: true },
+    ]);
+
     try {
-      const message = await conversationsApi.sendMessage(conversation.id, { body });
-      setMessages(current => [...current, message]);
-      setComposerText('');
+      const signature = await conversationsApi.getUploadSignature();
+      const imageUrl = await uploadImageToCloudinary(uri, signature);
+      await sendPayload({ imageUrl }, tempId);
     } catch {
-      setError('Could not send your message. Please try again.');
+      setMessages(current => current.filter(m => m.id !== tempId));
+      setError('Could not send your image. Please try again.');
     } finally {
       setSending(false);
     }
@@ -122,6 +230,11 @@ export default function ChatScreen({ route, navigation }: Props) {
                     {item.body}
                   </Text>
                 )}
+                {isMine && (
+                  <Text testID="message-status" style={styles.statusText}>
+                    {item.pending ? 'Sending...' : item.readAt ? 'Read' : 'Sent'}
+                  </Text>
+                )}
               </View>
             </View>
           );
@@ -131,6 +244,9 @@ export default function ChatScreen({ route, navigation }: Props) {
       {error && conversation && <Text style={styles.inlineError}>{error}</Text>}
 
       <View style={styles.composerRow}>
+        <TouchableOpacity testID="attach-image-btn" style={styles.attachButton} onPress={handleAttachImage} disabled={sending}>
+          <Text style={styles.attachButtonText}>+</Text>
+        </TouchableOpacity>
         <TextInput
           testID="message-input"
           style={styles.composerInput}
@@ -185,6 +301,7 @@ const styles = StyleSheet.create({
   bubbleText: { ...textStyles.body },
   bubbleTextMine: { color: colors.white },
   bubbleTextTheirs: { color: colors.text },
+  statusText: { ...textStyles.caption, color: 'rgba(255,255,255,0.75)', marginTop: 4, textAlign: 'right' },
   inlineError: { ...textStyles.caption, color: colors.red, textAlign: 'center', paddingBottom: 4 },
   composerRow: {
     flexDirection: 'row',
@@ -195,6 +312,16 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.white,
   },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachButtonText: { fontSize: 22, color: colors.primary, lineHeight: 24 },
   composerInput: {
     flex: 1,
     maxHeight: 100,

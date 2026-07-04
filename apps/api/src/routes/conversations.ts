@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
+import { signChatUpload } from '../lib/cloudinary';
 import { ApiError } from '../errors/ApiError';
 
 const router = Router();
@@ -96,6 +97,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
   });
 
   res.status(200).json({ data: conversationResponse(conversation, req.userId!) });
+});
+
+router.post('/upload-signature', requireAuth, (_req: AuthenticatedRequest, res: Response) => {
+  res.status(200).json({ data: signChatUpload() });
 });
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {

@@ -246,6 +246,34 @@ export interface FilterOptions {
   sizes: string[];
 }
 
+// Uploads directly to Cloudinary using a short-lived signature from our API
+// (see listings.getUploadSignature / conversations.getUploadSignature) — the
+// image bytes never pass through our server. The signature is only valid
+// for the exact params we signed (folder + transformation), so the resize
+// can't be bypassed client-side. Shared by listing photos and chat images.
+export async function uploadImageToCloudinary(fileUri: string, signature: UploadSignature): Promise<string> {
+  const blob = await fetch(fileUri).then(r => r.blob());
+  const formData = new FormData();
+  formData.append('file', blob, 'photo.jpg');
+  formData.append('api_key', signature.apiKey);
+  formData.append('timestamp', String(signature.timestamp));
+  formData.append('signature', signature.signature);
+  formData.append('folder', signature.folder);
+  formData.append('transformation', signature.transformation);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new ApiError('UPLOAD_FAILED', json?.error?.message ?? 'Image upload failed', res.status);
+  }
+
+  return json.secure_url as string;
+}
+
 export const listings = {
   browse: (page: number, filters?: ListingFilters) =>
     request<{ data: ListingSummary[]; hasMore: boolean; total: number }>(
@@ -274,32 +302,7 @@ export const listings = {
   remove: (id: string) =>
     request<void>(`/api/v1/listings/${id}`, { method: 'DELETE', auth: true }),
 
-  // Uploads directly to Cloudinary using a short-lived signature from our
-  // API (see getUploadSignature) — the image bytes never pass through our
-  // server. The signature is only valid for the exact params we signed
-  // (folder + transformation), so the resize can't be bypassed client-side.
-  async uploadImage(fileUri: string, signature: UploadSignature): Promise<string> {
-    const blob = await fetch(fileUri).then(r => r.blob());
-    const formData = new FormData();
-    formData.append('file', blob, 'photo.jpg');
-    formData.append('api_key', signature.apiKey);
-    formData.append('timestamp', String(signature.timestamp));
-    formData.append('signature', signature.signature);
-    formData.append('folder', signature.folder);
-    formData.append('transformation', signature.transformation);
-
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new ApiError('UPLOAD_FAILED', json?.error?.message ?? 'Image upload failed', res.status);
-    }
-
-    return json.secure_url as string;
-  },
+  uploadImage: uploadImageToCloudinary,
 };
 
 export interface WishlistListing {
@@ -370,4 +373,7 @@ export const conversations = {
 
   sendMessage: (id: string, payload: { body?: string; imageUrl?: string }) =>
     request<Message>(`/api/v1/conversations/${id}/messages`, { method: 'POST', body: payload, auth: true }),
+
+  getUploadSignature: () =>
+    request<UploadSignature>('/api/v1/conversations/upload-signature', { method: 'POST', auth: true }),
 };
