@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabaseAdmin } from '../supabase';
+import { prisma } from '../prisma';
 import { ApiError } from '../errors/ApiError';
 
 export interface AuthenticatedRequest extends Request {
@@ -25,6 +26,16 @@ export async function requireAuth(
     next(new ApiError('UNAUTHENTICATED', 'Invalid or expired access token', 401));
     return;
   }
+
+  // Supabase's auth.users row exists the moment someone signs up, but our
+  // own public.users row (needed for FKs like listings.seller_id) doesn't
+  // get created anywhere else — provision it here, on first authenticated
+  // request, rather than requiring every caller to remember to.
+  await prisma.user.upsert({
+    where: { id: data.user.id },
+    update: {},
+    create: { id: data.user.id },
+  });
 
   req.userId = data.user.id;
   next();
