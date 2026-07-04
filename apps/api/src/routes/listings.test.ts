@@ -17,6 +17,7 @@ vi.mock('../supabase', () => ({
 
 vi.mock('../prisma', () => ({
   prisma: {
+    user: { upsert: vi.fn().mockResolvedValue({}) },
     category: { findUnique: (...args: unknown[]) => categoryFindUniqueMock(...args) },
     listing: { create: (...args: unknown[]) => listingCreateMock(...args) },
   },

@@ -21,6 +21,12 @@ vi.mock('../supabase', () => ({
   },
 }));
 
+vi.mock('../prisma', () => ({
+  prisma: {
+    user: { upsert: vi.fn().mockResolvedValue({}) },
+  },
+}));
+
 vi.mock('../lib/cloudinary', () => ({
   uploadAvatar: (...args: unknown[]) => uploadAvatarMock(...args),
 }));
