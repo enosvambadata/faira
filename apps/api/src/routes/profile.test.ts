@@ -2,18 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
 const getUserMock = vi.fn();
-const getUserByIdMock = vi.fn();
-const updateUserByIdMock = vi.fn();
+const userUpsertMock = vi.fn();
+const userFindUniqueMock = vi.fn();
+const userUpdateMock = vi.fn();
 const uploadAvatarMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
     auth: {
       getUser: (...args: unknown[]) => getUserMock(...args),
-      admin: {
-        getUserById: (...args: unknown[]) => getUserByIdMock(...args),
-        updateUserById: (...args: unknown[]) => updateUserByIdMock(...args),
-      },
     },
   },
   supabasePublic: {
@@ -23,7 +20,11 @@ vi.mock('../supabase', () => ({
 
 vi.mock('../prisma', () => ({
   prisma: {
-    user: { upsert: vi.fn().mockResolvedValue({}) },
+    user: {
+      upsert: (...args: unknown[]) => userUpsertMock(...args),
+      findUnique: (...args: unknown[]) => userFindUniqueMock(...args),
+      update: (...args: unknown[]) => userUpdateMock(...args),
+    },
   },
 }));
 
@@ -38,19 +39,18 @@ const AUTH_HEADER = { Authorization: 'Bearer valid-token' };
 describe('GET /api/v1/profile', () => {
   beforeEach(() => {
     getUserMock.mockReset();
-    getUserByIdMock.mockReset();
+    userUpsertMock.mockReset();
+    userFindUniqueMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
   });
 
   it('returns the current user profile', async () => {
-    getUserByIdMock.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-1',
-          user_metadata: { display_name: 'Tendai', city: 'Harare', avatar_url: 'https://cdn/x.jpg' },
-        },
-      },
-      error: null,
+    userFindUniqueMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: 'Tendai',
+      city: 'Harare',
+      avatarUrl: 'https://cdn/x.jpg',
     });
 
     const app = createApp();
@@ -65,10 +65,12 @@ describe('GET /api/v1/profile', () => {
     });
   });
 
-  it('returns nulls for a profile with no metadata set yet', async () => {
-    getUserByIdMock.mockResolvedValue({
-      data: { user: { id: 'user-1', user_metadata: {} } },
-      error: null,
+  it('returns nulls for a profile with nothing set yet', async () => {
+    userFindUniqueMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: null,
+      city: null,
+      avatarUrl: null,
     });
 
     const app = createApp();
@@ -84,7 +86,7 @@ describe('GET /api/v1/profile', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHENTICATED');
-    expect(getUserByIdMock).not.toHaveBeenCalled();
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid access token', async () => {
@@ -103,24 +105,18 @@ describe('GET /api/v1/profile', () => {
 describe('PATCH /api/v1/profile', () => {
   beforeEach(() => {
     getUserMock.mockReset();
-    getUserByIdMock.mockReset();
-    updateUserByIdMock.mockReset();
+    userUpsertMock.mockReset();
+    userUpdateMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
   });
 
-  it('sets the display name and city, merging with existing metadata', async () => {
-    getUserByIdMock.mockResolvedValue({
-      data: { user: { id: 'user-1', user_metadata: { email_verified: true } } },
-      error: null,
-    });
-    updateUserByIdMock.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-1',
-          user_metadata: { email_verified: true, display_name: 'Tendai', city: 'Harare' },
-        },
-      },
-      error: null,
+  it('sets the display name and city', async () => {
+    userUpdateMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: 'Tendai',
+      city: 'Harare',
+      avatarUrl: null,
     });
 
     const app = createApp();
@@ -131,8 +127,9 @@ describe('PATCH /api/v1/profile', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.displayName).toBe('Tendai');
-    expect(updateUserByIdMock).toHaveBeenCalledWith('user-1', {
-      user_metadata: { email_verified: true, display_name: 'Tendai', city: 'Harare' },
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { displayName: 'Tendai', city: 'Harare' },
     });
   });
 
@@ -145,36 +142,27 @@ describe('PATCH /api/v1/profile', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    expect(updateUserByIdMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
   });
 });
 
 describe('POST /api/v1/profile/avatar', () => {
   beforeEach(() => {
     getUserMock.mockReset();
-    getUserByIdMock.mockReset();
-    updateUserByIdMock.mockReset();
+    userUpsertMock.mockReset();
+    userUpdateMock.mockReset();
     uploadAvatarMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
   });
 
   it('uploads the image and saves the resulting URL', async () => {
     uploadAvatarMock.mockResolvedValue({ secure_url: 'https://res.cloudinary.com/x/avatars/user-1.jpg' });
-    getUserByIdMock.mockResolvedValue({
-      data: { user: { id: 'user-1', user_metadata: { display_name: 'Tendai' } } },
-      error: null,
-    });
-    updateUserByIdMock.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-1',
-          user_metadata: {
-            display_name: 'Tendai',
-            avatar_url: 'https://res.cloudinary.com/x/avatars/user-1.jpg',
-          },
-        },
-      },
-      error: null,
+    userUpdateMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: 'Tendai',
+      city: null,
+      avatarUrl: 'https://res.cloudinary.com/x/avatars/user-1.jpg',
     });
 
     const app = createApp();
@@ -186,6 +174,10 @@ describe('POST /api/v1/profile/avatar', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.avatarUrl).toBe('https://res.cloudinary.com/x/avatars/user-1.jpg');
     expect(uploadAvatarMock).toHaveBeenCalledWith(expect.any(Buffer), 'image/jpeg', 'user-1');
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { avatarUrl: 'https://res.cloudinary.com/x/avatars/user-1.jpg' },
+    });
   });
 
   it('rejects a request with no file attached', async () => {
@@ -208,6 +200,6 @@ describe('POST /api/v1/profile/avatar', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe('AVATAR_UPLOAD_FAILED');
-    expect(updateUserByIdMock).not.toHaveBeenCalled();
+    expect(userUpdateMock).not.toHaveBeenCalled();
   });
 });

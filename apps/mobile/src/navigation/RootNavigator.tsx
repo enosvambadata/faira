@@ -6,6 +6,7 @@ import OnboardingNavigator from './OnboardingNavigator';
 import AuthNavigator from './AuthNavigator';
 import ProfileSetupScreen from '@/screens/profile/ProfileSetupScreen';
 import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
+import ChatScreen from '@/screens/chat/ChatScreen';
 import { colors } from '@/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -42,6 +43,7 @@ export default function RootNavigator({ initialRouteName }: Props) {
         component={ListingDetailScreen}
         options={{ title: 'Item Detail' }}
       />
+      <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
     </Stack.Navigator>
   );
 }
