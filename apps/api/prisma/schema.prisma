@@ -5,3 +5,129 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum ListingCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+}
+
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// id matches auth.users.id (Supabase-managed); no Prisma-level relation since
+// Prisma doesn't own the auth schema — the FK to auth.users is added by hand
+// in the migration SQL instead of being generated from this model.
+model User {
+  id          String   @id @db.Uuid
+  displayName String?  @map("display_name")
+  avatarUrl   String?  @map("avatar_url")
+  city        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  sellerProfile SellerProfile?
+  listings      Listing[]
+  ordersAsBuyer Order[]        @relation("BuyerOrders")
+
+  @@map("users")
+}
+
+model SellerProfile {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  businessName String?  @map("business_name")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  ratingAvg    Decimal  @default(0) @map("rating_avg") @db.Decimal(3, 2)
+  ratingCount  Int      @default(0) @map("rating_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("seller_profiles")
+}
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  parentId  String?  @map("parent_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  parent   Category?  @relation("CategoryToParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryToParent")
+  listings Listing[]
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Listing {
+  id          String           @id @default(uuid()) @db.Uuid
+  sellerId    String           @map("seller_id") @db.Uuid
+  categoryId  String           @map("category_id") @db.Uuid
+  title       String
+  description String?
+  price       Decimal          @db.Decimal(10, 2)
+  condition   ListingCondition
+  city        String
+  status      ListingStatus    @default(ACTIVE)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  seller     User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category   Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  attributes ListingAttribute[]
+  orders     Order[]
+
+  @@index([sellerId])
+  @@index([categoryId])
+  @@index([city])
+  @@index([status])
+  @@map("listings")
+}
+
+// Flexible per-category attributes (e.g. size for clothing, storage capacity
+// for electronics) — a fixed-column schema doesn't fit "any product category".
+model ListingAttribute {
+  id        String @id @default(uuid()) @db.Uuid
+  listingId String @map("listing_id") @db.Uuid
+  key       String
+  value     String
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, key])
+  @@map("listing_attributes")
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  listingId       String      @map("listing_id") @db.Uuid
+  buyerId         String      @map("buyer_id") @db.Uuid
+  priceAtPurchase Decimal     @map("price_at_purchase") @db.Decimal(10, 2)
+  status          OrderStatus @default(PENDING)
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("orders")
+}
