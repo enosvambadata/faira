@@ -64,6 +64,7 @@ model Category {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   slug      String   @unique
+  icon      String?
   parentId  String?  @map("parent_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
