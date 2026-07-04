@@ -76,17 +76,19 @@ model Category {
 }
 
 model Listing {
-  id          String           @id @default(uuid()) @db.Uuid
-  sellerId    String           @map("seller_id") @db.Uuid
-  categoryId  String           @map("category_id") @db.Uuid
-  title       String
-  description String?
-  price       Decimal          @db.Decimal(10, 2)
-  condition   ListingCondition
-  city        String
-  status      ListingStatus    @default(ACTIVE)
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
+  id              String           @id @default(uuid()) @db.Uuid
+  sellerId        String           @map("seller_id") @db.Uuid
+  categoryId      String           @map("category_id") @db.Uuid
+  title           String
+  description     String?
+  price           Decimal          @db.Decimal(10, 2)
+  condition       ListingCondition
+  city            String
+  imageUrls       String[]         @map("image_urls")
+  deliveryOptions String[]         @map("delivery_options")
+  status          ListingStatus    @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
   seller     User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   category   Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)

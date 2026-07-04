@@ -6,6 +6,8 @@ import healthRouter from './routes/health';
 import authRouter from './routes/auth';
 import webhooksRouter from './routes/webhooks';
 import profileRouter from './routes/profile';
+import listingsRouter from './routes/listings';
+import categoriesRouter from './routes/categories';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -32,6 +34,8 @@ export function createApp(): Express {
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/webhooks', webhooksRouter);
   app.use('/api/v1/profile', profileRouter);
+  app.use('/api/v1/listings', listingsRouter);
+  app.use('/api/v1/categories', categoriesRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
