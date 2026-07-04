@@ -12,8 +12,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { listings as listingsApi, ListingDetail, ApiError } from '@/lib/api';
-import { isWishlisted, toggleWishlist } from '@/lib/wishlist';
+import { listings as listingsApi, wishlist as wishlistApi, ListingDetail, ApiError } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ListingDetail'>;
 
@@ -40,9 +39,9 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const [data, wishlisted] = await Promise.all([listingsApi.get(listingId), isWishlisted(listingId)]);
+        const [data, savedIds] = await Promise.all([listingsApi.get(listingId), wishlistApi.ids()]);
         setListing(data);
-        setSaved(wishlisted);
+        setSaved(savedIds.includes(listingId));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Could not load this listing');
       } finally {
@@ -52,7 +51,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }, [listingId]);
 
   const handleToggleSave = async () => {
-    const nowSaved = await toggleWishlist(listingId);
+    const nowSaved = await wishlistApi.toggle(listingId, saved);
     setSaved(nowSaved);
   };
 

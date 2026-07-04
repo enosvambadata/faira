@@ -301,3 +301,36 @@ export const listings = {
     return json.secure_url as string;
   },
 };
+
+export interface WishlistListing {
+  id: string;
+  title: string;
+  price: string;
+  city: string;
+  imageUrls: string[];
+  status: string;
+  savedAt: string;
+}
+
+export const wishlist = {
+  list: () => request<WishlistListing[]>('/api/v1/wishlist', { auth: true }),
+
+  ids: () => request<string[]>('/api/v1/wishlist/ids', { auth: true }),
+
+  save: (listingId: string) =>
+    request<{ listingId: string; saved: boolean }>(`/api/v1/wishlist/${listingId}`, { method: 'POST', auth: true }),
+
+  remove: (listingId: string) => request<void>(`/api/v1/wishlist/${listingId}`, { method: 'DELETE', auth: true }),
+
+  // Mirrors the old local toggle's return-new-state contract so screens
+  // that already track a listing's saved state locally don't need to
+  // change their call sites beyond passing that known state in.
+  async toggle(listingId: string, currentlySaved: boolean): Promise<boolean> {
+    if (currentlySaved) {
+      await this.remove(listingId);
+      return false;
+    }
+    await this.save(listingId);
+    return true;
+  },
+};

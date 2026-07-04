@@ -32,6 +32,7 @@ export type RootStackParamList = {
   ListingDetail: { listingId: string };
   EditListing: { listingId: string };
   Filters: { current: ListingFilters; onApply: (filters: ListingFilters) => void };
+  SavedItems: undefined;
   Chat: { conversationId: string };
   SellerProfile: { sellerId: string };
 };

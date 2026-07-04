@@ -8,6 +8,7 @@ import ProfileSetupScreen from '@/screens/profile/ProfileSetupScreen';
 import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
 import EditListingScreen from '@/screens/listing/EditListingScreen';
 import FilterScreen from '@/screens/home/FilterScreen';
+import SavedItemsScreen from '@/screens/wishlist/SavedItemsScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
 import { colors } from '@/theme';
 
@@ -54,6 +55,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         name="Filters"
         component={FilterScreen}
         options={{ title: 'Filters', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="SavedItems"
+        component={SavedItemsScreen}
+        options={{ title: 'Saved Items' }}
       />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
     </Stack.Navigator>

@@ -4,8 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { categories as categoriesApi, listings as listingsApi, Category, ListingSummary, ListingFilters, ListingSort, EMPTY_LISTING_FILTERS } from '@/lib/api';
-import { toggleWishlist } from '@/lib/wishlist';
+import { categories as categoriesApi, listings as listingsApi, wishlist as wishlistApi, Category, ListingSummary, ListingFilters, ListingSort, EMPTY_LISTING_FILTERS } from '@/lib/api';
 
 const CONDITION_LABELS: Record<string, string> = {
   NEW: 'New',
@@ -43,6 +42,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     categoriesApi.list().then(setCategories).catch(() => setCategories([]));
+    wishlistApi.ids().then(ids => setWishlisted(new Set(ids))).catch(() => setWishlisted(new Set()));
   }, []);
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function HomeScreen() {
   };
 
   const handleToggleWishlist = async (listingId: string) => {
-    const nowSaved = await toggleWishlist(listingId);
+    const nowSaved = await wishlistApi.toggle(listingId, wishlisted.has(listingId));
     setWishlisted(current => {
       const next = new Set(current);
       if (nowSaved) {
