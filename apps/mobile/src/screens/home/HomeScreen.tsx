@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { categories as categoriesApi, listings as listingsApi, Category, ListingSummary, ListingFilters, EMPTY_LISTING_FILTERS } from '@/lib/api';
+import { categories as categoriesApi, listings as listingsApi, Category, ListingSummary, ListingFilters, ListingSort, EMPTY_LISTING_FILTERS } from '@/lib/api';
 import { toggleWishlist } from '@/lib/wishlist';
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -13,6 +13,12 @@ const CONDITION_LABELS: Record<string, string> = {
   GOOD: 'Good',
   FAIR: 'Fair',
 };
+
+const SORT_OPTIONS: { value: ListingSort; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'price_asc', label: 'Price: Low to High' },
+  { value: 'price_desc', label: 'Price: High to Low' },
+];
 
 interface ActiveChip {
   key: string;
@@ -32,6 +38,7 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [filters, setFilters] = useState<ListingFilters>(EMPTY_LISTING_FILTERS);
   const [searchText, setSearchText] = useState('');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -93,6 +100,11 @@ export default function HomeScreen() {
 
   const openListing = (listingId: string) => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('ListingDetail', { listingId });
+  };
+
+  const handleSelectSort = (sort: ListingSort) => {
+    setSortMenuOpen(false);
+    setFilters(current => (current.sort === sort ? current : { ...current, sort }));
   };
 
   const openFilters = () => {
@@ -190,6 +202,34 @@ export default function HomeScreen() {
         </View>
       )}
 
+      <View style={styles.sortRow}>
+        <TouchableOpacity
+          testID="sort-dropdown-btn"
+          style={styles.sortButton}
+          onPress={() => setSortMenuOpen(open => !open)}
+        >
+          <Text style={styles.sortButtonText}>
+            Sort: {SORT_OPTIONS.find(o => o.value === filters.sort)?.label} {sortMenuOpen ? '▴' : '▾'}
+          </Text>
+        </TouchableOpacity>
+        {sortMenuOpen && (
+          <View style={styles.sortMenu}>
+            {SORT_OPTIONS.map(option => (
+              <TouchableOpacity
+                key={option.value}
+                testID="sort-option"
+                style={styles.sortMenuItem}
+                onPress={() => handleSelectSort(option.value)}
+              >
+                <Text style={[styles.sortMenuItemText, filters.sort === option.value && styles.sortMenuItemTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
       <FlatList
         data={items}
         keyExtractor={item => item.id}
@@ -274,6 +314,29 @@ const styles = StyleSheet.create({
   },
   chipText: { ...textStyles.caption, color: colors.primary },
   chipRemove: { ...textStyles.caption, color: colors.primary, fontWeight: '700' },
+  sortRow: { paddingHorizontal: 12, paddingBottom: 12 },
+  sortButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  sortButtonText: { ...textStyles.caption, color: colors.text },
+  sortMenu: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  sortMenuItem: { paddingVertical: 10, paddingHorizontal: 16 },
+  sortMenuItemText: { ...textStyles.body, color: colors.text },
+  sortMenuItemTextActive: { color: colors.primary, fontWeight: '600' },
   grid: { paddingHorizontal: 12, paddingBottom: 24 },
   row: { gap: 12 },
   card: { flex: 1, marginBottom: 16 },
