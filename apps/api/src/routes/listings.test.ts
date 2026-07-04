@@ -5,8 +5,10 @@ const getUserMock = vi.fn();
 const categoryFindUniqueMock = vi.fn();
 const listingCreateMock = vi.fn();
 const listingFindManyMock = vi.fn();
+const listingCountMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
 const listingUpdateMock = vi.fn();
+const listingAttributeFindManyMock = vi.fn();
 const signListingUploadMock = vi.fn();
 
 vi.mock('../supabase', () => ({
@@ -25,8 +27,12 @@ vi.mock('../prisma', () => ({
     listing: {
       create: (...args: unknown[]) => listingCreateMock(...args),
       findMany: (...args: unknown[]) => listingFindManyMock(...args),
+      count: (...args: unknown[]) => listingCountMock(...args),
       findUnique: (...args: unknown[]) => listingFindUniqueMock(...args),
       update: (...args: unknown[]) => listingUpdateMock(...args),
+    },
+    listingAttribute: {
+      findMany: (...args: unknown[]) => listingAttributeFindManyMock(...args),
     },
   },
 }));
@@ -182,10 +188,13 @@ function fakeListing(overrides: Partial<Record<string, unknown>> = {}) {
 describe('GET /api/v1/listings', () => {
   beforeEach(() => {
     listingFindManyMock.mockReset();
+    listingCountMock.mockReset();
+    listingCountMock.mockResolvedValue(0);
   });
 
   it('returns the newest-first page, no auth required', async () => {
     listingFindManyMock.mockResolvedValue([fakeListing()]);
+    listingCountMock.mockResolvedValue(1);
 
     const app = createApp();
     const res = await request(app).get('/api/v1/listings');
@@ -193,6 +202,7 @@ describe('GET /api/v1/listings', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.hasMore).toBe(false);
+    expect(res.body.total).toBe(1);
     expect(listingFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: 'ACTIVE', deletedAt: null },
@@ -204,6 +214,7 @@ describe('GET /api/v1/listings', () => {
 
   it('sets hasMore when there are more results than the page size', async () => {
     listingFindManyMock.mockResolvedValue(Array.from({ length: 21 }, (_, i) => fakeListing({ id: `listing-${i}` })));
+    listingCountMock.mockResolvedValue(21);
 
     const app = createApp();
     const res = await request(app).get('/api/v1/listings');
@@ -228,6 +239,82 @@ describe('GET /api/v1/listings', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('filters by categoryIds, cities, and price range', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get(
+      '/api/v1/listings?categoryIds=cat-1,cat-2&cities=Harare,Gweru&minPrice=10&maxPrice=100',
+    );
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          categoryId: { in: ['cat-1', 'cat-2'] },
+          city: { in: ['Harare', 'Gweru'] },
+          price: { gte: 10, lte: 100 },
+        },
+      }),
+    );
+  });
+
+  it('filters by condition and size', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?conditions=NEW,GOOD&sizes=M,L');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          condition: { in: ['NEW', 'GOOD'] },
+          attributes: { some: { key: 'size', value: { in: ['M', 'L'] } } },
+        },
+      }),
+    );
+  });
+
+  it('rejects an invalid condition value', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?conditions=NOT_A_CONDITION');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/listings/filter-options', () => {
+  beforeEach(() => {
+    listingFindManyMock.mockReset();
+    listingAttributeFindManyMock.mockReset();
+  });
+
+  it('returns distinct cities and sizes from active listings', async () => {
+    listingFindManyMock.mockResolvedValue([{ city: 'Harare' }, { city: 'Gweru' }]);
+    listingAttributeFindManyMock.mockResolvedValue([{ value: 'M' }, { value: 'L' }]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/filter-options');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.cities).toEqual(['Gweru', 'Harare']);
+    expect(res.body.data.sizes).toEqual(['L', 'M']);
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'ACTIVE', deletedAt: null }, distinct: ['city'] }),
+    );
+    expect(listingAttributeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'size', listing: { status: 'ACTIVE', deletedAt: null } },
+        distinct: ['value'],
+      }),
+    );
   });
 });
 
