@@ -14,6 +14,7 @@ import {
 import RootNavigator from '@/navigation/RootNavigator';
 import { colors } from '@/theme';
 import { hasCompletedOnboarding } from '@/lib/onboarding';
+import { resolvePostOnboardingRoute } from '@/lib/postOnboardingRoute';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -23,6 +24,8 @@ Sentry.init({
 
 SplashScreen.preventAutoHideAsync();
 
+type InitialRoute = 'Onboarding' | 'Auth' | 'ProfileSetup' | 'Tabs';
+
 function App() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -30,12 +33,13 @@ function App() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
-  const [initialRoute, setInitialRoute] = useState<'Onboarding' | 'Tabs' | null>(null);
+  const [initialRoute, setInitialRoute] = useState<InitialRoute | null>(null);
 
   useEffect(() => {
-    hasCompletedOnboarding().then(completed => {
-      setInitialRoute(completed ? 'Tabs' : 'Onboarding');
-    });
+    (async () => {
+      const onboarded = await hasCompletedOnboarding();
+      setInitialRoute(onboarded ? await resolvePostOnboardingRoute() : 'Onboarding');
+    })();
   }, []);
 
   const ready = fontsLoaded && initialRoute !== null;

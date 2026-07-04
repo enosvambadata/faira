@@ -8,6 +8,7 @@ import WelcomeScreen from '@/screens/onboarding/WelcomeScreen';
 import CityScreen from '@/screens/onboarding/CityScreen';
 import InterestsScreen from '@/screens/onboarding/InterestsScreen';
 import { skipOnboarding } from '@/lib/onboarding';
+import { resolvePostOnboardingRoute } from '@/lib/postOnboardingRoute';
 import { colors, textStyles } from '@/theme';
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
@@ -17,9 +18,10 @@ function SkipButton() {
 
   const handleSkip = async () => {
     await skipOnboarding();
+    const route = await resolvePostOnboardingRoute();
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.reset({
       index: 0,
-      routes: [{ name: 'Tabs' }],
+      routes: [{ name: route }],
     });
   };
 

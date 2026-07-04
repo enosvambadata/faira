@@ -22,3 +22,8 @@ export async function completeOnboarding(city: string, interests: string[]): Pro
 export async function skipOnboarding(): Promise<void> {
   await completeOnboarding(DEFAULT_CITY, DEFAULT_INTERESTS);
 }
+
+export async function getOnboardingCity(): Promise<string> {
+  const value = await AsyncStorage.getItem(CITY_KEY);
+  return value ?? DEFAULT_CITY;
+}

@@ -1,18 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, typography } from '@/theme';
+import { colors, textStyles } from '@/theme';
+import ProfileForm from './ProfileForm';
 
 export default function ProfileScreen() {
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Profile</Text>
-      <Text style={styles.sub}>Account settings — coming in SCRUM-49</Text>
+      <Text style={styles.title}>Profile</Text>
+      {savedAt !== null && <Text style={styles.savedBanner}>Saved</Text>}
+      <ProfileForm submitLabel="Save Changes" onSaved={() => setSavedAt(Date.now())} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  label: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.bold, color: colors.text },
-  sub: { fontSize: typography.fontSizes.md, color: colors.muted },
+  container: { flex: 1, backgroundColor: colors.bg, paddingTop: 16 },
+  title: { ...textStyles.h2, color: colors.text, textAlign: 'center' },
+  savedBanner: { ...textStyles.caption, color: colors.green, textAlign: 'center', marginTop: 4 },
 });

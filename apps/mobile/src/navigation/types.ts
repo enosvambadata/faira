@@ -15,9 +15,18 @@ export type OnboardingStackParamList = {
   Interests: undefined;
 };
 
+// Signup / login / phone OTP verification
+export type AuthStackParamList = {
+  Login: undefined;
+  Signup: undefined;
+  OtpVerify: { phone: string };
+};
+
 // Root stack — sits above the tabs for modal/push screens
 export type RootStackParamList = {
   Onboarding: NavigatorScreenParams<OnboardingStackParamList>;
+  Auth: NavigatorScreenParams<AuthStackParamList>;
+  ProfileSetup: undefined;
   Tabs: NavigatorScreenParams<TabParamList>;
   ListingDetail: { listingId: string };
   Chat: { conversationId: string };
