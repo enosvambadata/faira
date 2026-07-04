@@ -19,6 +19,7 @@ interface RequestOptions {
   body?: unknown;
   auth?: boolean;
   formData?: FormData;
+  raw?: boolean;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -52,7 +53,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(err.code ?? 'UNKNOWN_ERROR', err.message ?? 'Something went wrong', res.status);
   }
 
-  return json.data as T;
+  return (options.raw ? json : json.data) as T;
 }
 
 export interface AuthUser {
@@ -169,7 +170,37 @@ export interface CreateListingPayload {
   attributes?: Record<string, string>;
 }
 
+export interface ListingSummary {
+  id: string;
+  title: string;
+  price: string;
+  city: string;
+  imageUrls: string[];
+  createdAt: string;
+}
+
+export interface ListingDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  price: string;
+  condition: string;
+  city: string;
+  imageUrls: string[];
+  deliveryOptions: string[];
+  status: string;
+  category: { id: string; name: string; slug: string };
+  attributes: Record<string, string>;
+  seller: { id: string; displayName: string | null; avatarUrl: string | null; city: string | null };
+  createdAt: string;
+}
+
 export const listings = {
+  browse: (page: number) =>
+    request<{ data: ListingSummary[]; hasMore: boolean }>(`/api/v1/listings?page=${page}`, { raw: true }),
+
+  get: (id: string) => request<ListingDetail>(`/api/v1/listings/${id}`),
+
   getUploadSignature: () =>
     request<UploadSignature>('/api/v1/listings/upload-signature', { method: 'POST', auth: true }),
 

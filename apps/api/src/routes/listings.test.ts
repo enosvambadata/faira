@@ -4,6 +4,8 @@ import request from 'supertest';
 const getUserMock = vi.fn();
 const categoryFindUniqueMock = vi.fn();
 const listingCreateMock = vi.fn();
+const listingFindManyMock = vi.fn();
+const listingFindUniqueMock = vi.fn();
 const signListingUploadMock = vi.fn();
 
 vi.mock('../supabase', () => ({
@@ -19,7 +21,11 @@ vi.mock('../prisma', () => ({
   prisma: {
     user: { upsert: vi.fn().mockResolvedValue({}) },
     category: { findUnique: (...args: unknown[]) => categoryFindUniqueMock(...args) },
-    listing: { create: (...args: unknown[]) => listingCreateMock(...args) },
+    listing: {
+      create: (...args: unknown[]) => listingCreateMock(...args),
+      findMany: (...args: unknown[]) => listingFindManyMock(...args),
+      findUnique: (...args: unknown[]) => listingFindUniqueMock(...args),
+    },
   },
 }));
 
@@ -156,5 +162,106 @@ describe('POST /api/v1/listings', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+function fakeListing(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'listing-1',
+    title: 'Nike Air Max',
+    price: { toString: () => '45.5' },
+    city: 'Harare',
+    imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'],
+    createdAt: new Date('2026-07-04T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/listings', () => {
+  beforeEach(() => {
+    listingFindManyMock.mockReset();
+  });
+
+  it('returns the newest-first page, no auth required', async () => {
+    listingFindManyMock.mockResolvedValue([fakeListing()]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.hasMore).toBe(false);
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: 'ACTIVE' },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+      }),
+    );
+  });
+
+  it('sets hasMore when there are more results than the page size', async () => {
+    listingFindManyMock.mockResolvedValue(Array.from({ length: 21 }, (_, i) => fakeListing({ id: `listing-${i}` })));
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(20);
+    expect(res.body.hasMore).toBe(true);
+  });
+
+  it('applies the page offset', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?page=3');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ skip: 40 }));
+  });
+
+  it('rejects an invalid page param', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?page=0');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('GET /api/v1/listings/:id', () => {
+  beforeEach(() => {
+    listingFindUniqueMock.mockReset();
+  });
+
+  it('returns the listing with seller and category', async () => {
+    listingFindUniqueMock.mockResolvedValue({
+      ...fakeListing(),
+      description: 'Barely worn',
+      condition: 'GOOD',
+      deliveryOptions: ['Buyer collects'],
+      status: 'ACTIVE',
+      category: { id: 'cat-1', name: 'Fashion & Clothing', slug: 'fashion' },
+      attributes: [{ key: 'size', value: '9' }],
+      seller: { id: 'user-1', displayName: 'Tendai', avatarUrl: null, city: 'Harare' },
+    });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/listing-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.seller.displayName).toBe('Tendai');
+    expect(res.body.data.attributes).toEqual({ size: '9' });
+    expect(res.body.data.category.name).toBe('Fashion & Clothing');
+  });
+
+  it('returns 404 for an unknown listing', async () => {
+    listingFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/nonexistent');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('LISTING_NOT_FOUND');
   });
 });
