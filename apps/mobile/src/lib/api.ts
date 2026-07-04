@@ -179,6 +179,16 @@ export interface ListingSummary {
   createdAt: string;
 }
 
+export interface MyListing extends ListingSummary {
+  status: string;
+}
+
+export interface UpdateListingPayload {
+  price?: number;
+  description?: string;
+  imageUrls?: string[];
+}
+
 export interface ListingDetail {
   id: string;
   title: string;
@@ -201,11 +211,22 @@ export const listings = {
 
   get: (id: string) => request<ListingDetail>(`/api/v1/listings/${id}`),
 
+  mine: () => request<MyListing[]>('/api/v1/listings/mine', { auth: true }),
+
   getUploadSignature: () =>
     request<UploadSignature>('/api/v1/listings/upload-signature', { method: 'POST', auth: true }),
 
   create: (payload: CreateListingPayload) =>
     request<Listing>('/api/v1/listings', { method: 'POST', body: payload, auth: true }),
+
+  update: (id: string, payload: UpdateListingPayload) =>
+    request<Listing>(`/api/v1/listings/${id}`, { method: 'PATCH', body: payload, auth: true }),
+
+  markSold: (id: string) =>
+    request<{ id: string; status: string }>(`/api/v1/listings/${id}/sold`, { method: 'PATCH', auth: true }),
+
+  remove: (id: string) =>
+    request<void>(`/api/v1/listings/${id}`, { method: 'DELETE', auth: true }),
 
   // Uploads directly to Cloudinary using a short-lived signature from our
   // API (see getUploadSignature) — the image bytes never pass through our

@@ -17,6 +17,12 @@ const createListingSchema = z.object({
   attributes: z.record(z.string(), z.string()).optional(),
 });
 
+const updateListingSchema = z.object({
+  price: z.number().positive().optional(),
+  description: z.string().max(2000).optional(),
+  imageUrls: z.array(z.string().url()).min(1).max(6).optional(),
+});
+
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
 });
@@ -36,7 +42,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   const { page } = parsed.data;
 
   const listings = await prisma.listing.findMany({
-    where: { status: 'ACTIVE' },
+    where: { status: 'ACTIVE', deletedAt: null },
     orderBy: { createdAt: 'desc' },
     skip: (page - 1) * PAGE_SIZE,
     take: PAGE_SIZE + 1,
@@ -58,6 +64,25 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   });
 });
 
+router.get('/mine', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const listings = await prisma.listing.findMany({
+    where: { sellerId: req.userId!, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  res.status(200).json({
+    data: listings.map(listing => ({
+      id: listing.id,
+      title: listing.title,
+      price: listing.price.toString(),
+      city: listing.city,
+      imageUrls: listing.imageUrls,
+      status: listing.status,
+      createdAt: listing.createdAt,
+    })),
+  });
+});
+
 router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
   const listing = await prisma.listing.findUnique({
     where: { id: req.params.id },
@@ -68,7 +93,7 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: Nex
     },
   });
 
-  if (!listing) {
+  if (!listing || listing.deletedAt) {
     next(new ApiError('LISTING_NOT_FOUND', 'Listing not found', 404));
     return;
   }
@@ -141,6 +166,91 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       createdAt: listing.createdAt,
     },
   });
+});
+
+router.patch('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const parsed = updateListingSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid update payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const listing = await prisma.listing.findUnique({ where: { id: req.params.id } });
+
+  if (!listing || listing.deletedAt) {
+    next(new ApiError('LISTING_NOT_FOUND', 'Listing not found', 404));
+    return;
+  }
+
+  if (listing.sellerId !== req.userId) {
+    next(new ApiError('FORBIDDEN', 'You do not own this listing', 403));
+    return;
+  }
+
+  const updated = await prisma.listing.update({
+    where: { id: req.params.id },
+    data: parsed.data,
+    include: { attributes: true },
+  });
+
+  res.status(200).json({
+    data: {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      price: updated.price.toString(),
+      condition: updated.condition,
+      city: updated.city,
+      imageUrls: updated.imageUrls,
+      deliveryOptions: updated.deliveryOptions,
+      status: updated.status,
+      attributes: Object.fromEntries(updated.attributes.map(a => [a.key, a.value])),
+      createdAt: updated.createdAt,
+    },
+  });
+});
+
+router.patch('/:id/sold', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const listing = await prisma.listing.findUnique({ where: { id: req.params.id } });
+
+  if (!listing || listing.deletedAt) {
+    next(new ApiError('LISTING_NOT_FOUND', 'Listing not found', 404));
+    return;
+  }
+
+  if (listing.sellerId !== req.userId) {
+    next(new ApiError('FORBIDDEN', 'You do not own this listing', 403));
+    return;
+  }
+
+  const updated = await prisma.listing.update({
+    where: { id: req.params.id },
+    data: { status: 'SOLD' },
+  });
+
+  res.status(200).json({ data: { id: updated.id, status: updated.status } });
+});
+
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const listing = await prisma.listing.findUnique({ where: { id: req.params.id } });
+
+  if (!listing || listing.deletedAt) {
+    next(new ApiError('LISTING_NOT_FOUND', 'Listing not found', 404));
+    return;
+  }
+
+  if (listing.sellerId !== req.userId) {
+    next(new ApiError('FORBIDDEN', 'You do not own this listing', 403));
+    return;
+  }
+
+  await prisma.listing.update({
+    where: { id: req.params.id },
+    data: { deletedAt: new Date() },
+  });
+
+  res.status(204).send();
 });
 
 export default router;

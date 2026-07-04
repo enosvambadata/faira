@@ -6,6 +6,7 @@ import OnboardingNavigator from './OnboardingNavigator';
 import AuthNavigator from './AuthNavigator';
 import ProfileSetupScreen from '@/screens/profile/ProfileSetupScreen';
 import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
+import EditListingScreen from '@/screens/listing/EditListingScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
 import { colors } from '@/theme';
 
@@ -42,6 +43,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         name="ListingDetail"
         component={ListingDetailScreen}
         options={{ title: 'Item Detail' }}
+      />
+      <Stack.Screen
+        name="EditListing"
+        component={EditListingScreen}
+        options={{ title: 'Edit Listing' }}
       />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
     </Stack.Navigator>
