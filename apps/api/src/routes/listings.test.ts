@@ -288,6 +288,103 @@ describe('GET /api/v1/listings', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(listingFindManyMock).not.toHaveBeenCalled();
   });
+
+  it('searches title, brand, and description with an OR clause', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+    listingCountMock.mockResolvedValue(0);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?q=nike');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { title: { contains: 'nike', mode: 'insensitive' } },
+            { description: { contains: 'nike', mode: 'insensitive' } },
+            { attributes: { some: { key: 'brand', value: { contains: 'nike', mode: 'insensitive' } } } },
+          ],
+        }),
+        include: { attributes: true },
+      }),
+    );
+  });
+
+  it('ranks a title match above a brand match above a description-only match, newest first within a tier', async () => {
+    const titleMatch = fakeListing({
+      id: 'title-match',
+      title: 'Nike Air Max',
+      description: null,
+      attributes: [],
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+    });
+    const brandMatch = fakeListing({
+      id: 'brand-match',
+      title: 'Running shoes',
+      description: null,
+      attributes: [{ key: 'brand', value: 'Nike' }],
+      createdAt: new Date('2026-07-03T00:00:00Z'),
+    });
+    const descriptionMatchOld = fakeListing({
+      id: 'description-match-old',
+      title: 'Sneakers',
+      description: 'Barely worn, Nike-approved comfort',
+      attributes: [],
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+    });
+    const descriptionMatchNew = fakeListing({
+      id: 'description-match-new',
+      title: 'Sneakers',
+      description: 'Barely worn, Nike-approved comfort',
+      attributes: [],
+      createdAt: new Date('2026-07-02T00:00:00Z'),
+    });
+    listingFindManyMock.mockResolvedValue([descriptionMatchOld, titleMatch, descriptionMatchNew, brandMatch]);
+    listingCountMock.mockResolvedValue(4);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?q=nike');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((l: { id: string }) => l.id)).toEqual([
+      'title-match',
+      'brand-match',
+      'description-match-new',
+      'description-match-old',
+    ]);
+    expect(res.body.total).toBe(4);
+  });
+
+  it('returns a helpful empty result (not an error) for a garbage query', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+    listingCountMock.mockResolvedValue(0);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings?q=asdkfjhaslkdfjhqwoeiruqwoeiur');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.hasMore).toBe(false);
+  });
+
+  it('combines search with other filters', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+    listingCountMock.mockResolvedValue(0);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?q=nike&cities=Harare&conditions=NEW');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          city: { in: ['Harare'] },
+          condition: { in: ['NEW'] },
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+  });
 });
 
 describe('GET /api/v1/listings/filter-options', () => {
