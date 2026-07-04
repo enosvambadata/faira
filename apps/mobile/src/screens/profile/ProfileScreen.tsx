@@ -44,6 +44,10 @@ export default function ProfileScreen() {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('EditListing', { listingId });
   };
 
+  const openSavedItems = () => {
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('SavedItems');
+  };
+
   const handleMarkSold = async (listingId: string) => {
     setBusyId(listingId);
     try {
@@ -76,6 +80,10 @@ export default function ProfileScreen() {
           <Text style={styles.title}>Profile</Text>
           {savedAt !== null && <Text style={styles.savedBanner}>Saved</Text>}
           <ProfileForm submitLabel="Save Changes" onSaved={() => setSavedAt(Date.now())} />
+
+          <TouchableOpacity testID="saved-items-btn" style={styles.savedItemsButton} onPress={openSavedItems}>
+            <Text style={styles.savedItemsButtonText}>♥ Saved Items</Text>
+          </TouchableOpacity>
 
           <Text style={styles.sectionTitle}>My Listings</Text>
           {loadingListings && <ActivityIndicator color={colors.primary} style={styles.listingsLoader} />}
@@ -167,6 +175,16 @@ const styles = StyleSheet.create({
   content: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 40 },
   title: { ...textStyles.h2, color: colors.text, textAlign: 'center' },
   savedBanner: { ...textStyles.caption, color: colors.green, textAlign: 'center', marginTop: 4 },
+  savedItemsButton: {
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+  },
+  savedItemsButtonText: { ...textStyles.bodyMedium, color: colors.primary },
   sectionTitle: { ...textStyles.h3, color: colors.text, marginTop: 32, marginBottom: 12 },
   listingsLoader: { marginTop: 12 },
   emptyText: { ...textStyles.body, color: colors.muted },
