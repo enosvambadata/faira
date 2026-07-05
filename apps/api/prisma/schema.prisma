@@ -31,12 +31,13 @@ enum OrderStatus {
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
 model User {
-  id          String   @id @db.Uuid
-  displayName String?  @map("display_name")
-  avatarUrl   String?  @map("avatar_url")
-  city        String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            String   @id @db.Uuid
+  displayName   String?  @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  city          String?
+  expoPushToken String?  @map("expo_push_token")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   sellerProfile         SellerProfile?
   listings              Listing[]
@@ -121,6 +122,8 @@ model Conversation {
   sellerId         String   @map("seller_id") @db.Uuid
   archivedByBuyer  Boolean  @default(false) @map("archived_by_buyer")
   archivedBySeller Boolean  @default(false) @map("archived_by_seller")
+  mutedByBuyer     Boolean  @default(false) @map("muted_by_buyer")
+  mutedBySeller    Boolean  @default(false) @map("muted_by_seller")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

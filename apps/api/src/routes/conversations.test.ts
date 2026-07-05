@@ -13,9 +13,14 @@ const messageCreateMock = vi.fn();
 const messageCountMock = vi.fn();
 const transactionMock = vi.fn();
 const signChatUploadMock = vi.fn();
+const sendPushNotificationMock = vi.fn();
 
 vi.mock('../lib/cloudinary', () => ({
   signChatUpload: (...args: unknown[]) => signChatUploadMock(...args),
+}));
+
+vi.mock('../lib/push', () => ({
+  sendPushNotification: (...args: unknown[]) => sendPushNotificationMock(...args),
 }));
 
 vi.mock('../supabase', () => ({
@@ -74,8 +79,10 @@ function fakeConversation(overrides: Partial<Record<string, unknown>> = {}) {
     createdAt: new Date('2026-07-04T00:00:00Z'),
     updatedAt: new Date('2026-07-04T00:00:00Z'),
     listing: fakeListing(),
-    buyer: { id: BUYER_ID, displayName: 'Tendai', avatarUrl: null },
-    seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null },
+    buyer: { id: BUYER_ID, displayName: 'Tendai', avatarUrl: null, expoPushToken: null },
+    seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: null },
+    mutedByBuyer: false,
+    mutedBySeller: false,
     ...overrides,
   };
 }
@@ -236,6 +243,81 @@ describe('PATCH /api/v1/conversations/:id/archive', () => {
   });
 });
 
+describe('PATCH /api/v1/conversations/:id/mute', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    conversationFindUniqueMock.mockReset();
+    conversationUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+  });
+
+  it('mutes the conversation for the buyer', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    conversationUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/mute').set(AUTH_HEADER).send({ muted: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'conversation-1', muted: true });
+    expect(conversationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: { mutedByBuyer: true },
+    });
+  });
+
+  it('unmutes the conversation for the seller', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation({ mutedBySeller: true }));
+    conversationUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/mute').set(AUTH_HEADER).send({ muted: false });
+
+    expect(res.status).toBe(200);
+    expect(conversationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: { mutedBySeller: false },
+    });
+  });
+
+  it('rejects a non-boolean muted value', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/mute').set(AUTH_HEADER).send({ muted: 'yes' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(conversationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for a non-participant', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation({ buyerId: 'x', sellerId: 'y' }));
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/mute').set(AUTH_HEADER).send({ muted: true });
+
+    expect(res.status).toBe(403);
+    expect(conversationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a nonexistent conversation', async () => {
+    conversationFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/nonexistent/mute').set(AUTH_HEADER).send({ muted: true });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/mute').send({ muted: true });
+
+    expect(res.status).toBe(401);
+    expect(conversationUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/v1/conversations/upload-signature', () => {
   beforeEach(() => {
     getUserMock.mockReset();
@@ -287,6 +369,7 @@ describe('POST /api/v1/conversations', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.listing).toEqual({ id: '64d25c37-d8f0-4a11-b92e-ecb9b168f516', title: 'Nike Air Max', price: '45.5', imageUrl: 'https://res.cloudinary.com/x/listings/a.jpg' });
     expect(res.body.data.otherParticipant).toEqual({ id: SELLER_ID, displayName: 'Rudo', avatarUrl: null });
+    expect(res.body.data.isMuted).toBe(false);
     expect(conversationUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { listingId_buyerId: { listingId: '64d25c37-d8f0-4a11-b92e-ecb9b168f516', buyerId: BUYER_ID } },
@@ -425,6 +508,7 @@ describe('POST /api/v1/conversations/:id/messages', () => {
     conversationFindUniqueMock.mockReset();
     conversationUpdateMock.mockReset();
     transactionMock.mockReset();
+    sendPushNotificationMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
   });
 
@@ -521,5 +605,77 @@ describe('POST /api/v1/conversations/:id/messages', () => {
 
     expect(res.status).toBe(401);
     expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('sends a push notification to the recipient when they have a token and have not muted the conversation', async () => {
+    conversationFindUniqueMock.mockResolvedValue(
+      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' } }),
+    );
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Is this still available?', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app)
+      .post('/api/v1/conversations/conversation-1/messages')
+      .set(AUTH_HEADER)
+      .send({ body: 'Is this still available?' });
+
+    expect(sendPushNotificationMock).toHaveBeenCalledWith({
+      to: 'ExponentPushToken[seller]',
+      title: 'Tendai',
+      body: 'Is this still available?',
+      data: { conversationId: 'conversation-1', listingId: '64d25c37-d8f0-4a11-b92e-ecb9b168f516' },
+    });
+  });
+
+  it('uses a photo placeholder as the push body for an image-only message', async () => {
+    conversationFindUniqueMock.mockResolvedValue(
+      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' } }),
+    );
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: null, imageUrl: 'https://res.cloudinary.com/x/img.jpg', readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app)
+      .post('/api/v1/conversations/conversation-1/messages')
+      .set(AUTH_HEADER)
+      .send({ imageUrl: 'https://res.cloudinary.com/x/img.jpg' });
+
+    expect(sendPushNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ body: '📷 Photo' }));
+  });
+
+  it('does not send a push when the recipient has muted the conversation', async () => {
+    conversationFindUniqueMock.mockResolvedValue(
+      fakeConversation({
+        seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' },
+        mutedBySeller: true,
+      }),
+    );
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Hi', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app).post('/api/v1/conversations/conversation-1/messages').set(AUTH_HEADER).send({ body: 'Hi' });
+
+    expect(sendPushNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send a push when the recipient has no registered token', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Hi', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app).post('/api/v1/conversations/conversation-1/messages').set(AUTH_HEADER).send({ body: 'Hi' });
+
+    expect(sendPushNotificationMock).not.toHaveBeenCalled();
   });
 });

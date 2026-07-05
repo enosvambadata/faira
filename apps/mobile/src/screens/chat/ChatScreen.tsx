@@ -26,6 +26,7 @@ import {
 import { getSession } from '@/lib/session';
 import { supabase, setRealtimeAuth } from '@/lib/supabase';
 import { useUnreadCount } from '@/lib/unreadCount';
+import { setActiveConversationId } from '@/lib/pushNotifications';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -58,6 +59,7 @@ export default function ChatScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [composerText, setComposerText] = useState('');
   const [sending, setSending] = useState(false);
+  const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -67,6 +69,7 @@ export default function ChatScreen({ route, navigation }: Props) {
         const [conv, myProfile] = await Promise.all([conversationsApi.start(listingId), profileApi.get()]);
         setConversation(conv);
         setMyUserId(myProfile.id);
+        setMuted(conv.isMuted);
         navigation.setOptions({ title: conv.otherParticipant.displayName ?? 'Chat' });
 
         const existingMessages = await conversationsApi.messages(conv.id);
@@ -83,6 +86,36 @@ export default function ChatScreen({ route, navigation }: Props) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId]);
+
+  // Lets the push-notification handler (SCRUM-46) suppress the OS banner
+  // for messages in whichever conversation the user already has open.
+  useEffect(() => {
+    if (!conversation) return undefined;
+    setActiveConversationId(conversation.id);
+    return () => setActiveConversationId(null);
+  }, [conversation]);
+
+  const handleToggleMute = useCallback(async () => {
+    if (!conversation) return;
+    const next = !muted;
+    setMuted(next);
+    try {
+      await conversationsApi.mute(conversation.id, next);
+    } catch {
+      setMuted(!next);
+    }
+  }, [conversation, muted]);
+
+  useEffect(() => {
+    if (!conversation) return;
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity testID="mute-toggle-btn" onPress={handleToggleMute} style={styles.muteButton}>
+          <Text style={styles.muteButtonText}>{muted ? '🔕' : '🔔'}</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [conversation, muted, handleToggleMute, navigation]);
 
   // Subscribes once both the conversation and our own user id are known —
   // the INSERT handler needs myUserId to skip messages we sent ourselves
@@ -347,4 +380,6 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: { opacity: 0.5 },
   sendButtonText: { ...textStyles.bodyMedium, color: colors.white },
+  muteButton: { paddingHorizontal: 12, paddingVertical: 6 },
+  muteButtonText: { fontSize: 20 },
 });

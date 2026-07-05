@@ -19,6 +19,10 @@ const updateProfileSchema = z.object({
   city: z.string().min(1).max(60).optional(),
 });
 
+const pushTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
 function profileResponse(user: { id: string; displayName: string | null; city: string | null; avatarUrl: string | null }) {
   return {
     id: user.id,
@@ -55,6 +59,22 @@ router.patch('/', requireAuth, async (req: AuthenticatedRequest, res: Response, 
   });
 
   res.status(200).json({ data: profileResponse(user) });
+});
+
+router.post('/push-token', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const parsed = pushTokenSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid push token payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  await prisma.user.update({
+    where: { id: req.userId! },
+    data: { expoPushToken: parsed.data.token },
+  });
+
+  res.status(200).json({ data: { registered: true } });
 });
 
 router.post(

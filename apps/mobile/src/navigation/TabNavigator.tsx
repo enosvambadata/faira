@@ -1,13 +1,43 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Text, StyleSheet, TouchableOpacity, GestureResponderEvent } from 'react-native';
-import { TabParamList } from './types';
+import * as Notifications from 'expo-notifications';
+import { TabParamList, RootStackParamList } from './types';
 import { colors } from '@/theme';
 import HomeScreen from '@/screens/home/HomeScreen';
 import InboxScreen from '@/screens/inbox/InboxScreen';
 import SellScreen from '@/screens/sell/SellScreen';
 import ProfileScreen from '@/screens/profile/ProfileScreen';
 import { UnreadCountProvider, useUnreadCount } from '@/lib/unreadCount';
+import { registerForPushNotificationsAsync } from '@/lib/pushNotifications';
+
+function useNotifications() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+
+    function openConversation(data: unknown) {
+      const listingId = (data as { listingId?: string } | undefined)?.listingId;
+      if (listingId) navigation.navigate('Chat', { listingId });
+    }
+
+    // Cold start: the app was launched by tapping a notification.
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response) openConversation(response.notification.request.content.data);
+    });
+
+    // Warm: the app was already running (foreground or backgrounded) when tapped.
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      openConversation(response.notification.request.content.data);
+    });
+
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -35,6 +65,7 @@ function SellButton({ onPress }: { onPress?: (e: GestureResponderEvent) => void 
 
 function TabsWithBadge() {
   const { unreadCount } = useUnreadCount();
+  useNotifications();
 
   return (
     <Tab.Navigator

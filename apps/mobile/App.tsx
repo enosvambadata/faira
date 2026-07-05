@@ -15,12 +15,15 @@ import RootNavigator from '@/navigation/RootNavigator';
 import { colors } from '@/theme';
 import { hasCompletedOnboarding } from '@/lib/onboarding';
 import { resolvePostOnboardingRoute } from '@/lib/postOnboardingRoute';
+import { configureNotificationHandler } from '@/lib/pushNotifications';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
   tracesSampleRate: 1.0,
 });
+
+configureNotificationHandler();
 
 SplashScreen.preventAutoHideAsync();
 
