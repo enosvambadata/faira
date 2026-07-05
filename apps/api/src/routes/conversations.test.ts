@@ -10,6 +10,11 @@ const messageUpdateManyMock = vi.fn();
 const messageFindManyMock = vi.fn();
 const messageCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const signChatUploadMock = vi.fn();
+
+vi.mock('../lib/cloudinary', () => ({
+  signChatUpload: (...args: unknown[]) => signChatUploadMock(...args),
+}));
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -70,6 +75,39 @@ function fakeConversation(overrides: Partial<Record<string, unknown>> = {}) {
     ...overrides,
   };
 }
+
+describe('POST /api/v1/conversations/upload-signature', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    signChatUploadMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+  });
+
+  it('returns a signed upload payload for an authenticated user', async () => {
+    signChatUploadMock.mockReturnValue({
+      signature: 'sig',
+      timestamp: 123,
+      apiKey: 'key',
+      cloudName: 'cloud',
+      folder: 'chat',
+      transformation: 'w_1600,h_1600,c_limit',
+    });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/conversations/upload-signature').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.folder).toBe('chat');
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/conversations/upload-signature');
+
+    expect(res.status).toBe(401);
+    expect(signChatUploadMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('POST /api/v1/conversations', () => {
   beforeEach(() => {

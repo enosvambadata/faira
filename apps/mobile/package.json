@@ -14,11 +14,13 @@
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/metro-runtime": "~4.0.1",
+    "@opentelemetry/api": "^1.9.1",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@react-navigation/native-stack": "^7.2.0",
     "@sentry/react-native": "~6.10.0",
+    "@supabase/supabase-js": "^2.110.0",
     "expo": "~52.0.0",
     "expo-asset": "~11.0.5",
     "expo-constants": "~17.0.8",
