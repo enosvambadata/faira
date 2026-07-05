@@ -182,6 +182,11 @@ model Listing {
   deliveryOptions String[]         @map("delivery_options")
   status          ListingStatus    @default(ACTIVE)
   deletedAt       DateTime?        @map("deleted_at")
+  // The exact declaration text the seller agreed to and when — stored
+  // verbatim (not just a boolean) so the audit trail survives the legal
+  // text itself changing later.
+  legalSourcingDeclarationText String?   @map("legal_sourcing_declaration_text")
+  legalSourcingDeclaredAt      DateTime? @map("legal_sourcing_declared_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 

@@ -53,6 +53,7 @@ const VALID_PAYLOAD = {
   imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'],
   deliveryOptions: ['Seller delivers'],
   attributes: { size: '9', brand: 'Nike' },
+  legalSourcingDeclared: true,
 };
 
 describe('POST /api/v1/listings/upload-signature', () => {
@@ -170,6 +171,60 @@ describe('POST /api/v1/listings', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects publishing without the legal sourcing declaration checked', async () => {
+    const { legalSourcingDeclared: _omit, ...payloadWithoutDeclaration } = VALID_PAYLOAD;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/listings').set(AUTH_HEADER).send(payloadWithoutDeclaration);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legalSourcingDeclared value of false', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, legalSourcingDeclared: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('stores the declaration text and timestamp, and never persists the raw boolean flag', async () => {
+    listingCreateMock.mockResolvedValue({
+      id: 'listing-1',
+      title: VALID_PAYLOAD.title,
+      description: null,
+      price: { toString: () => '45.5' },
+      condition: 'GOOD',
+      city: 'Harare',
+      categoryId: VALID_PAYLOAD.categoryId,
+      imageUrls: VALID_PAYLOAD.imageUrls,
+      deliveryOptions: VALID_PAYLOAD.deliveryOptions,
+      status: 'ACTIVE',
+      attributes: [],
+      createdAt: new Date('2026-07-04T00:00:00Z'),
+    });
+
+    const app = createApp();
+    await request(app).post('/api/v1/listings').set(AUTH_HEADER).send(VALID_PAYLOAD);
+
+    expect(listingCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          legalSourcingDeclarationText: 'I confirm that this item was lawfully acquired and that I have the legal right to sell it.',
+          legalSourcingDeclaredAt: expect.any(Date),
+        }),
+      }),
+    );
+    const createCallData = listingCreateMock.mock.calls[0][0].data;
+    expect(createCallData.legalSourcingDeclared).toBeUndefined();
   });
 });
 
