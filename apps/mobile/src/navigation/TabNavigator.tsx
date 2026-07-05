@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text, StyleSheet, TouchableOpacity, GestureResponderEvent } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, GestureResponderEvent, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { TabParamList, RootStackParamList } from './types';
 import { colors } from '@/theme';
@@ -18,6 +18,11 @@ function useNotifications() {
 
   useEffect(() => {
     registerForPushNotificationsAsync();
+
+    // Tapping an OS push notification has no equivalent on web (there's no
+    // native notification tray), and expo-notifications throws
+    // UnavailabilityError for these two calls on web rather than no-op'ing.
+    if (Platform.OS === 'web') return undefined;
 
     function openConversation(data: unknown) {
       const listingId = (data as { listingId?: string } | undefined)?.listingId;
