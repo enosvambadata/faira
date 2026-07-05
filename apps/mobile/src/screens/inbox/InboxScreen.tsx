@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, Animated, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, ActivityIndicator, Animated, PanResponder } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
@@ -33,18 +33,27 @@ interface RowProps {
   onArchive: () => void;
 }
 
+const TAP_MOVE_TOLERANCE = 8;
+
 function InboxRow({ item, onPress, onArchive }: RowProps) {
   const translateX = useRef(new Animated.Value(0)).current;
 
+  // A plain PanResponder and a nested Touchable both try to claim the same
+  // gesture, and on react-native-web a swipe can end up firing both the pan
+  // release AND the Touchable's onPress — so tap-vs-swipe is decided here,
+  // entirely within one responder, instead of nesting a Touchable at all.
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) > TAP_MOVE_TOLERANCE && Math.abs(gesture.dx) > Math.abs(gesture.dy),
       onPanResponderMove: (_evt, gesture) => {
         if (gesture.dx < 0) translateX.setValue(gesture.dx);
       },
       onPanResponderRelease: (_evt, gesture) => {
         if (gesture.dx < ARCHIVE_THRESHOLD) {
           Animated.timing(translateX, { toValue: SWIPE_OUT_DISTANCE, duration: 200, useNativeDriver: true }).start(onArchive);
+        } else if (Math.abs(gesture.dx) <= TAP_MOVE_TOLERANCE && Math.abs(gesture.dy) <= TAP_MOVE_TOLERANCE) {
+          onPress();
         } else {
           Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
         }
@@ -57,8 +66,12 @@ function InboxRow({ item, onPress, onArchive }: RowProps) {
       <View style={styles.archiveBackdrop}>
         <Text style={styles.archiveBackdropText}>Archive</Text>
       </View>
-      <Animated.View testID="inbox-row" style={[styles.row, { transform: [{ translateX }] }]} {...panResponder.panHandlers}>
-        <TouchableOpacity style={styles.rowContent} onPress={onPress} activeOpacity={0.8}>
+      <Animated.View
+        testID="inbox-row"
+        style={[styles.row, styles.noSelect, { transform: [{ translateX }] }]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.rowContent}>
           {item.listing.imageUrl ? (
             <Image source={{ uri: item.listing.imageUrl }} style={styles.avatar} />
           ) : (
@@ -79,7 +92,7 @@ function InboxRow({ item, onPress, onArchive }: RowProps) {
               <Text style={styles.badgeText}>{item.unreadCount > 9 ? '9+' : item.unreadCount}</Text>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       </Animated.View>
     </View>
   );
@@ -156,6 +169,10 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   emptyText: { ...textStyles.body, color: colors.muted },
   rowContainer: { backgroundColor: colors.red },
+  // react-native-web supports userSelect but RN's own ViewStyle type doesn't
+  // know about it — without this, dragging to swipe-archive on web instead
+  // starts a text selection, which hijacks the gesture.
+  noSelect: { userSelect: 'none' } as object,
   archiveBackdrop: {
     position: 'absolute',
     top: 0,
