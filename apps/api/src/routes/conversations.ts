@@ -65,6 +65,77 @@ function conversationResponse(
   };
 }
 
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+
+  const conversationList = await prisma.conversation.findMany({
+    where: {
+      OR: [
+        { buyerId: userId, archivedByBuyer: false },
+        { sellerId: userId, archivedBySeller: false },
+      ],
+    },
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      listing: true,
+      buyer: { select: { id: true, displayName: true, avatarUrl: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true } },
+      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      _count: { select: { messages: { where: { senderId: { not: userId }, readAt: null } } } },
+    },
+  });
+
+  res.status(200).json({
+    data: conversationList.map(conversation => ({
+      ...conversationResponse(conversation, userId),
+      lastMessage: conversation.messages[0]
+        ? {
+            body: conversation.messages[0].body,
+            imageUrl: conversation.messages[0].imageUrl,
+            senderId: conversation.messages[0].senderId,
+            createdAt: conversation.messages[0].createdAt,
+          }
+        : null,
+      unreadCount: conversation._count.messages,
+    })),
+  });
+});
+
+router.get('/unread-count', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+
+  const count = await prisma.message.count({
+    where: {
+      senderId: { not: userId },
+      readAt: null,
+      conversation: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+    },
+  });
+
+  res.status(200).json({ data: { count } });
+});
+
+router.patch('/:id/archive', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const { conversation, forbidden } = await loadConversationForParticipant(req.params.id, req.userId!);
+
+  if (forbidden) {
+    next(new ApiError('FORBIDDEN', 'You are not part of this conversation', 403));
+    return;
+  }
+  if (!conversation) {
+    next(new ApiError('CONVERSATION_NOT_FOUND', 'Conversation not found', 404));
+    return;
+  }
+
+  const isBuyer = conversation.buyerId === req.userId!;
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: isBuyer ? { archivedByBuyer: true } : { archivedBySeller: true },
+  });
+
+  res.status(200).json({ data: { id: conversation.id, archived: true } });
+});
+
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const parsed = createConversationSchema.safeParse(req.body);
 
@@ -174,6 +245,9 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
     return;
   }
 
+  // Sending a message un-archives the thread for whichever side had
+  // archived it — otherwise a reply to an archived conversation would
+  // vanish into it permanently instead of resurfacing in the inbox.
   const [message] = await prisma.$transaction([
     prisma.message.create({
       data: {
@@ -183,7 +257,10 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
         imageUrl: parsed.data.imageUrl,
       },
     }),
-    prisma.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
+    prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date(), archivedByBuyer: false, archivedBySeller: false },
+    }),
   ]);
 
   res.status(201).json({
