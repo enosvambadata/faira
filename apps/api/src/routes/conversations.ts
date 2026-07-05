@@ -41,8 +41,8 @@ async function loadConversationForParticipant(conversationId: string, userId: st
     where: { id: conversationId },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
     },
   });
 
@@ -88,8 +88,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     orderBy: { updatedAt: 'desc' },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
       messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       _count: { select: { messages: { where: { senderId: { not: userId }, readAt: null } } } },
     },
@@ -200,8 +200,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     create: { listingId: listing.id, buyerId: req.userId!, sellerId: listing.sellerId },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true, pushNotificationsEnabled: true } },
     },
   });
 
@@ -309,7 +309,7 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
   // Fire-and-forget: a slow or failed push send shouldn't delay or fail the
   // message-send response, and sendPushNotification already swallows its
   // own errors internally.
-  if (!recipientMuted && recipient.expoPushToken) {
+  if (!recipientMuted && recipient.expoPushToken && recipient.pushNotificationsEnabled) {
     void sendPushNotification({
       to: recipient.expoPushToken,
       title: sender.displayName ?? 'New message',

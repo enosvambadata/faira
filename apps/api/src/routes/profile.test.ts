@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
 const getUserMock = vi.fn();
+const updateUserByIdMock = vi.fn();
 const userUpsertMock = vi.fn();
 const userFindUniqueMock = vi.fn();
 const userUpdateMock = vi.fn();
@@ -11,6 +12,9 @@ vi.mock('../supabase', () => ({
   supabaseAdmin: {
     auth: {
       getUser: (...args: unknown[]) => getUserMock(...args),
+      admin: {
+        updateUserById: (...args: unknown[]) => updateUserByIdMock(...args),
+      },
     },
   },
   supabasePublic: {
@@ -51,6 +55,8 @@ describe('GET /api/v1/profile', () => {
       displayName: 'Tendai',
       city: 'Harare',
       avatarUrl: 'https://cdn/x.jpg',
+      pushNotificationsEnabled: true,
+      emailNotificationsEnabled: true,
     });
 
     const app = createApp();
@@ -62,6 +68,8 @@ describe('GET /api/v1/profile', () => {
       displayName: 'Tendai',
       city: 'Harare',
       avatarUrl: 'https://cdn/x.jpg',
+      pushNotificationsEnabled: true,
+      emailNotificationsEnabled: true,
     });
   });
 
@@ -71,13 +79,22 @@ describe('GET /api/v1/profile', () => {
       displayName: null,
       city: null,
       avatarUrl: null,
+      pushNotificationsEnabled: true,
+      emailNotificationsEnabled: true,
     });
 
     const app = createApp();
     const res = await request(app).get('/api/v1/profile').set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ id: 'user-1', displayName: null, city: null, avatarUrl: null });
+    expect(res.body.data).toEqual({
+      id: 'user-1',
+      displayName: null,
+      city: null,
+      avatarUrl: null,
+      pushNotificationsEnabled: true,
+      emailNotificationsEnabled: true,
+    });
   });
 
   it('rejects a request with no Authorization header', async () => {
@@ -143,6 +160,124 @@ describe('PATCH /api/v1/profile', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/profile/notifications', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    userUpsertMock.mockReset();
+    userUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
+  });
+
+  it('updates the push preference only', async () => {
+    userUpdateMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: null,
+      city: null,
+      avatarUrl: null,
+      pushNotificationsEnabled: false,
+      emailNotificationsEnabled: true,
+    });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/notifications').set(AUTH_HEADER).send({ pushEnabled: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.pushNotificationsEnabled).toBe(false);
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { pushNotificationsEnabled: false },
+    });
+  });
+
+  it('updates both preferences at once', async () => {
+    userUpdateMock.mockResolvedValue({
+      id: 'user-1',
+      displayName: null,
+      city: null,
+      avatarUrl: null,
+      pushNotificationsEnabled: false,
+      emailNotificationsEnabled: false,
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .patch('/api/v1/profile/notifications')
+      .set(AUTH_HEADER)
+      .send({ pushEnabled: false, emailEnabled: false });
+
+    expect(res.status).toBe(200);
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { pushNotificationsEnabled: false, emailNotificationsEnabled: false },
+    });
+  });
+
+  it('rejects a non-boolean value', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/notifications').set(AUTH_HEADER).send({ pushEnabled: 'yes' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/notifications').send({ pushEnabled: false });
+
+    expect(res.status).toBe(401);
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/profile/password', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    userUpsertMock.mockReset();
+    updateUserByIdMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
+  });
+
+  it('changes the password', async () => {
+    updateUserByIdMock.mockResolvedValue({ data: {}, error: null });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/password').set(AUTH_HEADER).send({ newPassword: 'newSecurePass123' });
+
+    expect(res.status).toBe(200);
+    expect(updateUserByIdMock).toHaveBeenCalledWith('user-1', { password: 'newSecurePass123' });
+  });
+
+  it('rejects a password shorter than 8 characters', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/password').set(AUTH_HEADER).send({ newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(updateUserByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failure from the admin API', async () => {
+    updateUserByIdMock.mockResolvedValue({ data: null, error: { message: 'Something went wrong', status: 500 } });
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/password').set(AUTH_HEADER).send({ newPassword: 'newSecurePass123' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('PASSWORD_CHANGE_FAILED');
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/profile/password').send({ newPassword: 'newSecurePass123' });
+
+    expect(res.status).toBe(401);
+    expect(updateUserByIdMock).not.toHaveBeenCalled();
   });
 });
 

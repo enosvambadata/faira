@@ -1,4 +1,5 @@
 import { getSession, saveSession, clearSession } from './session';
+import { clearListingDraft } from './listingDraft';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -74,6 +75,8 @@ export interface Profile {
   displayName: string | null;
   city: string | null;
   avatarUrl: string | null;
+  pushNotificationsEnabled: boolean;
+  emailNotificationsEnabled: boolean;
 }
 
 export const auth = {
@@ -102,7 +105,10 @@ export const auth = {
   },
 
   async logout() {
-    await clearSession();
+    // Clears the session plus any account-specific local cache, so a
+    // different user logging in on the same device doesn't inherit a
+    // stray draft from the previous account.
+    await Promise.all([clearSession(), clearListingDraft()]);
   },
 };
 
@@ -111,6 +117,12 @@ export const profile = {
 
   update: (payload: { displayName?: string; city?: string }) =>
     request<Profile>('/api/v1/profile', { method: 'PATCH', body: payload, auth: true }),
+
+  updateNotifications: (payload: { pushEnabled?: boolean; emailEnabled?: boolean }) =>
+    request<Profile>('/api/v1/profile/notifications', { method: 'PATCH', body: payload, auth: true }),
+
+  changePassword: (newPassword: string) =>
+    request<{ message: string }>('/api/v1/profile/password', { method: 'PATCH', body: { newPassword }, auth: true }),
 
   async uploadAvatar(fileUri: string, fileName: string) {
     // Converting to a real Blob (rather than passing RN's {uri,type,name}

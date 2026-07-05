@@ -12,6 +12,7 @@ import SavedItemsScreen from '@/screens/wishlist/SavedItemsScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
 import SellerProfileScreen from '@/screens/seller/SellerProfileScreen';
 import SellerVerificationScreen from '@/screens/seller/SellerVerificationScreen';
+import SettingsScreen from '@/screens/profile/SettingsScreen';
 import { colors } from '@/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -73,6 +74,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         name="SellerVerification"
         component={SellerVerificationScreen}
         options={{ title: 'Get Verified' }}
+      />
+      <Stack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ title: 'Settings' }}
       />
     </Stack.Navigator>
   );

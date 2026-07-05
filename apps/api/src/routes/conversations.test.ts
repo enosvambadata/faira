@@ -79,8 +79,8 @@ function fakeConversation(overrides: Partial<Record<string, unknown>> = {}) {
     createdAt: new Date('2026-07-04T00:00:00Z'),
     updatedAt: new Date('2026-07-04T00:00:00Z'),
     listing: fakeListing(),
-    buyer: { id: BUYER_ID, displayName: 'Tendai', avatarUrl: null, expoPushToken: null },
-    seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: null },
+    buyer: { id: BUYER_ID, displayName: 'Tendai', avatarUrl: null, expoPushToken: null, pushNotificationsEnabled: true },
+    seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: null, pushNotificationsEnabled: true },
     mutedByBuyer: false,
     mutedBySeller: false,
     ...overrides,
@@ -609,7 +609,7 @@ describe('POST /api/v1/conversations/:id/messages', () => {
 
   it('sends a push notification to the recipient when they have a token and have not muted the conversation', async () => {
     conversationFindUniqueMock.mockResolvedValue(
-      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' } }),
+      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]', pushNotificationsEnabled: true } }),
     );
     transactionMock.mockResolvedValue([
       { id: 'm1', senderId: BUYER_ID, body: 'Is this still available?', imageUrl: null, readAt: null, createdAt: new Date() },
@@ -632,7 +632,7 @@ describe('POST /api/v1/conversations/:id/messages', () => {
 
   it('uses a photo placeholder as the push body for an image-only message', async () => {
     conversationFindUniqueMock.mockResolvedValue(
-      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' } }),
+      fakeConversation({ seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]', pushNotificationsEnabled: true } }),
     );
     transactionMock.mockResolvedValue([
       { id: 'm1', senderId: BUYER_ID, body: null, imageUrl: 'https://res.cloudinary.com/x/img.jpg', readAt: null, createdAt: new Date() },
@@ -651,8 +651,25 @@ describe('POST /api/v1/conversations/:id/messages', () => {
   it('does not send a push when the recipient has muted the conversation', async () => {
     conversationFindUniqueMock.mockResolvedValue(
       fakeConversation({
-        seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]' },
+        seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]', pushNotificationsEnabled: true },
         mutedBySeller: true,
+      }),
+    );
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Hi', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app).post('/api/v1/conversations/conversation-1/messages').set(AUTH_HEADER).send({ body: 'Hi' });
+
+    expect(sendPushNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send a push when the recipient has disabled push notifications', async () => {
+    conversationFindUniqueMock.mockResolvedValue(
+      fakeConversation({
+        seller: { id: SELLER_ID, displayName: 'Rudo', avatarUrl: null, expoPushToken: 'ExponentPushToken[seller]', pushNotificationsEnabled: false },
       }),
     );
     transactionMock.mockResolvedValue([
