@@ -52,6 +52,10 @@ export default function ProfileScreen() {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('SellerVerification');
   };
 
+  const openSettings = () => {
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('Settings');
+  };
+
   const handleMarkSold = async (listingId: string) => {
     setBusyId(listingId);
     try {
@@ -91,6 +95,10 @@ export default function ProfileScreen() {
 
           <TouchableOpacity testID="get-verified-btn" style={styles.savedItemsButton} onPress={openVerification}>
             <Text style={styles.savedItemsButtonText}>✓ Get Verified</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity testID="settings-btn" style={styles.savedItemsButton} onPress={openSettings}>
+            <Text style={styles.savedItemsButtonText}>⚙ Settings</Text>
           </TouchableOpacity>
 
           <Text style={styles.sectionTitle}>My Listings</Text>

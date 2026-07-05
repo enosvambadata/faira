@@ -36,6 +36,7 @@ export type RootStackParamList = {
   Chat: { listingId: string };
   SellerProfile: { sellerId: string };
   SellerVerification: undefined;
+  Settings: undefined;
 };
 
 // Declare types globally for useNavigation without generics
