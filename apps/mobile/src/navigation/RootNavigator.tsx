@@ -10,6 +10,7 @@ import EditListingScreen from '@/screens/listing/EditListingScreen';
 import FilterScreen from '@/screens/home/FilterScreen';
 import SavedItemsScreen from '@/screens/wishlist/SavedItemsScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
+import SellerProfileScreen from '@/screens/seller/SellerProfileScreen';
 import { colors } from '@/theme';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -62,6 +63,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         options={{ title: 'Saved Items' }}
       />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
+      <Stack.Screen
+        name="SellerProfile"
+        component={SellerProfileScreen}
+        options={{ title: 'Seller' }}
+      />
     </Stack.Navigator>
   );
 }

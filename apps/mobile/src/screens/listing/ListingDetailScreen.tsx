@@ -137,7 +137,11 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
 
         {listing.description && <Text style={styles.description}>{listing.description}</Text>}
 
-        <View style={styles.sellerRow}>
+        <TouchableOpacity
+          testID="seller-row"
+          style={styles.sellerRow}
+          onPress={() => navigation.navigate('SellerProfile', { sellerId: listing.seller.id })}
+        >
           {listing.seller.avatarUrl ? (
             <Image source={{ uri: listing.seller.avatarUrl }} style={styles.sellerAvatar} />
           ) : (
@@ -149,7 +153,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
             <Text style={styles.sellerName}>{listing.seller.displayName ?? 'Faira seller'}</Text>
             {listing.seller.city && <Text style={styles.sellerCity}>{listing.seller.city}</Text>}
           </View>
-        </View>
+        </TouchableOpacity>
 
         {!isOwnListing && (
           <TouchableOpacity testID="message-seller-btn" style={styles.messageButton} onPress={handleMessageSeller}>

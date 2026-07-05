@@ -46,8 +46,25 @@ model User {
   conversationsAsBuyer  Conversation[] @relation("BuyerConversations")
   conversationsAsSeller Conversation[] @relation("SellerConversations")
   sentMessages          Message[]
+  following             Follow[]       @relation("Following")
+  followers             Follow[]       @relation("Followers")
 
   @@map("users")
+}
+
+// A buyer following a seller — one row per (follower, seller) pair.
+model Follow {
+  id         String   @id @default(uuid()) @db.Uuid
+  followerId String   @map("follower_id") @db.Uuid
+  sellerId   String   @map("seller_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  follower User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  seller   User @relation("Followers", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, sellerId])
+  @@index([sellerId])
+  @@map("follows")
 }
 
 model SellerProfile {

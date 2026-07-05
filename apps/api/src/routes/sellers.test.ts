@@ -1,0 +1,228 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import request from 'supertest';
+
+const getUserMock = vi.fn();
+const userFindUniqueMock = vi.fn();
+const listingFindManyMock = vi.fn();
+const orderCountMock = vi.fn();
+const followCountMock = vi.fn();
+const followFindUniqueMock = vi.fn();
+const followUpsertMock = vi.fn();
+const followDeleteManyMock = vi.fn();
+const conversationCountMock = vi.fn();
+
+vi.mock('../supabase', () => ({
+  supabaseAdmin: {
+    auth: {
+      getUser: (...args: unknown[]) => getUserMock(...args),
+    },
+  },
+  supabasePublic: { auth: {} },
+}));
+
+vi.mock('../prisma', () => ({
+  prisma: {
+    user: {
+      upsert: vi.fn().mockResolvedValue({}),
+      findUnique: (...args: unknown[]) => userFindUniqueMock(...args),
+    },
+    listing: { findMany: (...args: unknown[]) => listingFindManyMock(...args) },
+    order: { count: (...args: unknown[]) => orderCountMock(...args) },
+    follow: {
+      count: (...args: unknown[]) => followCountMock(...args),
+      findUnique: (...args: unknown[]) => followFindUniqueMock(...args),
+      upsert: (...args: unknown[]) => followUpsertMock(...args),
+      deleteMany: (...args: unknown[]) => followDeleteManyMock(...args),
+    },
+    conversation: { count: (...args: unknown[]) => conversationCountMock(...args) },
+  },
+}));
+
+const { createApp } = await import('../app');
+
+const AUTH_HEADER = { Authorization: 'Bearer valid-token' };
+const VIEWER_ID = 'viewer-1';
+const SELLER_ID = 'seller-1';
+
+function fakeSeller(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: SELLER_ID,
+    displayName: 'Rudo',
+    avatarUrl: 'https://cdn/rudo.jpg',
+    city: 'Harare',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    sellerProfile: { ratingAvg: { toString: () => '4.50' }, ratingCount: 12 },
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/sellers/:id', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    userFindUniqueMock.mockReset();
+    listingFindManyMock.mockReset();
+    orderCountMock.mockReset();
+    followCountMock.mockReset();
+    followFindUniqueMock.mockReset();
+    conversationCountMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: VIEWER_ID } }, error: null });
+    listingFindManyMock.mockResolvedValue([]);
+    orderCountMock.mockResolvedValue(0);
+    followCountMock.mockResolvedValue(0);
+    followFindUniqueMock.mockResolvedValue(null);
+    conversationCountMock.mockResolvedValue(0);
+  });
+
+  it('returns the public seller profile', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller());
+    listingFindManyMock.mockResolvedValue([
+      { id: 'l1', title: 'Nike Air Max', price: { toString: () => '45.5' }, city: 'Harare', imageUrls: ['a.jpg'], createdAt: new Date() },
+    ]);
+    orderCountMock.mockResolvedValue(3);
+    followCountMock.mockResolvedValue(7);
+    followFindUniqueMock.mockResolvedValue({ id: 'follow-1' });
+    conversationCountMock.mockResolvedValueOnce(4).mockResolvedValueOnce(3);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      id: SELLER_ID,
+      displayName: 'Rudo',
+      avatarUrl: 'https://cdn/rudo.jpg',
+      city: 'Harare',
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      ratingAvg: '4.50',
+      ratingCount: 12,
+      salesCount: 3,
+      responseRate: 75,
+      followerCount: 7,
+      isFollowing: true,
+      activeListings: [
+        { id: 'l1', title: 'Nike Air Max', price: '45.5', city: 'Harare', imageUrls: ['a.jpg'], createdAt: expect.any(String) },
+      ],
+    });
+  });
+
+  it('defaults rating to zero when the seller has no SellerProfile row', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller({ sellerProfile: null }));
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.ratingAvg).toBe('0');
+    expect(res.body.data.ratingCount).toBe(0);
+  });
+
+  it('returns a null response rate when the seller has no conversations yet', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller());
+    conversationCountMock.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.responseRate).toBeNull();
+  });
+
+  it('returns 404 for a nonexistent seller', async () => {
+    userFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`);
+
+    expect(res.status).toBe(401);
+    expect(userFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/sellers/:id/follow', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    userFindUniqueMock.mockReset();
+    followUpsertMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: VIEWER_ID } }, error: null });
+  });
+
+  it('follows the seller', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller());
+    followUpsertMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/sellers/${SELLER_ID}/follow`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ sellerId: SELLER_ID, following: true });
+    expect(followUpsertMock).toHaveBeenCalledWith({
+      where: { followerId_sellerId: { followerId: VIEWER_ID, sellerId: SELLER_ID } },
+      update: {},
+      create: { followerId: VIEWER_ID, sellerId: SELLER_ID },
+    });
+  });
+
+  it('rejects following yourself', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/sellers/${SELLER_ID}/follow`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(followUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a nonexistent seller', async () => {
+    userFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/sellers/${SELLER_ID}/follow`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+    expect(followUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/sellers/${SELLER_ID}/follow`);
+
+    expect(res.status).toBe(401);
+    expect(followUpsertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/v1/sellers/:id/follow', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    followDeleteManyMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: VIEWER_ID } }, error: null });
+  });
+
+  it('unfollows the seller', async () => {
+    followDeleteManyMock.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const res = await request(app).delete(`/api/v1/sellers/${SELLER_ID}/follow`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(204);
+    expect(followDeleteManyMock).toHaveBeenCalledWith({
+      where: { followerId: VIEWER_ID, sellerId: SELLER_ID },
+    });
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).delete(`/api/v1/sellers/${SELLER_ID}/follow`);
+
+    expect(res.status).toBe(401);
+    expect(followDeleteManyMock).not.toHaveBeenCalled();
+  });
+});

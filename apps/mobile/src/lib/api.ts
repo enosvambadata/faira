@@ -396,3 +396,27 @@ export const conversations = {
   mute: (id: string, muted: boolean) =>
     request<{ id: string; muted: boolean }>(`/api/v1/conversations/${id}/mute`, { method: 'PATCH', body: { muted }, auth: true }),
 };
+
+export interface SellerProfileData {
+  id: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  city: string | null;
+  joinedAt: string;
+  ratingAvg: string;
+  ratingCount: number;
+  salesCount: number;
+  responseRate: number | null;
+  followerCount: number;
+  isFollowing: boolean;
+  activeListings: ListingSummary[];
+}
+
+export const sellers = {
+  get: (id: string) => request<SellerProfileData>(`/api/v1/sellers/${id}`, { auth: true }),
+
+  follow: (id: string) =>
+    request<{ sellerId: string; following: boolean }>(`/api/v1/sellers/${id}/follow`, { method: 'POST', auth: true }),
+
+  unfollow: (id: string) => request<void>(`/api/v1/sellers/${id}/follow`, { method: 'DELETE', auth: true }),
+};
