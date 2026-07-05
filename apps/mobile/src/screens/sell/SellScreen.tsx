@@ -29,6 +29,11 @@ const CONDITIONS = [
 
 const MAX_PHOTOS = 6;
 
+// Kept identical to LEGAL_SOURCING_DECLARATION_TEXT in apps/api/src/routes/listings.ts —
+// this is the exact text the seller is agreeing to, stored verbatim against the listing.
+const LEGAL_SOURCING_DECLARATION_TEXT =
+  'I confirm that this item was lawfully acquired and that I have the legal right to sell it.';
+
 export default function SellScreen() {
   // SellScreen lives inside the Tab navigator, so the default navigation
   // prop here is the Tab navigator's — go through the parent to reach the
@@ -46,6 +51,7 @@ export default function SellScreen() {
   const [size, setSize] = useState('');
   const [brand, setBrand] = useState('');
   const [deliveryOptions, setDeliveryOptions] = useState<string[]>([]);
+  const [legalSourcingChecked, setLegalSourcingChecked] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -144,6 +150,7 @@ export default function SellScreen() {
     if (!price || Number.isNaN(priceNum) || priceNum <= 0) nextErrors.price = 'Enter a valid price';
     if (!city) nextErrors.city = 'Choose a city';
     if (deliveryOptions.length === 0) nextErrors.deliveryOptions = 'Choose at least 1 delivery option';
+    if (!legalSourcingChecked) nextErrors.legalSourcing = 'You must confirm this item was legally sourced';
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -182,6 +189,7 @@ export default function SellScreen() {
         imageUrls,
         deliveryOptions,
         attributes,
+        legalSourcingDeclared: true,
       });
 
       await clearListingDraft();
@@ -317,9 +325,26 @@ export default function SellScreen() {
       </View>
       {errors.deliveryOptions && <Text style={styles.error}>{errors.deliveryOptions}</Text>}
 
+      <TouchableOpacity
+        testID="legal-sourcing-checkbox"
+        style={styles.declarationRow}
+        onPress={() => setLegalSourcingChecked(current => !current)}
+      >
+        <View style={[styles.checkbox, legalSourcingChecked && styles.checkboxChecked]}>
+          {legalSourcingChecked && <Text style={styles.checkboxMark}>✓</Text>}
+        </View>
+        <Text style={styles.declarationText}>{LEGAL_SOURCING_DECLARATION_TEXT}</Text>
+      </TouchableOpacity>
+      {errors.legalSourcing && <Text style={styles.error}>{errors.legalSourcing}</Text>}
+
       {submitError && <Text style={styles.submitError}>{submitError}</Text>}
 
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
+      <TouchableOpacity
+        testID="submit-listing-btn"
+        style={[styles.submitButton, (submitting || !legalSourcingChecked) && styles.submitButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={submitting || !legalSourcingChecked}
+      >
         {submitting ? <ActivityIndicator color={colors.white} /> : <Text style={styles.submitButtonText}>List Item</Text>}
       </TouchableOpacity>
     </ScrollView>
@@ -386,6 +411,28 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
   chipText: { ...textStyles.body, color: colors.text },
   chipTextSelected: { color: colors.primary },
+  declarationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 24,
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    padding: 14,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxMark: { color: colors.white, fontSize: 14, lineHeight: 16 },
+  declarationText: { ...textStyles.caption, color: colors.text, flex: 1 },
   submitButton: {
     backgroundColor: colors.primary,
     borderRadius: 12,
@@ -393,5 +440,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
   },
+  submitButtonDisabled: { opacity: 0.5 },
   submitButtonText: { ...textStyles.bodyMedium, color: colors.white, fontSize: 17 },
 });

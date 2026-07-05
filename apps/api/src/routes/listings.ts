@@ -5,6 +5,12 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { signListingUpload } from '../lib/cloudinary';
 import { ApiError } from '../errors/ApiError';
 
+// Stored verbatim against every listing at creation time (see
+// legalSourcingDeclarationText on the Listing model) so the audit trail
+// reflects exactly what the seller agreed to, even if this text changes later.
+export const LEGAL_SOURCING_DECLARATION_TEXT =
+  'I confirm that this item was lawfully acquired and that I have the legal right to sell it.';
+
 const createListingSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
@@ -15,6 +21,7 @@ const createListingSchema = z.object({
   imageUrls: z.array(z.string().url()).min(1).max(6),
   deliveryOptions: z.array(z.string().min(1)).min(1),
   attributes: z.record(z.string(), z.string()).optional(),
+  legalSourcingDeclared: z.literal(true),
 });
 
 const updateListingSchema = z.object({
@@ -253,7 +260,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     return;
   }
 
-  const { attributes, ...listingData } = parsed.data;
+  const { attributes, legalSourcingDeclared: _legalSourcingDeclared, ...listingData } = parsed.data;
 
   const category = await prisma.category.findUnique({ where: { id: listingData.categoryId } });
   if (!category) {
@@ -267,6 +274,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     data: {
       ...listingData,
       sellerId: req.userId!,
+      legalSourcingDeclarationText: LEGAL_SOURCING_DECLARATION_TEXT,
+      legalSourcingDeclaredAt: new Date(),
       attributes: {
         create: attributeEntries.map(([key, value]) => ({ key, value })),
       },

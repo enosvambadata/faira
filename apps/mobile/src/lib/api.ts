@@ -183,6 +183,7 @@ export interface CreateListingPayload {
   imageUrls: string[];
   deliveryOptions: string[];
   attributes?: Record<string, string>;
+  legalSourcingDeclared: true;
 }
 
 export interface ListingSummary {
