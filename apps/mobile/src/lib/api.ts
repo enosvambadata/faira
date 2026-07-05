@@ -204,7 +204,7 @@ export interface ListingDetail {
   status: string;
   category: { id: string; name: string; slug: string };
   attributes: Record<string, string>;
-  seller: { id: string; displayName: string | null; avatarUrl: string | null; city: string | null };
+  seller: { id: string; displayName: string | null; avatarUrl: string | null; city: string | null; isVerified: boolean };
   createdAt: string;
 }
 
@@ -405,6 +405,7 @@ export interface SellerProfileData {
   joinedAt: string;
   ratingAvg: string;
   ratingCount: number;
+  isVerified: boolean;
   salesCount: number;
   responseRate: number | null;
   followerCount: number;
@@ -419,4 +420,22 @@ export const sellers = {
     request<{ sellerId: string; following: boolean }>(`/api/v1/sellers/${id}/follow`, { method: 'POST', auth: true }),
 
   unfollow: (id: string) => request<void>(`/api/v1/sellers/${id}/follow`, { method: 'DELETE', auth: true }),
+};
+
+export interface VerificationRequestData {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export const verification = {
+  mine: () => request<VerificationRequestData | null>('/api/v1/verification/mine', { auth: true }),
+
+  getUploadSignature: () =>
+    request<UploadSignature>('/api/v1/verification/upload-signature', { method: 'POST', auth: true }),
+
+  submit: (payload: { idDocumentUrl: string; selfieUrl: string }) =>
+    request<VerificationRequestData>('/api/v1/verification', { method: 'POST', body: payload, auth: true }),
 };

@@ -150,7 +150,12 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
             </View>
           )}
           <View>
-            <Text style={styles.sellerName}>{listing.seller.displayName ?? 'Faira seller'}</Text>
+            <View style={styles.sellerNameRow}>
+              <Text style={styles.sellerName}>{listing.seller.displayName ?? 'Faira seller'}</Text>
+              {listing.seller.isVerified && (
+                <Text testID="seller-verified-badge" style={styles.sellerVerifiedBadge}>✓ Verified</Text>
+              )}
+            </View>
             {listing.seller.city && <Text style={styles.sellerCity}>{listing.seller.city}</Text>}
           </View>
         </TouchableOpacity>
@@ -217,7 +222,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sellerAvatarText: { ...textStyles.bodyMedium, color: colors.primary },
+  sellerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sellerName: { ...textStyles.bodyMedium, color: colors.text },
+  sellerVerifiedBadge: { ...textStyles.caption, color: colors.primary, fontWeight: '600' },
   sellerCity: { ...textStyles.caption, color: colors.muted },
   messageButton: {
     backgroundColor: colors.primary,

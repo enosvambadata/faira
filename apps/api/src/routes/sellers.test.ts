@@ -51,7 +51,7 @@ function fakeSeller(overrides: Partial<Record<string, unknown>> = {}) {
     avatarUrl: 'https://cdn/rudo.jpg',
     city: 'Harare',
     createdAt: new Date('2026-01-01T00:00:00Z'),
-    sellerProfile: { ratingAvg: { toString: () => '4.50' }, ratingCount: 12 },
+    sellerProfile: { ratingAvg: { toString: () => '4.50' }, ratingCount: 12, isVerified: false },
     ...overrides,
   };
 }
@@ -95,6 +95,7 @@ describe('GET /api/v1/sellers/:id', () => {
       joinedAt: '2026-01-01T00:00:00.000Z',
       ratingAvg: '4.50',
       ratingCount: 12,
+      isVerified: false,
       salesCount: 3,
       responseRate: 75,
       followerCount: 7,
@@ -105,7 +106,7 @@ describe('GET /api/v1/sellers/:id', () => {
     });
   });
 
-  it('defaults rating to zero when the seller has no SellerProfile row', async () => {
+  it('defaults rating and verified status when the seller has no SellerProfile row', async () => {
     userFindUniqueMock.mockResolvedValue(fakeSeller({ sellerProfile: null }));
 
     const app = createApp();
@@ -114,6 +115,17 @@ describe('GET /api/v1/sellers/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.ratingAvg).toBe('0');
     expect(res.body.data.ratingCount).toBe(0);
+    expect(res.body.data.isVerified).toBe(false);
+  });
+
+  it('surfaces a verified badge once SellerProfile.isVerified is true', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller({ sellerProfile: { ratingAvg: { toString: () => '0' }, ratingCount: 0, isVerified: true } }));
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.isVerified).toBe(true);
   });
 
   it('returns a null response rate when the seller has no conversations yet', async () => {

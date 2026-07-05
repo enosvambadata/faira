@@ -90,7 +90,14 @@ export default function SellerProfileScreen({ route }: Props) {
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]} />
           )}
-          <Text style={styles.name}>{profile.displayName ?? 'Seller'}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{profile.displayName ?? 'Seller'}</Text>
+            {profile.isVerified && (
+              <View testID="verified-badge" style={styles.verifiedBadge}>
+                <Text style={styles.verifiedBadgeText}>✓ Verified</Text>
+              </View>
+            )}
+          </View>
           {profile.city && <Text style={styles.city}>{profile.city}</Text>}
           <Text style={styles.joined}>Joined {joinedLabel(profile.joinedAt)}</Text>
 
@@ -162,7 +169,10 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', paddingTop: 24, paddingBottom: 12, paddingHorizontal: 16 },
   avatar: { width: 88, height: 88, borderRadius: 44 },
   avatarPlaceholder: { backgroundColor: colors.border },
-  name: { ...textStyles.h2, color: colors.text, marginTop: 12 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  name: { ...textStyles.h2, color: colors.text },
+  verifiedBadge: { backgroundColor: colors.primaryLight, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8 },
+  verifiedBadgeText: { ...textStyles.caption, color: colors.primary, fontWeight: '600' },
   city: { ...textStyles.body, color: colors.muted, marginTop: 2 },
   joined: { ...textStyles.caption, color: colors.muted, marginTop: 2 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 },
