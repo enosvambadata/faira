@@ -23,6 +23,8 @@ export default [
         Blob: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        document: 'readonly',
+        URL: 'readonly',
       },
     },
     plugins: {

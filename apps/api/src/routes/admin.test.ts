@@ -5,21 +5,38 @@ const verificationFindManyMock = vi.fn();
 const verificationFindUniqueMock = vi.fn();
 const transactionMock = vi.fn();
 const verificationUpdateMock = vi.fn();
+const updateUserByIdMock = vi.fn();
+const deletionFindManyMock = vi.fn();
+const deletionFindUniqueMock = vi.fn();
+const deletionUpdateMock = vi.fn();
+const userUpdateMock = vi.fn();
+const auditLogCreateMock = vi.fn();
 
 vi.mock('../supabase', () => ({
-  supabaseAdmin: { auth: { getUser: vi.fn() } },
+  supabaseAdmin: {
+    auth: {
+      getUser: vi.fn(),
+      admin: { updateUserById: (...args: unknown[]) => updateUserByIdMock(...args) },
+    },
+  },
   supabasePublic: { auth: {} },
 }));
 
 vi.mock('../prisma', () => ({
   prisma: {
-    user: { upsert: vi.fn().mockResolvedValue({}) },
+    user: { upsert: vi.fn().mockResolvedValue({}), update: (...args: unknown[]) => userUpdateMock(...args) },
     verificationRequest: {
       findMany: (...args: unknown[]) => verificationFindManyMock(...args),
       findUnique: (...args: unknown[]) => verificationFindUniqueMock(...args),
       update: (...args: unknown[]) => verificationUpdateMock(...args),
     },
+    accountDeletionRequest: {
+      findMany: (...args: unknown[]) => deletionFindManyMock(...args),
+      findUnique: (...args: unknown[]) => deletionFindUniqueMock(...args),
+      update: (...args: unknown[]) => deletionUpdateMock(...args),
+    },
     sellerProfile: { upsert: vi.fn() },
+    auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -205,5 +222,107 @@ describe('POST /api/v1/admin/verification/:id/reject', () => {
 
     expect(res.status).toBe(401);
     expect(verificationFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
+function fakeDeletionRequest(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'deletion-1',
+    userId: 'user-1',
+    status: 'PENDING',
+    requestedAt: new Date('2026-07-05T00:00:00Z'),
+    scheduledFor: new Date('2026-08-04T00:00:00Z'),
+    processedAt: null,
+    user: { id: 'user-1', displayName: 'Tendai', city: 'Harare' },
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/admin/deletion-requests/due', () => {
+  beforeEach(() => {
+    deletionFindManyMock.mockReset();
+  });
+
+  it('lists deletion requests past their scheduled date', async () => {
+    deletionFindManyMock.mockResolvedValue([fakeDeletionRequest()]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/deletion-requests/due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(deletionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'PENDING', scheduledFor: { lte: expect.any(Date) } } }),
+    );
+  });
+
+  it('rejects without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/deletion-requests/due');
+
+    expect(res.status).toBe(401);
+    expect(deletionFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/admin/deletion-requests/:id/process', () => {
+  beforeEach(() => {
+    deletionFindUniqueMock.mockReset();
+    deletionUpdateMock.mockReset();
+    updateUserByIdMock.mockReset();
+    transactionMock.mockReset();
+  });
+
+  it('anonymizes the user and marks the request processed', async () => {
+    deletionFindUniqueMock.mockResolvedValue(fakeDeletionRequest());
+    updateUserByIdMock.mockResolvedValue({ data: {}, error: null });
+    transactionMock.mockResolvedValue([{}, {}, {}]);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/deletion-requests/deletion-1/process').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'deletion-1', status: 'PROCESSED' });
+    expect(updateUserByIdMock).toHaveBeenCalledWith('user-1', { ban_duration: '87600h' });
+    expect(transactionMock).toHaveBeenCalled();
+  });
+
+  it('surfaces a failure from the ban/anonymize call and does not touch the DB', async () => {
+    deletionFindUniqueMock.mockResolvedValue(fakeDeletionRequest());
+    updateUserByIdMock.mockResolvedValue({ data: null, error: { message: 'boom', status: 500 } });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/deletion-requests/deletion-1/process').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('ANONYMIZATION_FAILED');
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects processing a request that is not pending', async () => {
+    deletionFindUniqueMock.mockResolvedValue(fakeDeletionRequest({ status: 'PROCESSED' }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/deletion-requests/deletion-1/process').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(400);
+    expect(updateUserByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a nonexistent request', async () => {
+    deletionFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/deletion-requests/nonexistent/process').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/deletion-requests/deletion-1/process');
+
+    expect(res.status).toBe(401);
+    expect(deletionFindUniqueMock).not.toHaveBeenCalled();
   });
 });

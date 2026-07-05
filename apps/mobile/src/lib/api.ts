@@ -451,3 +451,29 @@ export const verification = {
   submit: (payload: { idDocumentUrl: string; selfieUrl: string }) =>
     request<VerificationRequestData>('/api/v1/verification', { method: 'POST', body: payload, auth: true }),
 };
+
+export interface DeletionRequestData {
+  id: string;
+  status: 'PENDING' | 'PROCESSED' | 'CANCELLED';
+  requestedAt: string;
+  scheduledFor: string;
+  processedAt: string | null;
+}
+
+export interface AccountExportData {
+  exportedAt: string;
+  listings: unknown[];
+  orders: unknown[];
+  messages: unknown[];
+}
+
+export const account = {
+  getDeletionRequest: () => request<DeletionRequestData | null>('/api/v1/account/deletion-request', { auth: true }),
+
+  requestDeletion: () =>
+    request<DeletionRequestData>('/api/v1/account/deletion-request', { method: 'POST', auth: true }),
+
+  cancelDeletion: () => request<void>('/api/v1/account/deletion-request', { method: 'DELETE', auth: true }),
+
+  exportData: () => request<AccountExportData>('/api/v1/account/export', { auth: true }),
+};

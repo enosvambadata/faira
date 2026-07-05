@@ -33,6 +33,12 @@ enum VerificationStatus {
   REJECTED
 }
 
+enum DeletionRequestStatus {
+  PENDING
+  PROCESSED
+  CANCELLED
+}
+
 // id matches auth.users.id (Supabase-managed); no Prisma-level relation since
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
@@ -57,8 +63,44 @@ model User {
   following             Follow[]       @relation("Following")
   followers             Follow[]       @relation("Followers")
   verificationRequests  VerificationRequest[]
+  deletionRequests      AccountDeletionRequest[]
+  auditLogs             AuditLog[]
 
   @@map("users")
+}
+
+// Multiple rows per user are expected over time (a cancelled request
+// doesn't block requesting again later) — only application logic (not a
+// unique constraint) enforces "at most one PENDING request per user".
+model AccountDeletionRequest {
+  id           String                 @id @default(uuid()) @db.Uuid
+  userId       String                 @map("user_id") @db.Uuid
+  status       DeletionRequestStatus  @default(PENDING)
+  requestedAt  DateTime               @default(now()) @map("requested_at")
+  scheduledFor DateTime               @map("scheduled_for")
+  processedAt  DateTime?              @map("processed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status, scheduledFor])
+  @@map("account_deletion_requests")
+}
+
+// Compliance trail for account-lifecycle actions (deletion requests,
+// cancellations, anonymization, data exports) — required by SCRUM-50's
+// "Deletion request logged in audit_log table" acceptance criterion.
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("audit_log")
 }
 
 // A seller's submission of an ID document + selfie for manual review.
