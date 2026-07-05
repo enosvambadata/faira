@@ -209,7 +209,9 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: Nex
     include: {
       attributes: true,
       category: { select: { id: true, name: true, slug: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true, city: true } },
+      seller: {
+        select: { id: true, displayName: true, avatarUrl: true, city: true, sellerProfile: { select: { isVerified: true } } },
+      },
     },
   });
 
@@ -217,6 +219,8 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: Nex
     next(new ApiError('LISTING_NOT_FOUND', 'Listing not found', 404));
     return;
   }
+
+  const { sellerProfile, ...sellerFields } = listing.seller;
 
   res.status(200).json({
     data: {
@@ -231,7 +235,7 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: Nex
       status: listing.status,
       category: listing.category,
       attributes: Object.fromEntries(listing.attributes.map(a => [a.key, a.value])),
-      seller: listing.seller,
+      seller: { ...sellerFields, isVerified: sellerProfile?.isVerified ?? false },
       createdAt: listing.createdAt,
     },
   });

@@ -27,6 +27,12 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // id matches auth.users.id (Supabase-managed); no Prisma-level relation since
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
@@ -48,8 +54,29 @@ model User {
   sentMessages          Message[]
   following             Follow[]       @relation("Following")
   followers             Follow[]       @relation("Followers")
+  verificationRequests  VerificationRequest[]
 
   @@map("users")
+}
+
+// A seller's submission of an ID document + selfie for manual review.
+// Resubmission is allowed after a rejection, so a seller can have more
+// than one row here — only the most recent one is shown to them.
+model VerificationRequest {
+  id              String              @id @default(uuid()) @db.Uuid
+  sellerId        String              @map("seller_id") @db.Uuid
+  idDocumentUrl   String              @map("id_document_url")
+  selfieUrl       String              @map("selfie_url")
+  status          VerificationStatus  @default(PENDING)
+  rejectionReason String?             @map("rejection_reason")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  reviewedAt      DateTime?           @map("reviewed_at")
+
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("verification_requests")
 }
 
 // A buyer following a seller — one row per (follower, seller) pair.

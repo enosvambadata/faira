@@ -48,3 +48,11 @@ export function signListingUpload() {
 export function signChatUpload() {
   return signUpload('chat', 'w_1600,h_1600,c_limit');
 }
+
+// Same public-upload mechanism as listing/chat photos — there's no separate
+// authenticated-delivery setup here, so these URLs are unlisted (never
+// surfaced in any list/browse response) but not access-controlled beyond
+// that, same as the rest of this app's Cloudinary usage.
+export function signVerificationUpload() {
+  return signUpload('verification', 'w_1600,h_1600,c_limit');
+}

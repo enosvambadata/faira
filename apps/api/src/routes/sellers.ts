@@ -43,6 +43,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id:
       joinedAt: user.createdAt,
       ratingAvg: user.sellerProfile?.ratingAvg.toString() ?? '0',
       ratingCount: user.sellerProfile?.ratingCount ?? 0,
+      isVerified: user.sellerProfile?.isVerified ?? false,
       salesCount,
       responseRate,
       followerCount,

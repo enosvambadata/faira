@@ -495,7 +495,7 @@ describe('GET /api/v1/listings/:id', () => {
       status: 'ACTIVE',
       category: { id: 'cat-1', name: 'Fashion & Clothing', slug: 'fashion' },
       attributes: [{ key: 'size', value: '9' }],
-      seller: { id: 'user-1', displayName: 'Tendai', avatarUrl: null, city: 'Harare' },
+      seller: { id: 'user-1', displayName: 'Tendai', avatarUrl: null, city: 'Harare', sellerProfile: null },
     });
 
     const app = createApp();
@@ -503,8 +503,29 @@ describe('GET /api/v1/listings/:id', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.seller.displayName).toBe('Tendai');
+    expect(res.body.data.seller.isVerified).toBe(false);
     expect(res.body.data.attributes).toEqual({ size: '9' });
     expect(res.body.data.category.name).toBe('Fashion & Clothing');
+  });
+
+  it('surfaces a verified seller badge from their SellerProfile', async () => {
+    listingFindUniqueMock.mockResolvedValue({
+      ...fakeListing(),
+      description: 'Barely worn',
+      condition: 'GOOD',
+      deliveryOptions: ['Buyer collects'],
+      status: 'ACTIVE',
+      category: { id: 'cat-1', name: 'Fashion & Clothing', slug: 'fashion' },
+      attributes: [],
+      seller: { id: 'user-1', displayName: 'Tendai', avatarUrl: null, city: 'Harare', sellerProfile: { isVerified: true } },
+    });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings/listing-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.seller.isVerified).toBe(true);
+    expect(res.body.data.seller.sellerProfile).toBeUndefined();
   });
 
   it('returns 404 for an unknown listing', async () => {
