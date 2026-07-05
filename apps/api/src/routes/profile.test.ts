@@ -146,6 +146,50 @@ describe('PATCH /api/v1/profile', () => {
   });
 });
 
+describe('POST /api/v1/profile/push-token', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    userUpsertMock.mockReset();
+    userUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    userUpsertMock.mockResolvedValue({});
+  });
+
+  it('registers the Expo push token for the current user', async () => {
+    userUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/profile/push-token')
+      .set(AUTH_HEADER)
+      .send({ token: 'ExponentPushToken[abc123]' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ registered: true });
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { expoPushToken: 'ExponentPushToken[abc123]' },
+    });
+  });
+
+  it('rejects an empty token', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/profile/push-token').set(AUTH_HEADER).send({ token: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/profile/push-token').send({ token: 'x' });
+
+    expect(res.status).toBe(401);
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/v1/profile/avatar', () => {
   beforeEach(() => {
     getUserMock.mockReset();

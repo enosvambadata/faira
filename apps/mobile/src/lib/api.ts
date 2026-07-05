@@ -122,6 +122,9 @@ export const profile = {
     formData.append('avatar', blob, fileName || 'avatar.jpg');
     return request<Profile>('/api/v1/profile/avatar', { method: 'POST', formData, auth: true });
   },
+
+  registerPushToken: (token: string) =>
+    request<{ registered: boolean }>('/api/v1/profile/push-token', { method: 'POST', body: { token }, auth: true }),
 };
 
 export interface Category {
@@ -353,6 +356,7 @@ export interface Conversation {
   updatedAt: string;
   listing: { id: string; title: string; price: string; imageUrl: string | null };
   otherParticipant: ConversationParticipant;
+  isMuted: boolean;
 }
 
 export interface ConversationListItem extends Conversation {
@@ -388,4 +392,7 @@ export const conversations = {
 
   archive: (id: string) =>
     request<{ id: string; archived: boolean }>(`/api/v1/conversations/${id}/archive`, { method: 'PATCH', auth: true }),
+
+  mute: (id: string, muted: boolean) =>
+    request<{ id: string; muted: boolean }>(`/api/v1/conversations/${id}/mute`, { method: 'PATCH', body: { muted }, auth: true }),
 };

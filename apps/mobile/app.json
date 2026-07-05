@@ -42,6 +42,13 @@
         {
           "photosPermission": "Faira Market needs access to your photos so you can set a profile picture."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#2E1A0D"
+        }
       ]
     ],
     "scheme": "faira",

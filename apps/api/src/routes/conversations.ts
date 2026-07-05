@@ -3,12 +3,17 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { signChatUpload } from '../lib/cloudinary';
+import { sendPushNotification } from '../lib/push';
 import { ApiError } from '../errors/ApiError';
 
 const router = Router();
 
 const createConversationSchema = z.object({
   listingId: z.string().uuid(),
+});
+
+const muteSchema = z.object({
+  muted: z.boolean(),
 });
 
 const sendMessageSchema = z
@@ -36,8 +41,8 @@ async function loadConversationForParticipant(conversationId: string, userId: st
     where: { id: conversationId },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
     },
   });
 
@@ -52,7 +57,11 @@ function conversationResponse(
   conversation: NonNullable<Awaited<ReturnType<typeof loadConversationForParticipant>>['conversation']>,
   userId: string,
 ) {
-  const otherParticipant = conversation.buyerId === userId ? conversation.seller : conversation.buyer;
+  const otherRaw = conversation.buyerId === userId ? conversation.seller : conversation.buyer;
+  // Picked explicitly rather than spread — otherRaw also carries expoPushToken
+  // (needed server-side to send pushes), which must never reach the client.
+  const otherParticipant = { id: otherRaw.id, displayName: otherRaw.displayName, avatarUrl: otherRaw.avatarUrl };
+  const isMuted = conversation.buyerId === userId ? conversation.mutedByBuyer : conversation.mutedBySeller;
   return {
     id: conversation.id,
     listingId: conversation.listingId,
@@ -62,6 +71,7 @@ function conversationResponse(
     updatedAt: conversation.updatedAt,
     listing: listingSummary(conversation.listing),
     otherParticipant,
+    isMuted,
   };
 }
 
@@ -78,8 +88,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     orderBy: { updatedAt: 'desc' },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
       messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       _count: { select: { messages: { where: { senderId: { not: userId }, readAt: null } } } },
     },
@@ -136,6 +146,34 @@ router.patch('/:id/archive', requireAuth, async (req: AuthenticatedRequest & Req
   res.status(200).json({ data: { id: conversation.id, archived: true } });
 });
 
+router.patch('/:id/mute', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const parsed = muteSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid mute payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { conversation, forbidden } = await loadConversationForParticipant(req.params.id, req.userId!);
+
+  if (forbidden) {
+    next(new ApiError('FORBIDDEN', 'You are not part of this conversation', 403));
+    return;
+  }
+  if (!conversation) {
+    next(new ApiError('CONVERSATION_NOT_FOUND', 'Conversation not found', 404));
+    return;
+  }
+
+  const isBuyer = conversation.buyerId === req.userId!;
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: isBuyer ? { mutedByBuyer: parsed.data.muted } : { mutedBySeller: parsed.data.muted },
+  });
+
+  res.status(200).json({ data: { id: conversation.id, muted: parsed.data.muted } });
+});
+
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const parsed = createConversationSchema.safeParse(req.body);
 
@@ -162,8 +200,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     create: { listingId: listing.id, buyerId: req.userId!, sellerId: listing.sellerId },
     include: {
       listing: true,
-      buyer: { select: { id: true, displayName: true, avatarUrl: true } },
-      seller: { select: { id: true, displayName: true, avatarUrl: true } },
+      buyer: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
+      seller: { select: { id: true, displayName: true, avatarUrl: true, expoPushToken: true } },
     },
   });
 
@@ -262,6 +300,23 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
       data: { updatedAt: new Date(), archivedByBuyer: false, archivedBySeller: false },
     }),
   ]);
+
+  const isSenderBuyer = req.userId! === conversation.buyerId;
+  const sender = isSenderBuyer ? conversation.buyer : conversation.seller;
+  const recipient = isSenderBuyer ? conversation.seller : conversation.buyer;
+  const recipientMuted = isSenderBuyer ? conversation.mutedBySeller : conversation.mutedByBuyer;
+
+  // Fire-and-forget: a slow or failed push send shouldn't delay or fail the
+  // message-send response, and sendPushNotification already swallows its
+  // own errors internally.
+  if (!recipientMuted && recipient.expoPushToken) {
+    void sendPushNotification({
+      to: recipient.expoPushToken,
+      title: sender.displayName ?? 'New message',
+      body: message.body ?? '📷 Photo',
+      data: { conversationId: conversation.id, listingId: conversation.listingId },
+    });
+  }
 
   res.status(201).json({
     data: {
