@@ -7,6 +7,7 @@ import HomeScreen from '@/screens/home/HomeScreen';
 import InboxScreen from '@/screens/inbox/InboxScreen';
 import SellScreen from '@/screens/sell/SellScreen';
 import ProfileScreen from '@/screens/profile/ProfileScreen';
+import { UnreadCountProvider, useUnreadCount } from '@/lib/unreadCount';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -32,7 +33,9 @@ function SellButton({ onPress }: { onPress?: (e: GestureResponderEvent) => void 
   );
 }
 
-export default function TabNavigator() {
+function TabsWithBadge() {
+  const { unreadCount } = useUnreadCount();
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -57,6 +60,7 @@ export default function TabNavigator() {
         options={{
           tabBarLabel: 'Inbox',
           tabBarIcon: ({ focused }) => <TabIcon label="Inbox" focused={focused} />,
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
         }}
       />
       <Tab.Screen
@@ -76,6 +80,14 @@ export default function TabNavigator() {
         }}
       />
     </Tab.Navigator>
+  );
+}
+
+export default function TabNavigator() {
+  return (
+    <UnreadCountProvider>
+      <TabsWithBadge />
+    </UnreadCountProvider>
   );
 }
 

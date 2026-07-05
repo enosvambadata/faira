@@ -5,10 +5,12 @@ const getUserMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
 const conversationUpsertMock = vi.fn();
 const conversationFindUniqueMock = vi.fn();
+const conversationFindManyMock = vi.fn();
 const conversationUpdateMock = vi.fn();
 const messageUpdateManyMock = vi.fn();
 const messageFindManyMock = vi.fn();
 const messageCreateMock = vi.fn();
+const messageCountMock = vi.fn();
 const transactionMock = vi.fn();
 const signChatUploadMock = vi.fn();
 
@@ -32,12 +34,14 @@ vi.mock('../prisma', () => ({
     conversation: {
       upsert: (...args: unknown[]) => conversationUpsertMock(...args),
       findUnique: (...args: unknown[]) => conversationFindUniqueMock(...args),
+      findMany: (...args: unknown[]) => conversationFindManyMock(...args),
       update: (...args: unknown[]) => conversationUpdateMock(...args),
     },
     message: {
       updateMany: (...args: unknown[]) => messageUpdateManyMock(...args),
       findMany: (...args: unknown[]) => messageFindManyMock(...args),
       create: (...args: unknown[]) => messageCreateMock(...args),
+      count: (...args: unknown[]) => messageCountMock(...args),
     },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -75,6 +79,162 @@ function fakeConversation(overrides: Partial<Record<string, unknown>> = {}) {
     ...overrides,
   };
 }
+
+describe('GET /api/v1/conversations', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    conversationFindManyMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+  });
+
+  it('lists conversations sorted by most recent activity with unread count and last message', async () => {
+    conversationFindManyMock.mockResolvedValue([
+      {
+        ...fakeConversation(),
+        messages: [{ id: 'm2', body: 'Hello', imageUrl: null, senderId: SELLER_ID, createdAt: new Date('2026-07-04T00:01:00Z') }],
+        _count: { messages: 1 },
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/conversations').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].unreadCount).toBe(1);
+    expect(res.body.data[0].lastMessage).toEqual(
+      expect.objectContaining({ body: 'Hello', senderId: SELLER_ID }),
+    );
+    expect(conversationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { buyerId: BUYER_ID, archivedByBuyer: false },
+            { sellerId: BUYER_ID, archivedBySeller: false },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    );
+  });
+
+  it('returns an empty list with no conversations', async () => {
+    conversationFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/conversations').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/conversations');
+
+    expect(res.status).toBe(401);
+    expect(conversationFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/conversations/unread-count', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    messageCountMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+  });
+
+  it('returns the total unread count across all conversations', async () => {
+    messageCountMock.mockResolvedValue(3);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/conversations/unread-count').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.count).toBe(3);
+    expect(messageCountMock).toHaveBeenCalledWith({
+      where: {
+        senderId: { not: BUYER_ID },
+        readAt: null,
+        conversation: { OR: [{ buyerId: BUYER_ID }, { sellerId: BUYER_ID }] },
+      },
+    });
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/conversations/unread-count');
+
+    expect(res.status).toBe(401);
+    expect(messageCountMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/conversations/:id/archive', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    conversationFindUniqueMock.mockReset();
+    conversationUpdateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+  });
+
+  it('archives the conversation for the buyer', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    conversationUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/archive').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.archived).toBe(true);
+    expect(conversationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: { archivedByBuyer: true },
+    });
+  });
+
+  it('archives the conversation for the seller', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    conversationUpdateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/archive').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(conversationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: { archivedBySeller: true },
+    });
+  });
+
+  it('returns 403 for a non-participant', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation({ buyerId: 'x', sellerId: 'y' }));
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/archive').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(conversationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a nonexistent conversation', async () => {
+    conversationFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/nonexistent/archive').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/conversations/conversation-1/archive');
+
+    expect(res.status).toBe(401);
+    expect(conversationUpdateMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('POST /api/v1/conversations/upload-signature', () => {
   beforeEach(() => {
@@ -263,6 +423,7 @@ describe('POST /api/v1/conversations/:id/messages', () => {
   beforeEach(() => {
     getUserMock.mockReset();
     conversationFindUniqueMock.mockReset();
+    conversationUpdateMock.mockReset();
     transactionMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
   });
@@ -282,6 +443,25 @@ describe('POST /api/v1/conversations/:id/messages', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.body).toBe('Is this still available?');
+  });
+
+  it('un-archives the conversation for both sides when a message is sent', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation({ archivedByBuyer: true }));
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Still here?', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app)
+      .post('/api/v1/conversations/conversation-1/messages')
+      .set(AUTH_HEADER)
+      .send({ body: 'Still here?' });
+
+    expect(conversationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'conversation-1' },
+      data: { updatedAt: expect.any(Date), archivedByBuyer: false, archivedBySeller: false },
+    });
   });
 
   it('sends an image-only message', async () => {

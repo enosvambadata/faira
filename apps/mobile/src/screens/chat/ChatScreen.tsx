@@ -25,6 +25,7 @@ import {
 } from '@/lib/api';
 import { getSession } from '@/lib/session';
 import { supabase, setRealtimeAuth } from '@/lib/supabase';
+import { useUnreadCount } from '@/lib/unreadCount';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -48,6 +49,7 @@ function mapRealtimeRow(row: Record<string, unknown>): Message {
 
 export default function ChatScreen({ route, navigation }: Props) {
   const { listingId } = route.params;
+  const { refresh: refreshUnreadCount } = useUnreadCount();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -69,6 +71,7 @@ export default function ChatScreen({ route, navigation }: Props) {
 
         const existingMessages = await conversationsApi.messages(conv.id);
         setMessages(existingMessages);
+        refreshUnreadCount();
         if (existingMessages.length === 0) {
           setComposerText(`Hi, is "${conv.listing.title}" still available?`);
         }

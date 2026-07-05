@@ -355,6 +355,11 @@ export interface Conversation {
   otherParticipant: ConversationParticipant;
 }
 
+export interface ConversationListItem extends Conversation {
+  lastMessage: { body: string | null; imageUrl: string | null; senderId: string; createdAt: string } | null;
+  unreadCount: number;
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -365,6 +370,10 @@ export interface Message {
 }
 
 export const conversations = {
+  list: () => request<ConversationListItem[]>('/api/v1/conversations', { auth: true }),
+
+  unreadCount: () => request<{ count: number }>('/api/v1/conversations/unread-count', { auth: true }),
+
   start: (listingId: string) => request<Conversation>('/api/v1/conversations', { method: 'POST', body: { listingId }, auth: true }),
 
   get: (id: string) => request<Conversation>(`/api/v1/conversations/${id}`, { auth: true }),
@@ -376,4 +385,7 @@ export const conversations = {
 
   getUploadSignature: () =>
     request<UploadSignature>('/api/v1/conversations/upload-signature', { method: 'POST', auth: true }),
+
+  archive: (id: string) =>
+    request<{ id: string; archived: boolean }>(`/api/v1/conversations/${id}/archive`, { method: 'PATCH', auth: true }),
 };

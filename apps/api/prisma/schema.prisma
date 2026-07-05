@@ -115,12 +115,14 @@ model Listing {
 // forking a new one. sellerId is denormalized from listing.sellerId so
 // inbox queries ("my conversations as seller") don't need a join.
 model Conversation {
-  id        String   @id @default(uuid()) @db.Uuid
-  listingId String   @map("listing_id") @db.Uuid
-  buyerId   String   @map("buyer_id") @db.Uuid
-  sellerId  String   @map("seller_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid()) @db.Uuid
+  listingId        String   @map("listing_id") @db.Uuid
+  buyerId          String   @map("buyer_id") @db.Uuid
+  sellerId         String   @map("seller_id") @db.Uuid
+  archivedByBuyer  Boolean  @default(false) @map("archived_by_buyer")
+  archivedBySeller Boolean  @default(false) @map("archived_by_seller")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   listing  Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
   buyer    User      @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
