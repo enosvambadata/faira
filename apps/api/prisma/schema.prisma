@@ -182,6 +182,7 @@ model SellerProfile {
   userId       String   @unique @map("user_id") @db.Uuid
   businessName String?  @map("business_name")
   isVerified   Boolean  @default(false) @map("is_verified")
+  codEnabled   Boolean  @default(false) @map("cod_enabled")
   ratingAvg    Decimal  @default(0) @map("rating_avg") @db.Decimal(3, 2)
   ratingCount  Int      @default(0) @map("rating_count")
   createdAt    DateTime @default(now()) @map("created_at")

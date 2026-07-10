@@ -10,7 +10,12 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   // no "seller marks shipped" step yet (SCRUM-61) — buyer delivery
   // confirmation (SCRUM-55) has to be able to release escrow on a PAID
   // order today. Tighten this to require SHIPPED first once SCRUM-61 lands.
-  PENDING: ['PAID', 'CANCELLED'],
+  //
+  // PENDING -> DELIVERED (skipping PAID/SHIPPED entirely) covers cash on
+  // delivery (SCRUM-56): payment and delivery are the same physical event,
+  // so there's no separate "paid" moment to pass through, and no escrow
+  // involved to release.
+  PENDING: ['PAID', 'DELIVERED', 'CANCELLED'],
   PAID: ['SHIPPED', 'DELIVERED', 'CANCELLED'],
   SHIPPED: ['DELIVERED'],
   DELIVERED: [],
