@@ -125,11 +125,11 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
 
       <Text style={styles.sectionTitle}>Order timeline</Text>
       <View style={styles.timeline}>
-        {order.timeline.map((entry, index) => (
+        {(order.timeline ?? []).map((entry, index, timeline) => (
           <View key={entry.status} style={styles.timelineRow}>
             <View style={styles.timelineMarkerColumn}>
               <View style={styles.timelineDot} />
-              {index < order.timeline.length - 1 && <View style={styles.timelineLine} />}
+              {index < timeline.length - 1 && <View style={styles.timelineLine} />}
             </View>
             <View style={styles.timelineTextColumn}>
               <Text style={styles.timelineLabel}>{entry.label}</Text>
