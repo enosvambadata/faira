@@ -150,6 +150,50 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
   });
 });
 
+function orderListItem(order: {
+  id: string;
+  priceAtPurchase: { toString(): string };
+  status: OrderStatus;
+  createdAt: Date;
+  listing: { id: string; title: string; imageUrls: string[] };
+}) {
+  return {
+    id: order.id,
+    priceAtPurchase: order.priceAtPurchase.toString(),
+    status: order.status,
+    displayStatus: displayStatus(order.status),
+    createdAt: order.createdAt,
+    listing: {
+      id: order.listing.id,
+      title: order.listing.title,
+      imageUrl: order.listing.imageUrls[0] ?? null,
+    },
+  };
+}
+
+// Registered before /:orderId so "purchases"/"sales" aren't swallowed as
+// an :orderId path param — Express matches routes in registration order,
+// not by specificity.
+router.get('/purchases', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const purchases = await prisma.order.findMany({
+    where: { buyerId: req.userId! },
+    orderBy: { createdAt: 'desc' },
+    include: { listing: { select: { id: true, title: true, imageUrls: true } } },
+  });
+
+  res.status(200).json({ data: purchases.map(orderListItem) });
+});
+
+router.get('/sales', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const sales = await prisma.order.findMany({
+    where: { listing: { sellerId: req.userId! } },
+    orderBy: { createdAt: 'desc' },
+    include: { listing: { select: { id: true, title: true, imageUrls: true } } },
+  });
+
+  res.status(200).json({ data: sales.map(orderListItem) });
+});
+
 router.get(
   '/:orderId',
   requireAuth,

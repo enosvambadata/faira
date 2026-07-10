@@ -5,6 +5,7 @@ const getUserMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
 const orderCreateMock = vi.fn();
 const orderFindUniqueMock = vi.fn();
+const orderFindManyMock = vi.fn();
 const orderUpdateManyMock = vi.fn();
 const paymentCreateMock = vi.fn();
 const paymentUpdateMock = vi.fn();
@@ -41,6 +42,7 @@ vi.mock('../prisma', () => ({
     order: {
       create: (...args: unknown[]) => orderCreateMock(...args),
       findUnique: (...args: unknown[]) => orderFindUniqueMock(...args),
+      findMany: (...args: unknown[]) => orderFindManyMock(...args),
       updateMany: (...args: unknown[]) => orderUpdateManyMock(...args),
     },
     payment: {
@@ -175,6 +177,70 @@ describe('POST /api/v1/orders', () => {
       .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/v1/orders/purchases', () => {
+  it("lists the caller's orders as buyer, newest first", async () => {
+    orderFindManyMock.mockResolvedValue([
+      {
+        id: ORDER_ID,
+        priceAtPurchase: { toString: () => '45.50' },
+        status: 'PAID',
+        createdAt: new Date('2026-07-10T00:00:00Z'),
+        listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'] },
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/orders/purchases').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      {
+        id: ORDER_ID,
+        priceAtPurchase: '45.50',
+        status: 'PAID',
+        displayStatus: 'Paid',
+        createdAt: '2026-07-10T00:00:00.000Z',
+        listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrl: 'https://res.cloudinary.com/x/listings/a.jpg' },
+      },
+    ]);
+    expect(orderFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { buyerId: BUYER_ID }, orderBy: { createdAt: 'desc' } }),
+    );
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/orders/purchases');
+
+    expect(res.status).toBe(401);
+    expect(orderFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/orders/sales', () => {
+  it("lists the caller's orders as seller", async () => {
+    orderFindManyMock.mockResolvedValue([
+      {
+        id: ORDER_ID,
+        priceAtPurchase: { toString: () => '45.50' },
+        status: 'SHIPPED',
+        createdAt: new Date('2026-07-10T00:00:00Z'),
+        listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrls: [] },
+      },
+    ]);
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/orders/sales').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].listing.imageUrl).toBeNull();
+    expect(orderFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { listing: { sellerId: SELLER_ID } } }),
+    );
   });
 });
 

@@ -48,6 +48,10 @@ export default function ProfileScreen() {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('SavedItems');
   };
 
+  const openOrders = () => {
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('Orders');
+  };
+
   const openVerification = () => {
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.navigate('SellerVerification');
   };
@@ -88,6 +92,10 @@ export default function ProfileScreen() {
           <Text style={styles.title}>Profile</Text>
           {savedAt !== null && <Text style={styles.savedBanner}>Saved</Text>}
           <ProfileForm submitLabel="Save Changes" onSaved={() => setSavedAt(Date.now())} />
+
+          <TouchableOpacity testID="orders-btn" style={styles.savedItemsButton} onPress={openOrders}>
+            <Text style={styles.savedItemsButtonText}>▤ My Orders</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity testID="saved-items-btn" style={styles.savedItemsButton} onPress={openSavedItems}>
             <Text style={styles.savedItemsButtonText}>♥ Saved Items</Text>
