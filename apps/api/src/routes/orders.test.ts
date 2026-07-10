@@ -12,6 +12,7 @@ const paymentFindFirstMock = vi.fn();
 const escrowCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const sellerProfileFindUniqueMock = vi.fn();
+const paymentDisputeCreateMock = vi.fn();
 
 const initiateWebPaymentMock = vi.fn();
 const initiateMobilePaymentMock = vi.fn();
@@ -53,6 +54,9 @@ vi.mock('../prisma', () => ({
     sellerProfile: {
       findUnique: (...args: unknown[]) => sellerProfileFindUniqueMock(...args),
     },
+    paymentDispute: {
+      create: (...args: unknown[]) => paymentDisputeCreateMock(...args),
+    },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -86,6 +90,7 @@ function fakeOrder(overrides: Partial<Record<string, unknown>> = {}) {
     status: 'PENDING',
     listing: fakeListing(),
     payments: [],
+    disputes: [],
     ...overrides,
   };
 }
@@ -534,5 +539,82 @@ describe('POST /api/v1/orders/:orderId/mark-collected', () => {
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/dispute', () => {
+  const body = { reason: 'Item arrived damaged', evidenceImageUrls: ['https://res.cloudinary.com/x/disputes/a.jpg'] };
+
+  it('creates an OPEN dispute for a PAID order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    paymentDisputeCreateMock.mockResolvedValue({
+      id: 'dispute-1',
+      orderId: ORDER_ID,
+      status: 'OPEN',
+      reason: body.reason,
+      evidenceImageUrls: body.evidenceImageUrls,
+      createdAt: new Date('2026-07-10T00:00:00Z'),
+    });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('OPEN');
+    expect(paymentDisputeCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orderId: ORDER_ID, raisedById: BUYER_ID, reason: body.reason }),
+      }),
+    );
+  });
+
+  it('allows raising a dispute while SHIPPED too', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'SHIPPED' }));
+    paymentDisputeCreateMock.mockResolvedValue({ id: 'dispute-2', orderId: ORDER_ID, status: 'OPEN', ...body, createdAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(201);
+  });
+
+  it('403s when the caller is not the buyer', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID', buyerId: 'someone-else' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(403);
+    expect(paymentDisputeCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s once the order has already been DELIVERED (escrow already released)', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'DELIVERED' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('409s when a dispute is already open for this order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID', disputes: [{ id: 'existing-dispute', status: 'OPEN' }] }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DISPUTE_ALREADY_OPEN');
+  });
+
+  it('400s when no evidence image is provided', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/dispute`)
+      .set(AUTH_HEADER)
+      .send({ reason: 'Item arrived damaged', evidenceImageUrls: [] });
+
+    expect(res.status).toBe(400);
+    expect(paymentDisputeCreateMock).not.toHaveBeenCalled();
   });
 });

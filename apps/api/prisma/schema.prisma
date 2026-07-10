@@ -395,14 +395,15 @@ model EscrowLedgerEntry {
 // block a fresh one, so only the FK relation exists, not a uniqueness
 // constraint.
 model PaymentDispute {
-  id              String        @id @default(uuid()) @db.Uuid
-  orderId         String        @map("order_id") @db.Uuid
-  raisedById      String        @map("raised_by_id") @db.Uuid
-  reason          String
-  status          DisputeStatus @default(OPEN)
-  resolutionNotes String?       @map("resolution_notes")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  resolvedAt      DateTime?     @map("resolved_at")
+  id                String        @id @default(uuid()) @db.Uuid
+  orderId           String        @map("order_id") @db.Uuid
+  raisedById        String        @map("raised_by_id") @db.Uuid
+  reason            String
+  evidenceImageUrls String[]      @default([]) @map("evidence_image_urls")
+  status            DisputeStatus @default(OPEN)
+  resolutionNotes   String?       @map("resolution_notes")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  resolvedAt        DateTime?     @map("resolved_at")
 
   order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   raisedBy User  @relation(fields: [raisedById], references: [id], onDelete: Cascade)

@@ -13,8 +13,14 @@ import {
 import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
+import { signDisputeEvidenceUpload } from '../lib/cloudinary';
 
 const router = Router();
+
+const raiseDisputeSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+  evidenceImageUrls: z.array(z.string().url()).min(1).max(6),
+});
 
 const createOrderSchema = z.object({
   listingId: z.string().uuid(),
@@ -321,6 +327,67 @@ router.post(
     await prisma.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
 
     res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
+  },
+);
+
+router.post('/dispute-upload-signature', requireAuth, (_req: AuthenticatedRequest, res: Response) => {
+  res.status(200).json({ data: signDisputeEvidenceUpload() });
+});
+
+router.post(
+  '/:orderId/dispute',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const parsed = raiseDisputeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { disputes: { where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } } },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.buyerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your order', 403));
+      return;
+    }
+    // Only disputable while funds are still sitting in escrow — once
+    // DELIVERED (whether via buyer confirmation or auto-release) there's no
+    // held balance left for a dispute to pause.
+    if (order.status !== 'PAID' && order.status !== 'SHIPPED') {
+      next(new ApiError('INVALID_STATE', 'This order is not eligible for a dispute', 409));
+      return;
+    }
+    if (order.disputes.length > 0) {
+      next(new ApiError('DISPUTE_ALREADY_OPEN', 'A dispute is already open for this order', 409));
+      return;
+    }
+
+    const dispute = await prisma.paymentDispute.create({
+      data: {
+        orderId: order.id,
+        raisedById: req.userId!,
+        reason: parsed.data.reason,
+        evidenceImageUrls: parsed.data.evidenceImageUrls,
+      },
+    });
+
+    res.status(201).json({
+      data: {
+        id: dispute.id,
+        orderId: dispute.orderId,
+        status: dispute.status,
+        reason: dispute.reason,
+        evidenceImageUrls: dispute.evidenceImageUrls,
+        createdAt: dispute.createdAt,
+      },
+    });
   },
 );
 

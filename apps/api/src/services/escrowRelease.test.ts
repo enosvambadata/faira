@@ -31,6 +31,7 @@ describe('releaseEscrowFunds', () => {
       status: 'PAID',
       priceAtPurchase: 100,
       listing: { sellerId: 'seller-1' },
+      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -58,6 +59,7 @@ describe('releaseEscrowFunds', () => {
       status: 'SHIPPED',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
+      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -72,6 +74,7 @@ describe('releaseEscrowFunds', () => {
       status: 'PENDING',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
+      disputes: [],
     });
 
     const result = await releaseEscrowFunds('order-3');
@@ -87,12 +90,29 @@ describe('releaseEscrowFunds', () => {
       status: 'PAID',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
+      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 0 });
 
     const result = await releaseEscrowFunds('order-4');
 
     expect(result.released).toBe(false);
+    expect(escrowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not release funds while an open dispute exists', async () => {
+    orderFindUniqueMock.mockResolvedValue({
+      id: 'order-5',
+      status: 'PAID',
+      priceAtPurchase: 50,
+      listing: { sellerId: 'seller-1' },
+      disputes: [{ id: 'dispute-1', status: 'OPEN' }],
+    });
+
+    const result = await releaseEscrowFunds('order-5');
+
+    expect(result.released).toBe(false);
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
     expect(escrowCreateMock).not.toHaveBeenCalled();
   });
 

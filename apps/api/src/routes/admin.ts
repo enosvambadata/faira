@@ -5,7 +5,7 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import { supabaseAdmin } from '../supabase';
 import { ApiError } from '../errors/ApiError';
 import { sendPushNotification } from '../lib/push';
-import { releaseEscrowFunds } from '../services/escrowRelease';
+import { releaseEscrowFunds, splitCommission } from '../services/escrowRelease';
 
 const router = Router();
 
@@ -176,7 +176,14 @@ router.post('/deletion-requests/:id/process', requireAdmin, async (req: Request<
 // (a human, or a cron pinger once one exists) is expected to poll these.
 router.get('/orders/delivery-reminders-due', requireAdmin, async (_req: Request, res: Response) => {
   const orders = await prisma.order.findMany({
-    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
+    where: {
+      status: 'PAID',
+      payments: { some: { status: 'CONFIRMED' } },
+      // An open dispute pauses the whole delivery-confirmation clock — a
+      // "please confirm delivery" nudge would be confusing once the buyer
+      // has already flagged a problem (SCRUM-57).
+      disputes: { none: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } },
+    },
     include: {
       listing: { select: { title: true } },
       payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 },
@@ -267,7 +274,14 @@ router.post(
 
 router.get('/orders/auto-release-due', requireAdmin, async (_req: Request, res: Response) => {
   const orders = await prisma.order.findMany({
-    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
+    where: {
+      status: 'PAID',
+      payments: { some: { status: 'CONFIRMED' } },
+      // Same dispute pause as delivery-reminders-due — releaseEscrowFunds
+      // would refuse anyway, but filtering here keeps this list honest
+      // about what's actually actionable (SCRUM-57).
+      disputes: { none: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } },
+    },
     include: { payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 } },
   });
 
@@ -296,6 +310,126 @@ router.post(
     }
 
     res.status(200).json({ data: { id: order.id, status: 'DELIVERED' } });
+  },
+);
+
+router.get('/disputes', requireAdmin, async (_req: Request, res: Response) => {
+  const disputes = await prisma.paymentDispute.findMany({
+    where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      order: { select: { id: true, priceAtPurchase: true, status: true, listing: { select: { title: true, sellerId: true } } } },
+      raisedBy: { select: { id: true, displayName: true } },
+    },
+  });
+
+  res.status(200).json({
+    data: disputes.map(d => ({
+      id: d.id,
+      orderId: d.orderId,
+      reason: d.reason,
+      evidenceImageUrls: d.evidenceImageUrls,
+      status: d.status,
+      createdAt: d.createdAt,
+      buyer: d.raisedBy,
+      sellerId: d.order.listing.sellerId,
+      listingTitle: d.order.listing.title,
+      priceAtPurchase: d.order.priceAtPurchase.toString(),
+    })),
+  });
+});
+
+const resolveDisputeSchema = z.object({
+  refundAmount: z.number().nonnegative().optional(),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+router.post(
+  '/disputes/:id/resolve',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = resolveDisputeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const dispute = await prisma.paymentDispute.findUnique({
+      where: { id: req.params.id },
+      include: { order: { include: { listing: true } } },
+    });
+
+    if (!dispute) {
+      next(new ApiError('NOT_FOUND', 'Dispute not found', 404));
+      return;
+    }
+    if (dispute.status !== 'OPEN' && dispute.status !== 'UNDER_REVIEW') {
+      next(new ApiError('INVALID_STATE', 'This dispute has already been resolved', 409));
+      return;
+    }
+
+    const order = dispute.order;
+    const orderAmount = Number(order.priceAtPurchase);
+    const refundAmount = parsed.data.refundAmount ?? 0;
+
+    if (refundAmount > orderAmount) {
+      next(new ApiError('VALIDATION_ERROR', 'refundAmount cannot exceed the order price', 400));
+      return;
+    }
+    if (order.status !== 'PAID' && order.status !== 'SHIPPED') {
+      next(new ApiError('INVALID_STATE', 'Order is no longer eligible for dispute resolution', 409));
+      return;
+    }
+
+    // A refund of any size (full or partial) means the sale didn't
+    // complete normally — CANCELLED. A rejected dispute (no refund) is a
+    // normal completed sale, same as an undisputed delivery.
+    const newOrderStatus = refundAmount > 0 ? 'CANCELLED' : 'DELIVERED';
+
+    const { count } = await prisma.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: newOrderStatus },
+    });
+    if (count === 0) {
+      next(new ApiError('INVALID_STATE', 'Order changed state before this resolution could be applied', 409));
+      return;
+    }
+
+    const remainder = orderAmount - refundAmount;
+    const ledgerWrites = [];
+
+    if (refundAmount > 0) {
+      ledgerWrites.push(
+        prisma.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'REFUND', amount: refundAmount },
+        }),
+      );
+    }
+    if (remainder > 0) {
+      const { sellerAmount, commissionAmount } = splitCommission(remainder);
+      ledgerWrites.push(
+        prisma.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'RELEASE', amount: sellerAmount },
+        }),
+        prisma.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'COMMISSION', amount: commissionAmount },
+        }),
+      );
+    }
+
+    const resolvedStatus = refundAmount > 0 ? 'RESOLVED_BUYER' : 'RESOLVED_SELLER';
+    ledgerWrites.push(
+      prisma.paymentDispute.update({
+        where: { id: dispute.id },
+        data: { status: resolvedStatus, resolutionNotes: parsed.data.notes ?? null, resolvedAt: new Date() },
+      }),
+    );
+
+    await prisma.$transaction(ledgerWrites);
+
+    res.status(200).json({
+      data: { id: dispute.id, status: resolvedStatus, refundAmount, orderStatus: newOrderStatus },
+    });
   },
 );
 
