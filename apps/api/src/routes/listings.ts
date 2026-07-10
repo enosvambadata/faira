@@ -20,6 +20,8 @@ const createListingSchema = z.object({
   categoryId: z.string().uuid(),
   imageUrls: z.array(z.string().url()).min(1).max(6),
   deliveryOptions: z.array(z.string().min(1)).min(1),
+  // Drives delivery fee calculation (SCRUM-64).
+  weightTier: z.enum(['LIGHT', 'MEDIUM', 'HEAVY']),
   attributes: z.record(z.string(), z.string()).optional(),
   legalSourcingDeclared: z.literal(true),
 });
@@ -239,6 +241,7 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response, next: Nex
       city: listing.city,
       imageUrls: listing.imageUrls,
       deliveryOptions: listing.deliveryOptions,
+      weightTier: listing.weightTier,
       status: listing.status,
       category: listing.category,
       attributes: Object.fromEntries(listing.attributes.map(a => [a.key, a.value])),
@@ -294,6 +297,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       categoryId: listing.categoryId,
       imageUrls: listing.imageUrls,
       deliveryOptions: listing.deliveryOptions,
+      weightTier: listing.weightTier,
       status: listing.status,
       attributes: Object.fromEntries(listing.attributes.map(a => [a.key, a.value])),
       createdAt: listing.createdAt,

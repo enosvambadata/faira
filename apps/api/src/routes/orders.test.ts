@@ -18,12 +18,19 @@ const paymentDisputeCreateMock = vi.fn();
 const initiateWebPaymentMock = vi.fn();
 const initiateMobilePaymentMock = vi.fn();
 const pollPaymentStatusMock = vi.fn();
+const calculateDeliveryFeeMock = vi.fn();
+const userFindUniqueMock = vi.fn();
 
 vi.mock('../lib/paynow', () => ({
   initiateWebPayment: (...args: unknown[]) => initiateWebPaymentMock(...args),
   initiateMobilePayment: (...args: unknown[]) => initiateMobilePaymentMock(...args),
   pollPaymentStatus: (...args: unknown[]) => pollPaymentStatusMock(...args),
   isPaidStatus: (status: string) => status.toLowerCase() === 'paid',
+}));
+
+vi.mock('../services/deliveryFee', () => ({
+  calculateDeliveryFee: (...args: unknown[]) => calculateDeliveryFeeMock(...args),
+  FREE_DELIVERY_OPTION: 'Buyer collects',
 }));
 
 vi.mock('../supabase', () => ({
@@ -37,7 +44,10 @@ vi.mock('../supabase', () => ({
 
 vi.mock('../prisma', () => ({
   prisma: {
-    user: { upsert: vi.fn().mockResolvedValue({}) },
+    user: {
+      upsert: vi.fn().mockResolvedValue({}),
+      findUnique: (...args: unknown[]) => userFindUniqueMock(...args),
+    },
     listing: { findUnique: (...args: unknown[]) => listingFindUniqueMock(...args) },
     order: {
       create: (...args: unknown[]) => orderCreateMock(...args),
@@ -241,6 +251,51 @@ describe('GET /api/v1/orders/sales', () => {
     expect(orderFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listing: { sellerId: SELLER_ID } } }),
     );
+  });
+});
+
+describe('GET /api/v1/orders/delivery-fee', () => {
+  it("quotes a fee using the buyer's profile city and the listing's weight tier", async () => {
+    listingFindUniqueMock.mockResolvedValue({ weightTier: 'MEDIUM' });
+    userFindUniqueMock.mockResolvedValue({ city: 'Mutare' });
+    calculateDeliveryFeeMock.mockResolvedValue(4.5);
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/orders/delivery-fee')
+      .query({ listingId: LISTING_ID, deliveryOption: 'Courier' })
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ fee: 4.5 });
+    expect(calculateDeliveryFeeMock).toHaveBeenCalledWith('Mutare', 'MEDIUM', 'Courier');
+  });
+
+  it('404s when the listing does not exist', async () => {
+    listingFindUniqueMock.mockResolvedValue(null);
+    userFindUniqueMock.mockResolvedValue({ city: 'Harare' });
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/orders/delivery-fee')
+      .query({ listingId: LISTING_ID, deliveryOption: 'Courier' })
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("400s when the buyer hasn't set a profile city", async () => {
+    listingFindUniqueMock.mockResolvedValue({ weightTier: 'LIGHT' });
+    userFindUniqueMock.mockResolvedValue({ city: null });
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/orders/delivery-fee')
+      .query({ listingId: LISTING_ID, deliveryOption: 'Courier' })
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(400);
+    expect(calculateDeliveryFeeMock).not.toHaveBeenCalled();
   });
 });
 

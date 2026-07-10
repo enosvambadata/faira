@@ -16,11 +16,6 @@ import { listings as listingsApi, orders as ordersApi, ListingDetail, PaymentMet
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Checkout'>;
 
-// Real city/weight-based delivery pricing is SCRUM-64, not built yet — $0
-// is a deliberate placeholder so checkout's total isn't wrong in the
-// meantime, not an actual "free delivery" promise.
-const DELIVERY_FEE = 0;
-
 // Matches escrowRelease.ts's COMMISSION_RATE — shown here for transparency
 // only. It's deducted from the seller's payout at release time, not added
 // to what the buyer pays, so it's excluded from the total below.
@@ -46,6 +41,8 @@ export default function CheckoutScreen({ route, navigation }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [deliveryOption, setDeliveryOption] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryFeeLoading, setDeliveryFeeLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -72,8 +69,34 @@ export default function CheckoutScreen({ route, navigation }: Props) {
     })();
   }, [listingId]);
 
+  // Re-quoted whenever the buyer changes the delivery option — "Buyer
+  // collects" is always free, everything else depends on the buyer's
+  // profile city and the listing's weight tier (SCRUM-64).
+  useEffect(() => {
+    if (!deliveryOption) {
+      setDeliveryFee(0);
+      return;
+    }
+    let cancelled = false;
+    setDeliveryFeeLoading(true);
+    ordersApi
+      .deliveryFeeQuote(listingId, deliveryOption)
+      .then(result => {
+        if (!cancelled) setDeliveryFee(result.fee);
+      })
+      .catch(() => {
+        if (!cancelled) setDeliveryFee(0);
+      })
+      .finally(() => {
+        if (!cancelled) setDeliveryFeeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, deliveryOption]);
+
   const itemPrice = listing ? Number(listing.price) : 0;
-  const total = itemPrice + DELIVERY_FEE;
+  const total = itemPrice + deliveryFee;
   const platformFee = Math.round(itemPrice * PLATFORM_FEE_RATE * 100) / 100;
 
   const handleConfirm = async () => {
@@ -272,7 +295,11 @@ export default function CheckoutScreen({ route, navigation }: Props) {
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Delivery fee</Text>
-          <Text style={styles.summaryValue}>${DELIVERY_FEE.toFixed(2)}</Text>
+          {deliveryFeeLoading ? (
+            <ActivityIndicator size="small" color={colors.muted} />
+          ) : (
+            <Text style={styles.summaryValue}>${deliveryFee.toFixed(2)}</Text>
+          )}
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Platform fee (paid by seller)</Text>

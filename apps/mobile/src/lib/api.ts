@@ -211,6 +211,8 @@ export interface UploadSignature {
   transformation: string;
 }
 
+export type WeightTier = 'LIGHT' | 'MEDIUM' | 'HEAVY';
+
 export interface Listing {
   id: string;
   title: string;
@@ -221,6 +223,7 @@ export interface Listing {
   categoryId: string;
   imageUrls: string[];
   deliveryOptions: string[];
+  weightTier: WeightTier;
   status: string;
   attributes: Record<string, string>;
   createdAt: string;
@@ -235,6 +238,7 @@ export interface CreateListingPayload {
   categoryId: string;
   imageUrls: string[];
   deliveryOptions: string[];
+  weightTier: WeightTier;
   attributes?: Record<string, string>;
   legalSourcingDeclared: true;
 }
@@ -267,6 +271,7 @@ export interface ListingDetail {
   city: string;
   imageUrls: string[];
   deliveryOptions: string[];
+  weightTier: WeightTier;
   status: string;
   category: { id: string; name: string; slug: string };
   attributes: Record<string, string>;
@@ -437,6 +442,12 @@ export const orders = {
   purchases: () => request<OrderListItem[]>('/api/v1/orders/purchases', { auth: true }),
 
   sales: () => request<OrderListItem[]>('/api/v1/orders/sales', { auth: true }),
+
+  deliveryFeeQuote: (listingId: string, deliveryOption: string) =>
+    request<{ fee: number }>(
+      `/api/v1/orders/delivery-fee?listingId=${encodeURIComponent(listingId)}&deliveryOption=${encodeURIComponent(deliveryOption)}`,
+      { auth: true },
+    ),
 
   pay: (id: string, payload: { method: PaymentMethod; email?: string; phone?: string }) =>
     request<PayOrderResult>(`/api/v1/orders/${id}/pay`, { method: 'POST', body: payload, auth: true }),
