@@ -148,6 +148,63 @@ describe('POST /api/v1/orders', () => {
   });
 });
 
+describe('GET /api/v1/orders/:orderId', () => {
+  function fakeOrderDetail(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      id: ORDER_ID,
+      buyerId: BUYER_ID,
+      priceAtPurchase: { toString: () => '45.50' },
+      status: 'PAID',
+      createdAt: new Date('2026-07-10T00:00:00Z'),
+      updatedAt: new Date('2026-07-10T00:00:00Z'),
+      listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'], sellerId: SELLER_ID },
+      escrowEntries: [],
+      ...overrides,
+    };
+  }
+
+  it('shows the seller a Paid - Awaiting Delivery status while escrow is held', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail());
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.displayStatus).toBe('Paid - Awaiting Delivery');
+    expect(res.body.data.sellerPayoutEligible).toBe(false);
+  });
+
+  it('marks sellerPayoutEligible true once escrow has a RELEASE entry', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail({ escrowEntries: [{ type: 'HOLD' }, { type: 'RELEASE' }] }));
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.sellerPayoutEligible).toBe(true);
+  });
+
+  it('404s when the order does not exist', async () => {
+    orderFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('403s for someone not part of the order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail());
+    getUserMock.mockResolvedValue({ data: { user: { id: 'stranger' } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('POST /api/v1/orders/:orderId/pay', () => {
   it('initiates an EcoCash mobile payment', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder());

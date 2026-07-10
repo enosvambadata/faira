@@ -11,6 +11,7 @@ import {
   MobileMoneyMethod,
 } from '../lib/paynow';
 import { confirmOrderPayment } from '../services/paymentConfirmation';
+import { displayStatus } from '../lib/orderStateMachine';
 
 const router = Router();
 
@@ -65,6 +66,50 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     },
   });
 });
+
+router.get(
+  '/:orderId',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: {
+        listing: { select: { id: true, title: true, imageUrls: true, sellerId: true } },
+        escrowEntries: { select: { type: true } },
+      },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.buyerId !== req.userId && order.listing.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not part of this order', 403));
+      return;
+    }
+
+    res.status(200).json({
+      data: {
+        id: order.id,
+        buyerId: order.buyerId,
+        sellerId: order.listing.sellerId,
+        priceAtPurchase: order.priceAtPurchase.toString(),
+        status: order.status,
+        displayStatus: displayStatus(order.status),
+        // True once the seller's escrow HOLD for this order has been
+        // released (SCRUM-55) — while PAID it's held, not yet payable.
+        sellerPayoutEligible: order.escrowEntries.some(e => e.type === 'RELEASE'),
+        listing: {
+          id: order.listing.id,
+          title: order.listing.title,
+          imageUrl: order.listing.imageUrls[0] ?? null,
+        },
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+      },
+    });
+  },
+);
 
 router.post('/:orderId/pay', requireAuth, async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
   const parsed = payOrderSchema.safeParse(req.body);

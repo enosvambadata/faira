@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { canTransition } from '../lib/orderStateMachine';
 
 // Called from both the buyer-facing poll route and the Paynow result
 // webhook — either can win the race to confirm a payment, so this uses an
@@ -16,7 +17,11 @@ export async function confirmOrderPayment(orderId: string, paynowReference: stri
   if (!order) return null;
 
   const pendingPayment = order.payments[0];
-  if (!pendingPayment) return order;
+  // canTransition guards against confirming a payment that arrives for an
+  // order that's no longer PENDING (e.g. already cancelled) — leave both
+  // the order and the stray payment untouched rather than silently
+  // marking it CONFIRMED with no matching escrow entry.
+  if (!pendingPayment || !canTransition(order.status, 'PAID')) return order;
 
   const { count } = await prisma.order.updateMany({
     where: { id: order.id, status: 'PENDING' },
