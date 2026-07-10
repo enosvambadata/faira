@@ -34,8 +34,8 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
 ];
 
 type Outcome =
-  | { kind: 'cod' }
-  | { kind: 'redirect'; url: string }
+  | { kind: 'cod'; orderId: string }
+  | { kind: 'redirect'; url: string; orderId: string }
   | { kind: 'mobile'; instructions: string; orderId: string };
 
 export default function CheckoutScreen({ route, navigation }: Props) {
@@ -100,9 +100,9 @@ export default function CheckoutScreen({ route, navigation }: Props) {
       });
 
       if (paymentMethod === 'CASH_ON_DELIVERY') {
-        setOutcome({ kind: 'cod' });
+        setOutcome({ kind: 'cod', orderId: order.id });
       } else if (payResult.redirectUrl) {
-        setOutcome({ kind: 'redirect', url: payResult.redirectUrl });
+        setOutcome({ kind: 'redirect', url: payResult.redirectUrl, orderId: order.id });
         Linking.openURL(payResult.redirectUrl);
       } else {
         setOutcome({ kind: 'mobile', instructions: payResult.instructions ?? 'Follow the prompt on your phone to complete payment.', orderId: order.id });
@@ -185,6 +185,12 @@ export default function CheckoutScreen({ route, navigation }: Props) {
               {statusMessage && <Text style={styles.statusMessage}>{statusMessage}</Text>}
             </>
           )}
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={() => navigation.replace('OrderTracking', { orderId: outcome.orderId })}
+          >
+            <Text style={styles.submitButtonText}>Track Order</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.doneButton} onPress={() => navigation.popToTop()}>
             <Text style={styles.doneButtonText}>Done</Text>
           </TouchableOpacity>

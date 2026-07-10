@@ -12,10 +12,60 @@ import {
 } from '../lib/paynow';
 import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
+import { OrderStatus } from '@prisma/client';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
 import { signDisputeEvidenceUpload } from '../lib/cloudinary';
 
 const router = Router();
+
+interface TimelineEntry {
+  status: OrderStatus;
+  label: string;
+  at: Date;
+}
+
+// Reconstructed from timestamps that already exist elsewhere (payment
+// confirmation, shipping, escrow release, dispute records) rather than a
+// dedicated status-history table — every status this app can currently
+// reach already has an accurate timestamp source somewhere, so a new
+// table (and threading writes through every transition call site across
+// SCRUM-53/55/56/57/60) would just duplicate data that's already correct.
+function buildOrderTimeline(order: {
+  status: OrderStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  shippedAt: Date | null;
+  payments: { confirmedAt: Date | null }[];
+  escrowEntries: { type: string; createdAt: Date }[];
+  disputes: { createdAt: Date; resolvedAt: Date | null }[];
+}): TimelineEntry[] {
+  const entries: TimelineEntry[] = [{ status: 'PENDING', label: displayStatus('PENDING'), at: order.createdAt }];
+
+  const confirmedAt = order.payments.find(p => p.confirmedAt)?.confirmedAt;
+  if (confirmedAt) {
+    entries.push({ status: 'PAID', label: displayStatus('PAID'), at: confirmedAt });
+  }
+
+  if (order.shippedAt) {
+    entries.push({ status: 'SHIPPED', label: displayStatus('SHIPPED'), at: order.shippedAt });
+  }
+
+  const latestDispute = order.disputes[0];
+  if (latestDispute) {
+    entries.push({ status: 'DISPUTED', label: displayStatus('DISPUTED'), at: latestDispute.createdAt });
+  }
+
+  if (order.status === 'COMPLETED') {
+    const releasedAt = order.escrowEntries.find(e => e.type === 'RELEASE')?.createdAt;
+    entries.push({ status: 'COMPLETED', label: displayStatus('COMPLETED'), at: releasedAt ?? order.updatedAt });
+  } else if (order.status === 'REFUNDED') {
+    entries.push({ status: 'REFUNDED', label: displayStatus('REFUNDED'), at: latestDispute?.resolvedAt ?? order.updatedAt });
+  } else if (order.status === 'CANCELLED') {
+    entries.push({ status: 'CANCELLED', label: displayStatus('CANCELLED'), at: order.updatedAt });
+  }
+
+  return entries;
+}
 
 const raiseDisputeSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
@@ -108,7 +158,9 @@ router.get(
       where: { id: req.params.orderId },
       include: {
         listing: { select: { id: true, title: true, imageUrls: true, sellerId: true } },
-        escrowEntries: { select: { type: true } },
+        escrowEntries: { select: { type: true, createdAt: true } },
+        payments: { select: { confirmedAt: true } },
+        disputes: { orderBy: { createdAt: 'desc' }, select: { createdAt: true, resolvedAt: true } },
       },
     });
 
@@ -137,6 +189,7 @@ router.get(
         // True once the seller's escrow HOLD for this order has been
         // released (SCRUM-55) — while PAID it's held, not yet payable.
         sellerPayoutEligible: order.escrowEntries.some(e => e.type === 'RELEASE'),
+        timeline: buildOrderTimeline(order),
         listing: {
           id: order.listing.id,
           title: order.listing.title,
