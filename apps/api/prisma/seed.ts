@@ -328,6 +328,58 @@ const TAXONOMY: CategoryNode[] = [
   },
 ];
 
+// Mirrors apps/mobile/src/data/cities.ts — kept as a literal list here
+// rather than importing across the app boundary, same tradeoff as the
+// TAXONOMY mirroring interests.ts above.
+const ZIMBABWE_CITIES = [
+  'Harare',
+  'Bulawayo',
+  'Chitungwiza',
+  'Mutare',
+  'Gweru',
+  'Kwekwe',
+  'Kadoma',
+  'Masvingo',
+  'Chinhoyi',
+  'Marondera',
+  'Norton',
+  'Ruwa',
+  'Victoria Falls',
+  'Bindura',
+  'Beitbridge',
+];
+
+// Placeholder starting rates (SCRUM-64) — the two largest metros are
+// cheapest to reach, everything else in range is a flat mid tier, and the
+// three most remote/border towns cost more. Admins adjust these via the
+// admin API; there's no dashboard, per this app's established pattern.
+const METRO_CITIES = new Set(['Harare', 'Bulawayo']);
+const REMOTE_CITIES = new Set(['Victoria Falls', 'Bindura', 'Beitbridge']);
+const BASE_FEE_BY_ZONE = { metro: 2, standard: 3, remote: 5 } as const;
+const WEIGHT_TIER_MULTIPLIER = { LIGHT: 1, MEDIUM: 1.5, HEAVY: 2.5 } as const;
+
+function baseFeeForCity(city: string): number {
+  if (METRO_CITIES.has(city)) return BASE_FEE_BY_ZONE.metro;
+  if (REMOTE_CITIES.has(city)) return BASE_FEE_BY_ZONE.remote;
+  return BASE_FEE_BY_ZONE.standard;
+}
+
+async function seedDeliveryFeeRates(): Promise<number> {
+  let count = 0;
+  for (const city of ZIMBABWE_CITIES) {
+    for (const weightTier of Object.keys(WEIGHT_TIER_MULTIPLIER) as (keyof typeof WEIGHT_TIER_MULTIPLIER)[]) {
+      const fee = Math.round(baseFeeForCity(city) * WEIGHT_TIER_MULTIPLIER[weightTier] * 100) / 100;
+      await prisma.deliveryFeeRate.upsert({
+        where: { city_weightTier: { city, weightTier } },
+        update: { fee },
+        create: { city, weightTier, fee },
+      });
+      count += 1;
+    }
+  }
+  return count;
+}
+
 async function upsertNode(node: CategoryNode, parentId: string | null): Promise<number> {
   const category = await prisma.category.upsert({
     where: { slug: node.slug },
@@ -348,6 +400,9 @@ async function main() {
     total += await upsertNode(topLevel, null);
   }
   console.log(`Seeded ${total} categories across ${TAXONOMY.length} top-level branches.`);
+
+  const feeRateCount = await seedDeliveryFeeRates();
+  console.log(`Seeded ${feeRateCount} delivery fee rates across ${ZIMBABWE_CITIES.length} cities.`);
 }
 
 main()

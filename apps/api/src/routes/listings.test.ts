@@ -52,6 +52,7 @@ const VALID_PAYLOAD = {
   categoryId: '64d25c37-d8f0-4a11-b92e-ecb9b168f516',
   imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'],
   deliveryOptions: ['Seller delivers'],
+  weightTier: 'LIGHT',
   attributes: { size: '9', brand: 'Nike' },
   legalSourcingDeclared: true,
 };

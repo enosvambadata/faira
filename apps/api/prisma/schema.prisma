@@ -36,6 +36,12 @@ enum ShippingMethod {
   POSTAL
 }
 
+enum WeightTier {
+  LIGHT
+  MEDIUM
+  HEAVY
+}
+
 enum VerificationStatus {
   PENDING
   APPROVED
@@ -229,6 +235,10 @@ model Listing {
   city            String
   imageUrls       String[]         @map("image_urls")
   deliveryOptions String[]         @map("delivery_options")
+  // Drives delivery fee calculation (SCRUM-64) — defaulted to LIGHT so
+  // existing rows stay valid, but the sell flow requires an explicit
+  // choice for new listings.
+  weightTier      WeightTier       @default(LIGHT) @map("weight_tier")
   status          ListingStatus    @default(ACTIVE)
   deletedAt       DateTime?        @map("deleted_at")
   // The exact declaration text the seller agreed to and when — stored
@@ -453,4 +463,21 @@ model PayoutRequest {
   @@index([sellerId])
   @@index([status])
   @@map("payout_requests")
+}
+
+// Configurable by city and weight tier (SCRUM-64) — no admin dashboard
+// exists, so this is managed via the ADMIN_TOKEN-gated admin API, same
+// pattern as every other "configurable" thing in this app. A missing
+// (city, weightTier) row falls back to a hardcoded default in
+// deliveryFee.ts rather than failing checkout outright.
+model DeliveryFeeRate {
+  id         String     @id @default(uuid()) @db.Uuid
+  city       String
+  weightTier WeightTier @map("weight_tier")
+  fee        Decimal    @db.Decimal(10, 2)
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  @@unique([city, weightTier])
+  @@map("delivery_fee_rates")
 }

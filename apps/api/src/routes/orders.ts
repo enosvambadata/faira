@@ -12,6 +12,7 @@ import {
 } from '../lib/paynow';
 import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
+import { calculateDeliveryFee } from '../services/deliveryFee';
 import { OrderStatus } from '@prisma/client';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
 import { signDisputeEvidenceUpload } from '../lib/cloudinary';
@@ -193,6 +194,43 @@ router.get('/sales', requireAuth, async (req: AuthenticatedRequest, res: Respons
 
   res.status(200).json({ data: sales.map(orderListItem) });
 });
+
+const deliveryFeeQuerySchema = z.object({
+  listingId: z.string().uuid(),
+  deliveryOption: z.string().min(1),
+});
+
+// The buyer's own profile city (set at onboarding, SCRUM-27) stands in for
+// a delivery destination — there's no separate "delivery address" concept
+// in this app, and adding one wasn't part of what this ticket asked for.
+router.get(
+  '/delivery-fee',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const parsed = deliveryFeeQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid query params', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const [listing, buyer] = await Promise.all([
+      prisma.listing.findUnique({ where: { id: parsed.data.listingId }, select: { weightTier: true } }),
+      prisma.user.findUnique({ where: { id: req.userId! }, select: { city: true } }),
+    ]);
+
+    if (!listing) {
+      next(new ApiError('NOT_FOUND', 'Listing not found', 404));
+      return;
+    }
+    if (!buyer?.city) {
+      next(new ApiError('VALIDATION_ERROR', 'Set your city in your profile to get a delivery quote', 400));
+      return;
+    }
+
+    const fee = await calculateDeliveryFee(buyer.city, listing.weightTier, parsed.data.deliveryOption);
+    res.status(200).json({ data: { fee } });
+  },
+);
 
 router.get(
   '/:orderId',

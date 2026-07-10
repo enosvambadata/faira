@@ -24,6 +24,8 @@ const escrowLedgerEntryCreateMock = vi.fn();
 const payoutRequestFindManyMock = vi.fn();
 const payoutRequestFindUniqueMock = vi.fn();
 const payoutRequestUpdateMock = vi.fn();
+const deliveryFeeRateFindManyMock = vi.fn();
+const deliveryFeeRateUpsertMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -79,6 +81,10 @@ vi.mock('../prisma', () => ({
     },
     sellerProfile: { upsert: vi.fn() },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
+    deliveryFeeRate: {
+      findMany: (...args: unknown[]) => deliveryFeeRateFindManyMock(...args),
+      upsert: (...args: unknown[]) => deliveryFeeRateUpsertMock(...args),
+    },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -823,5 +829,70 @@ describe('POST /api/v1/admin/payout-requests/:id/mark-failed', () => {
 
     expect(res.status).toBe(409);
     expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/admin/delivery-fee-rates', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('lists configured rates', async () => {
+    deliveryFeeRateFindManyMock.mockResolvedValue([
+      { id: 'rate-1', city: 'Harare', weightTier: 'LIGHT', fee: { toString: () => '2.00' } },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/delivery-fee-rates').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ id: 'rate-1', city: 'Harare', weightTier: 'LIGHT', fee: '2.00' }]);
+  });
+});
+
+describe('PUT /api/v1/admin/delivery-fee-rates', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    deliveryFeeRateUpsertMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('upserts a rate for a city/weight tier', async () => {
+    deliveryFeeRateUpsertMock.mockResolvedValue({
+      id: 'rate-1',
+      city: 'Harare',
+      weightTier: 'HEAVY',
+      fee: { toString: () => '6.00' },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .put('/api/v1/admin/delivery-fee-rates')
+      .set(ADMIN_HEADER)
+      .send({ city: 'Harare', weightTier: 'HEAVY', fee: 6 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'rate-1', city: 'Harare', weightTier: 'HEAVY', fee: '6.00' });
+    expect(deliveryFeeRateUpsertMock).toHaveBeenCalledWith({
+      where: { city_weightTier: { city: 'Harare', weightTier: 'HEAVY' } },
+      update: { fee: 6 },
+      create: { city: 'Harare', weightTier: 'HEAVY', fee: 6 },
+    });
+  });
+
+  it('400s on an invalid payload', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .put('/api/v1/admin/delivery-fee-rates')
+      .set(ADMIN_HEADER)
+      .send({ city: 'Harare', weightTier: 'ULTRA_HEAVY', fee: 6 });
+
+    expect(res.status).toBe(400);
+    expect(deliveryFeeRateUpsertMock).not.toHaveBeenCalled();
   });
 });

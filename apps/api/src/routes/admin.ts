@@ -512,4 +512,42 @@ router.post(
   },
 );
 
+// Delivery fee rates (SCRUM-64) — configurable by city/weight tier, no
+// admin dashboard exists so this is the only way to adjust them. A
+// missing (city, weightTier) combo just falls back to a hardcoded
+// default at quote time (see deliveryFee.ts) rather than blocking
+// checkout, so there's no strict requirement to cover every combination.
+router.get('/delivery-fee-rates', requireAdmin, async (_req: Request, res: Response) => {
+  const rates = await prisma.deliveryFeeRate.findMany({
+    orderBy: [{ city: 'asc' }, { weightTier: 'asc' }],
+  });
+
+  res.status(200).json({
+    data: rates.map(r => ({ id: r.id, city: r.city, weightTier: r.weightTier, fee: r.fee.toString() })),
+  });
+});
+
+const upsertDeliveryFeeRateSchema = z.object({
+  city: z.string().trim().min(1),
+  weightTier: z.enum(['LIGHT', 'MEDIUM', 'HEAVY']),
+  fee: z.number().nonnegative(),
+});
+
+router.put('/delivery-fee-rates', requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = upsertDeliveryFeeRateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { city, weightTier, fee } = parsed.data;
+  const rate = await prisma.deliveryFeeRate.upsert({
+    where: { city_weightTier: { city, weightTier } },
+    update: { fee },
+    create: { city, weightTier, fee },
+  });
+
+  res.status(200).json({ data: { id: rate.id, city: rate.city, weightTier: rate.weightTier, fee: rate.fee.toString() } });
+});
+
 export default router;

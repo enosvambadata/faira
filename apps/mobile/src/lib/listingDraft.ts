@@ -12,6 +12,7 @@ export interface ListingDraft {
   size: string;
   brand: string;
   deliveryOptions: string[];
+  weightTier: string;
   photoUris: string[];
 }
 

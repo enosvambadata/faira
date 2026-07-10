@@ -27,6 +27,12 @@ const CONDITIONS = [
   { value: 'FAIR', label: 'Fair' },
 ];
 
+const WEIGHT_TIERS = [
+  { value: 'LIGHT', label: 'Light (e.g. clothing, phones)' },
+  { value: 'MEDIUM', label: 'Medium (e.g. shoes, small appliances)' },
+  { value: 'HEAVY', label: 'Heavy (e.g. furniture, large appliances)' },
+];
+
 const MAX_PHOTOS = 6;
 
 // Kept identical to LEGAL_SOURCING_DECLARATION_TEXT in apps/api/src/routes/listings.ts —
@@ -51,6 +57,7 @@ export default function SellScreen() {
   const [size, setSize] = useState('');
   const [brand, setBrand] = useState('');
   const [deliveryOptions, setDeliveryOptions] = useState<string[]>([]);
+  const [weightTier, setWeightTier] = useState('');
   const [legalSourcingChecked, setLegalSourcingChecked] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -73,11 +80,12 @@ export default function SellScreen() {
     size: '',
     brand: '',
     deliveryOptions: [],
+    weightTier: '',
     photoUris: [],
   });
   useEffect(() => {
-    draftRef.current = { title, description, price, condition, city, categoryId, size, brand, deliveryOptions, photoUris };
-  }, [title, description, price, condition, city, categoryId, size, brand, deliveryOptions, photoUris]);
+    draftRef.current = { title, description, price, condition, city, categoryId, size, brand, deliveryOptions, weightTier, photoUris };
+  }, [title, description, price, condition, city, categoryId, size, brand, deliveryOptions, weightTier, photoUris]);
 
   useEffect(() => {
     (async () => {
@@ -97,6 +105,7 @@ export default function SellScreen() {
         setSize(draft.size);
         setBrand(draft.brand);
         setDeliveryOptions(draft.deliveryOptions);
+        setWeightTier(draft.weightTier);
         setPhotoUris(draft.photoUris);
       } else {
         setCity(onboardingCity);
@@ -150,6 +159,7 @@ export default function SellScreen() {
     if (!price || Number.isNaN(priceNum) || priceNum <= 0) nextErrors.price = 'Enter a valid price';
     if (!city) nextErrors.city = 'Choose a city';
     if (deliveryOptions.length === 0) nextErrors.deliveryOptions = 'Choose at least 1 delivery option';
+    if (!weightTier) nextErrors.weightTier = 'Choose a weight tier';
     if (!legalSourcingChecked) nextErrors.legalSourcing = 'You must confirm this item was legally sourced';
 
     setErrors(nextErrors);
@@ -188,6 +198,7 @@ export default function SellScreen() {
         categoryId,
         imageUrls,
         deliveryOptions,
+        weightTier: weightTier as 'LIGHT' | 'MEDIUM' | 'HEAVY',
         attributes,
         legalSourcingDeclared: true,
       });
@@ -324,6 +335,20 @@ export default function SellScreen() {
         })}
       </View>
       {errors.deliveryOptions && <Text style={styles.error}>{errors.deliveryOptions}</Text>}
+
+      <Text style={styles.label}>Weight</Text>
+      <View style={styles.chipRow}>
+        {WEIGHT_TIERS.map(({ value, label }) => (
+          <TouchableOpacity
+            key={value}
+            style={[styles.chip, weightTier === value && styles.chipSelected]}
+            onPress={() => setWeightTier(value)}
+          >
+            <Text style={[styles.chipText, weightTier === value && styles.chipTextSelected]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {errors.weightTier && <Text style={styles.error}>{errors.weightTier}</Text>}
 
       <TouchableOpacity
         testID="legal-sourcing-checkbox"
