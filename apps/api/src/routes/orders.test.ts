@@ -11,6 +11,7 @@ const paymentUpdateMock = vi.fn();
 const paymentFindFirstMock = vi.fn();
 const escrowCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const sellerProfileFindUniqueMock = vi.fn();
 
 const initiateWebPaymentMock = vi.fn();
 const initiateMobilePaymentMock = vi.fn();
@@ -48,6 +49,9 @@ vi.mock('../prisma', () => ({
     },
     escrowLedgerEntry: {
       create: (...args: unknown[]) => escrowCreateMock(...args),
+    },
+    sellerProfile: {
+      findUnique: (...args: unknown[]) => sellerProfileFindUniqueMock(...args),
     },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -401,5 +405,134 @@ describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/pay (cash on delivery)', () => {
+  it('creates a PENDING cash-on-delivery payment without calling Paynow when the seller has COD enabled', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder());
+    sellerProfileFindUniqueMock.mockResolvedValue({ codEnabled: true });
+    paymentCreateMock.mockResolvedValue({ id: 'payment-cod-1' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/pay`)
+      .set(AUTH_HEADER)
+      .send({ method: 'CASH_ON_DELIVERY' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.instructions).toContain('Pay in cash');
+    expect(initiateWebPaymentMock).not.toHaveBeenCalled();
+    expect(initiateMobilePaymentMock).not.toHaveBeenCalled();
+    expect(paymentCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ method: 'CASH_ON_DELIVERY', status: 'PENDING' }) }),
+    );
+  });
+
+  it('400s when the seller has not enabled COD', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder());
+    sellerProfileFindUniqueMock.mockResolvedValue({ codEnabled: false });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/pay`)
+      .set(AUTH_HEADER)
+      .send({ method: 'CASH_ON_DELIVERY' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('COD_NOT_AVAILABLE');
+    expect(paymentCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when the seller has no seller profile at all', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder());
+    sellerProfileFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/pay`)
+      .set(AUTH_HEADER)
+      .send({ method: 'CASH_ON_DELIVERY' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('COD_NOT_AVAILABLE');
+  });
+
+  it('does not require an email for cash on delivery', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder());
+    sellerProfileFindUniqueMock.mockResolvedValue({ codEnabled: true });
+    paymentCreateMock.mockResolvedValue({ id: 'payment-cod-2' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/pay`)
+      .set(AUTH_HEADER)
+      .send({ method: 'CASH_ON_DELIVERY' });
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/mark-collected', () => {
+  function fakeCodOrder(overrides: Partial<Record<string, unknown>> = {}) {
+    return fakeOrder({
+      status: 'PENDING',
+      payments: [{ id: 'payment-cod-1', method: 'CASH_ON_DELIVERY', status: 'PENDING' }],
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+  });
+
+  it('marks the order DELIVERED and the payment CONFIRMED, with no escrow entries', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeCodOrder());
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('DELIVERED');
+    expect(orderUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: ORDER_ID, status: 'PENDING' },
+      data: { status: 'DELIVERED' },
+    });
+    expect(paymentUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'CONFIRMED' }) }),
+    );
+    expect(escrowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('403s when the caller is not the listing seller', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeCodOrder());
+    getUserMock.mockResolvedValue({ data: { user: { id: 'not-the-seller' } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('409s when the order was not paid by cash on delivery', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({ status: 'PENDING', payments: [{ id: 'p', method: 'ECOCASH', status: 'PENDING' }] }),
+    );
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the order is already DELIVERED', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeCodOrder({ status: 'DELIVERED' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
   });
 });

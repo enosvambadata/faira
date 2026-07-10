@@ -1,7 +1,15 @@
 import { prisma } from '../prisma';
-import { canTransition } from '../lib/orderStateMachine';
+import { OrderStatus } from '@prisma/client';
 
 const COMMISSION_RATE = 0.05;
+
+// Deliberately narrower than the state machine's generic PAID/SHIPPED ->
+// DELIVERED *and* PENDING -> DELIVERED (the latter added for cash-on-
+// delivery, SCRUM-56). Only PAID/SHIPPED orders ever had funds put into
+// escrow — a PENDING order reaching DELIVERED went through mark-collected
+// (COD) instead, which never created a HOLD entry and must never create a
+// RELEASE/COMMISSION pair here.
+const ESCROW_RELEASABLE_STATUSES: OrderStatus[] = ['PAID', 'SHIPPED'];
 
 // Rounds to cents first so seller + commission always sum to exactly the
 // original amount — computing both independently from percentages could
@@ -23,7 +31,7 @@ export async function releaseEscrowFunds(orderId: string) {
   });
   if (!order) return { released: false, order: null };
 
-  if (!canTransition(order.status, 'DELIVERED')) {
+  if (!ESCROW_RELEASABLE_STATUSES.includes(order.status)) {
     return { released: false, order };
   }
 

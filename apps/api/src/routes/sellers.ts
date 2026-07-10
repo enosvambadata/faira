@@ -1,9 +1,33 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { ApiError } from '../errors/ApiError';
 
 const router = Router();
+
+const sellerSettingsSchema = z.object({
+  codEnabled: z.boolean(),
+});
+
+// /me/settings, not /:id/settings — this only ever operates on the caller's
+// own profile, so there's no seller-id param or ownership check needed.
+router.patch('/me/settings', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const parsed = sellerSettingsSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid seller settings payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const profile = await prisma.sellerProfile.upsert({
+    where: { userId: req.userId! },
+    update: { codEnabled: parsed.data.codEnabled },
+    create: { userId: req.userId!, codEnabled: parsed.data.codEnabled },
+  });
+
+  res.status(200).json({ data: { codEnabled: profile.codEnabled } });
+});
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
   const sellerId = req.params.id;

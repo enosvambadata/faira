@@ -10,6 +10,7 @@ const followFindUniqueMock = vi.fn();
 const followUpsertMock = vi.fn();
 const followDeleteManyMock = vi.fn();
 const conversationCountMock = vi.fn();
+const sellerProfileUpsertMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -35,6 +36,7 @@ vi.mock('../prisma', () => ({
       deleteMany: (...args: unknown[]) => followDeleteManyMock(...args),
     },
     conversation: { count: (...args: unknown[]) => conversationCountMock(...args) },
+    sellerProfile: { upsert: (...args: unknown[]) => sellerProfileUpsertMock(...args) },
   },
 }));
 
@@ -236,5 +238,50 @@ describe('DELETE /api/v1/sellers/:id/follow', () => {
 
     expect(res.status).toBe(401);
     expect(followDeleteManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/sellers/me/settings', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    sellerProfileUpsertMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+  });
+
+  it('enables cash on delivery for the caller', async () => {
+    sellerProfileUpsertMock.mockResolvedValue({ codEnabled: true });
+
+    const app = createApp();
+    const res = await request(app)
+      .patch('/api/v1/sellers/me/settings')
+      .set(AUTH_HEADER)
+      .send({ codEnabled: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ codEnabled: true });
+    expect(sellerProfileUpsertMock).toHaveBeenCalledWith({
+      where: { userId: SELLER_ID },
+      update: { codEnabled: true },
+      create: { userId: SELLER_ID, codEnabled: true },
+    });
+  });
+
+  it('400s on an invalid payload', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .patch('/api/v1/sellers/me/settings')
+      .set(AUTH_HEADER)
+      .send({ codEnabled: 'yes' });
+
+    expect(res.status).toBe(400);
+    expect(sellerProfileUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).patch('/api/v1/sellers/me/settings').send({ codEnabled: true });
+
+    expect(res.status).toBe(401);
+    expect(sellerProfileUpsertMock).not.toHaveBeenCalled();
   });
 });

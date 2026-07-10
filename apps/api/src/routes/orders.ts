@@ -12,7 +12,7 @@ import {
 } from '../lib/paynow';
 import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
-import { displayStatus } from '../lib/orderStateMachine';
+import { canTransition, displayStatus } from '../lib/orderStateMachine';
 
 const router = Router();
 
@@ -22,11 +22,15 @@ const createOrderSchema = z.object({
 
 const payOrderSchema = z
   .object({
-    method: z.enum(['ECOCASH', 'ONEMONEY', 'ZIMSWITCH']),
-    email: z.email(),
+    method: z.enum(['ECOCASH', 'ONEMONEY', 'ZIMSWITCH', 'CASH_ON_DELIVERY']),
+    email: z.email().optional(),
     phone: z.string().min(9).optional(),
   })
-  .refine(data => data.method === 'ZIMSWITCH' || !!data.phone, {
+  .refine(data => data.method === 'CASH_ON_DELIVERY' || !!data.email, {
+    message: 'email is required for online payment methods',
+    path: ['email'],
+  })
+  .refine(data => !['ECOCASH', 'ONEMONEY'].includes(data.method) || !!data.phone, {
     message: 'phone is required for EcoCash and OneMoney payments',
     path: ['phone'],
   });
@@ -140,6 +144,27 @@ router.post('/:orderId/pay', requireAuth, async (req: AuthenticatedRequest & Req
   const { method, email, phone } = parsed.data;
   const amount = Number(order.priceAtPurchase);
 
+  if (method === 'CASH_ON_DELIVERY') {
+    const sellerProfile = await prisma.sellerProfile.findUnique({ where: { userId: order.listing.sellerId } });
+    if (!sellerProfile?.codEnabled) {
+      next(new ApiError('COD_NOT_AVAILABLE', 'Cash on delivery is not available for this seller', 400));
+      return;
+    }
+
+    const payment = await prisma.payment.create({
+      data: { orderId: order.id, method, amount: order.priceAtPurchase, status: 'PENDING' },
+    });
+
+    res.status(200).json({
+      data: {
+        paymentId: payment.id,
+        redirectUrl: null,
+        instructions: 'Pay in cash when your order is delivered.',
+      },
+    });
+    return;
+  }
+
   const payment = await prisma.payment.create({
     data: { orderId: order.id, method, amount: order.priceAtPurchase, status: 'PENDING' },
   });
@@ -148,10 +173,10 @@ router.post('/:orderId/pay', requireAuth, async (req: AuthenticatedRequest & Req
   try {
     result =
       method === 'ZIMSWITCH'
-        ? await initiateWebPayment(payment.id, email, amount, order.listing.title)
+        ? await initiateWebPayment(payment.id, email!, amount, order.listing.title)
         : await initiateMobilePayment(
             payment.id,
-            email,
+            email!,
             amount,
             order.listing.title,
             phone!,
@@ -248,6 +273,52 @@ router.post(
       next(new ApiError('INVALID_STATE', 'Order is not awaiting delivery confirmation', 409));
       return;
     }
+
+    res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
+  },
+);
+
+// Cash-on-delivery orders skip escrow entirely — payment and delivery are
+// the same physical event, so there's nothing to poll/confirm/release. The
+// seller marking it collected is the only signal the order happened at all.
+router.post(
+  '/:orderId/mark-collected',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { listing: true, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.listing.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your listing', 403));
+      return;
+    }
+
+    const payment = order.payments[0];
+    if (!payment || payment.method !== 'CASH_ON_DELIVERY') {
+      next(new ApiError('INVALID_STATE', 'This order was not paid by cash on delivery', 409));
+      return;
+    }
+    if (!canTransition(order.status, 'DELIVERED')) {
+      next(new ApiError('INVALID_STATE', 'Order is not awaiting collection', 409));
+      return;
+    }
+
+    const { count } = await prisma.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: 'DELIVERED' },
+    });
+    if (count === 0) {
+      next(new ApiError('INVALID_STATE', 'Order is not awaiting collection', 409));
+      return;
+    }
+
+    await prisma.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
 
     res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
   },

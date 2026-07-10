@@ -7,6 +7,10 @@ describe('canTransition', () => {
     expect(canTransition('PENDING', 'CANCELLED')).toBe(true);
   });
 
+  it('allows PENDING -> DELIVERED directly (cash on delivery)', () => {
+    expect(canTransition('PENDING', 'DELIVERED')).toBe(true);
+  });
+
   it('allows PAID -> SHIPPED and PAID -> CANCELLED', () => {
     expect(canTransition('PAID', 'SHIPPED')).toBe(true);
     expect(canTransition('PAID', 'CANCELLED')).toBe(true);
@@ -22,9 +26,8 @@ describe('canTransition', () => {
     expect(canTransition('CANCELLED', 'PENDING')).toBe(false);
   });
 
-  it('rejects skipping states', () => {
+  it('rejects PENDING -> SHIPPED', () => {
     expect(canTransition('PENDING', 'SHIPPED')).toBe(false);
-    expect(canTransition('PENDING', 'DELIVERED')).toBe(false);
   });
 });
 
