@@ -419,11 +419,24 @@ export interface PaymentStatusResult {
   paymentStatus: string | null;
 }
 
+export interface OrderListItem {
+  id: string;
+  priceAtPurchase: string;
+  status: string;
+  displayStatus: string;
+  createdAt: string;
+  listing: { id: string; title: string; imageUrl: string | null };
+}
+
 export const orders = {
   create: (payload: { listingId: string; deliveryOption: string }) =>
     request<OrderSummary>('/api/v1/orders', { method: 'POST', body: payload, auth: true }),
 
   get: (id: string) => request<OrderDetail>(`/api/v1/orders/${id}`, { auth: true }),
+
+  purchases: () => request<OrderListItem[]>('/api/v1/orders/purchases', { auth: true }),
+
+  sales: () => request<OrderListItem[]>('/api/v1/orders/sales', { auth: true }),
 
   pay: (id: string, payload: { method: PaymentMethod; email?: string; phone?: string }) =>
     request<PayOrderResult>(`/api/v1/orders/${id}/pay`, { method: 'POST', body: payload, auth: true }),

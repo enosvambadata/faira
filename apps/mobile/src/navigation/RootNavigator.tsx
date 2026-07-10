@@ -9,6 +9,7 @@ import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
 import EditListingScreen from '@/screens/listing/EditListingScreen';
 import CheckoutScreen from '@/screens/checkout/CheckoutScreen';
 import OrderTrackingScreen from '@/screens/order/OrderTrackingScreen';
+import OrdersScreen from '@/screens/orders/OrdersScreen';
 import FilterScreen from '@/screens/home/FilterScreen';
 import SavedItemsScreen from '@/screens/wishlist/SavedItemsScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
@@ -65,6 +66,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         name="OrderTracking"
         component={OrderTrackingScreen}
         options={{ title: 'Track Order' }}
+      />
+      <Stack.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{ title: 'My Orders' }}
       />
       <Stack.Screen
         name="Filters"

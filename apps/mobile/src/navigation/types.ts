@@ -33,6 +33,7 @@ export type RootStackParamList = {
   EditListing: { listingId: string };
   Checkout: { listingId: string };
   OrderTracking: { orderId: string };
+  Orders: undefined;
   Filters: { current: ListingFilters; onApply: (filters: ListingFilters) => void };
   SavedItems: undefined;
   Chat: { listingId: string };
