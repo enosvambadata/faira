@@ -27,6 +27,16 @@ const createOrderSchema = z.object({
   deliveryOption: z.string().min(1),
 });
 
+const shipOrderSchema = z
+  .object({
+    shippingMethod: z.enum(['MEETUP', 'COURIER', 'POSTAL']),
+    trackingReference: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine(data => data.shippingMethod === 'MEETUP' || !!data.trackingReference, {
+    message: 'trackingReference is required for courier and postal shipping',
+    path: ['trackingReference'],
+  });
+
 const payOrderSchema = z
   .object({
     method: z.enum(['ECOCASH', 'ONEMONEY', 'ZIMSWITCH', 'CASH_ON_DELIVERY']),
@@ -120,6 +130,10 @@ router.get(
         deliveryOption: order.deliveryOption,
         status: order.status,
         displayStatus: displayStatus(order.status),
+        // Filled in once the seller ships (SCRUM-61) — null until then.
+        shippingMethod: order.shippingMethod,
+        trackingReference: order.trackingReference,
+        shippedAt: order.shippedAt,
         // True once the seller's escrow HOLD for this order has been
         // released (SCRUM-55) — while PAID it's held, not yet payable.
         sellerPayoutEligible: order.escrowEntries.some(e => e.type === 'RELEASE'),
@@ -267,6 +281,70 @@ router.get(
       data: {
         orderStatus: fresh!.status,
         paymentStatus: fresh!.payments[0]?.status ?? null,
+      },
+    });
+  },
+);
+
+// Optional for now — PAID orders can still skip straight to COMPLETED via
+// confirm-delivery/auto-release without ever calling this (SCRUM-56's cash
+// on delivery has its own separate path entirely, mark-collected). A
+// seller who does ship gives the buyer a real method + tracking reference
+// to see on the order detail screen; one who doesn't just leaves those
+// fields null. Making this mandatory is a bigger behavior change to
+// SCRUM-53/55/56's already-shipped flows than this ticket asked for.
+router.post(
+  '/:orderId/ship',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const parsed = shipOrderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { listing: true },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.listing.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your listing', 403));
+      return;
+    }
+    if (!canTransition(order.status, 'SHIPPED')) {
+      next(new ApiError('INVALID_STATE', 'Order is not awaiting shipment', 409));
+      return;
+    }
+
+    const { shippingMethod, trackingReference } = parsed.data;
+    const resolvedTrackingReference = shippingMethod === 'MEETUP' ? null : (trackingReference ?? null);
+
+    const { count } = await prisma.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: {
+        status: 'SHIPPED',
+        shippingMethod,
+        trackingReference: resolvedTrackingReference,
+        shippedAt: new Date(),
+      },
+    });
+    if (count === 0) {
+      next(new ApiError('INVALID_STATE', 'Order is not awaiting shipment', 409));
+      return;
+    }
+
+    res.status(200).json({
+      data: {
+        id: order.id,
+        status: 'SHIPPED',
+        displayStatus: displayStatus('SHIPPED'),
+        shippingMethod,
+        trackingReference: resolvedTrackingReference,
       },
     });
   },

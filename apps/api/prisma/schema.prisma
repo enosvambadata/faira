@@ -30,6 +30,12 @@ enum OrderStatus {
   REFUNDED
 }
 
+enum ShippingMethod {
+  MEETUP
+  COURIER
+  POSTAL
+}
+
 enum VerificationStatus {
   PENDING
   APPROVED
@@ -335,6 +341,12 @@ model Order {
   // so "reminder not yet sent" is representable without a sentinel date.
   deliveryReminderDay3SentAt DateTime? @map("delivery_reminder_day3_sent_at")
   deliveryReminderDay4SentAt DateTime? @map("delivery_reminder_day4_sent_at")
+  // Fulfillment details the seller fills in when shipping (SCRUM-61) —
+  // distinct from deliveryOption, which the buyer picked at checkout.
+  // trackingReference only applies to COURIER/POSTAL, not MEETUP.
+  shippingMethod    ShippingMethod? @map("shipping_method")
+  trackingReference String?         @map("tracking_reference")
+  shippedAt         DateTime?       @map("shipped_at")
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
 
