@@ -193,7 +193,7 @@ describe('GET /api/v1/orders/:orderId', () => {
     };
   }
 
-  it('shows the seller a Paid - Awaiting Delivery status while escrow is held', async () => {
+  it('shows the seller a Paid status while escrow is held', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrderDetail());
     getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
 
@@ -201,7 +201,7 @@ describe('GET /api/v1/orders/:orderId', () => {
     const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.displayStatus).toBe('Paid - Awaiting Delivery');
+    expect(res.body.data.displayStatus).toBe('Paid');
     expect(res.body.data.sellerPayoutEligible).toBe(false);
   });
 
@@ -384,7 +384,7 @@ describe('GET /api/v1/orders/:orderId/payment-status', () => {
 });
 
 describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
-  it('releases escrow (95% to seller, 5% commission) and marks the order DELIVERED', async () => {
+  it('releases escrow (95% to seller, 5% commission) and marks the order COMPLETED', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -392,10 +392,10 @@ describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe('DELIVERED');
+    expect(res.body.data.status).toBe('COMPLETED');
     expect(orderUpdateManyMock).toHaveBeenCalledWith({
       where: { id: ORDER_ID, status: 'PAID' },
-      data: { status: 'DELIVERED' },
+      data: { status: 'COMPLETED' },
     });
     expect(escrowCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 43.22 }) }),
@@ -512,7 +512,7 @@ describe('POST /api/v1/orders/:orderId/mark-collected', () => {
     getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
   });
 
-  it('marks the order DELIVERED and the payment CONFIRMED, with no escrow entries', async () => {
+  it('marks the order COMPLETED and the payment CONFIRMED, with no escrow entries', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeCodOrder());
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -520,10 +520,10 @@ describe('POST /api/v1/orders/:orderId/mark-collected', () => {
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe('DELIVERED');
+    expect(res.body.data.status).toBe('COMPLETED');
     expect(orderUpdateManyMock).toHaveBeenCalledWith({
       where: { id: ORDER_ID, status: 'PENDING' },
-      data: { status: 'DELIVERED' },
+      data: { status: 'COMPLETED' },
     });
     expect(paymentUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'CONFIRMED' }) }),
@@ -553,8 +553,8 @@ describe('POST /api/v1/orders/:orderId/mark-collected', () => {
     expect(orderUpdateManyMock).not.toHaveBeenCalled();
   });
 
-  it('409s when the order is already DELIVERED', async () => {
-    orderFindUniqueMock.mockResolvedValue(fakeCodOrder({ status: 'DELIVERED' }));
+  it('409s when the order is already COMPLETED', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeCodOrder({ status: 'COMPLETED' }));
 
     const app = createApp();
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/mark-collected`).set(AUTH_HEADER);
@@ -568,6 +568,7 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
 
   it('creates an OPEN dispute for a PAID order', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
     paymentDisputeCreateMock.mockResolvedValue({
       id: 'dispute-1',
       orderId: ORDER_ID,
@@ -582,6 +583,10 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('OPEN');
+    expect(orderUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: ORDER_ID, status: 'PAID' },
+      data: { status: 'DISPUTED' },
+    });
     expect(paymentDisputeCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ orderId: ORDER_ID, raisedById: BUYER_ID, reason: body.reason }),
@@ -591,6 +596,7 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
 
   it('allows raising a dispute while SHIPPED too', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'SHIPPED' }));
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
     paymentDisputeCreateMock.mockResolvedValue({ id: 'dispute-2', orderId: ORDER_ID, status: 'OPEN', ...body, createdAt: new Date() });
 
     const app = createApp();
@@ -609,23 +615,24 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
     expect(paymentDisputeCreateMock).not.toHaveBeenCalled();
   });
 
-  it('409s once the order has already been DELIVERED (escrow already released)', async () => {
-    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'DELIVERED' }));
+  it('409s once the order has already COMPLETED (escrow already released)', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED' }));
 
     const app = createApp();
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
 
     expect(res.status).toBe(409);
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
   });
 
-  it('409s when a dispute is already open for this order', async () => {
-    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID', disputes: [{ id: 'existing-dispute', status: 'OPEN' }] }));
+  it('409s when the order is already DISPUTED', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'DISPUTED' }));
 
     const app = createApp();
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/dispute`).set(AUTH_HEADER).send(body);
 
     expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('DISPUTE_ALREADY_OPEN');
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('400s when no evidence image is provided', async () => {

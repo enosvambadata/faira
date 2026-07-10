@@ -31,7 +31,6 @@ describe('releaseEscrowFunds', () => {
       status: 'PAID',
       priceAtPurchase: 100,
       listing: { sellerId: 'seller-1' },
-      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -40,10 +39,10 @@ describe('releaseEscrowFunds', () => {
     expect(result.released).toBe(true);
     // The order row was fetched before the DB update — the returned object
     // must reflect the new status, not the stale pre-update one.
-    expect(result.order?.status).toBe('DELIVERED');
+    expect(result.order?.status).toBe('COMPLETED');
     expect(orderUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'order-1', status: 'PAID' },
-      data: { status: 'DELIVERED' },
+      data: { status: 'COMPLETED' },
     });
     expect(escrowCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 95, sellerId: 'seller-1' }) }),
@@ -59,7 +58,6 @@ describe('releaseEscrowFunds', () => {
       status: 'SHIPPED',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
-      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
 
@@ -74,7 +72,6 @@ describe('releaseEscrowFunds', () => {
       status: 'PENDING',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
-      disputes: [],
     });
 
     const result = await releaseEscrowFunds('order-3');
@@ -90,7 +87,6 @@ describe('releaseEscrowFunds', () => {
       status: 'PAID',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
-      disputes: [],
     });
     orderUpdateManyMock.mockResolvedValue({ count: 0 });
 
@@ -100,13 +96,12 @@ describe('releaseEscrowFunds', () => {
     expect(escrowCreateMock).not.toHaveBeenCalled();
   });
 
-  it('does not release funds while an open dispute exists', async () => {
+  it('does not release funds for a DISPUTED order', async () => {
     orderFindUniqueMock.mockResolvedValue({
       id: 'order-5',
-      status: 'PAID',
+      status: 'DISPUTED',
       priceAtPurchase: 50,
       listing: { sellerId: 'seller-1' },
-      disputes: [{ id: 'dispute-1', status: 'OPEN' }],
     });
 
     const result = await releaseEscrowFunds('order-5');
