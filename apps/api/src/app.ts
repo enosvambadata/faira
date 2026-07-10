@@ -14,6 +14,7 @@ import sellersRouter from './routes/sellers';
 import verificationRouter from './routes/verification';
 import accountRouter from './routes/account';
 import adminRouter from './routes/admin';
+import ordersRouter from './routes/orders';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -48,6 +49,7 @@ export function createApp(): Express {
   app.use('/api/v1/verification', verificationRouter);
   app.use('/api/v1/account', accountRouter);
   app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/orders', ordersRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);

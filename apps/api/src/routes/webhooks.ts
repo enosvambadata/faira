@@ -1,9 +1,12 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction, text } from 'express';
 import { Webhook } from 'standardwebhooks';
 import AfricasTalking from 'africastalking';
 import { ApiError } from '../errors/ApiError';
 import { logger } from '../logger';
 import type { RequestWithRawBody } from '../app';
+import { parsePaynowResultWebhook, isPaidStatus } from '../lib/paynow';
+import { confirmOrderPayment } from '../services/paymentConfirmation';
+import { prisma } from '../prisma';
 
 interface SendSmsHookPayload {
   user: { phone?: string };
@@ -67,5 +70,35 @@ router.post('/supabase/send-sms', async (req: Request, res: Response, next: Next
     next(error);
   }
 });
+
+// Paynow POSTs a form-urlencoded body here — express.json() (mounted
+// globally in app.ts) ignores non-JSON content types and leaves the stream
+// untouched, so a route-scoped text() parser can still read it raw. The SDK's
+// hash verification needs the raw query-string form, not a pre-parsed object.
+router.post(
+  '/paynow',
+  text({ type: () => true }),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const rawBody = req.body as string;
+      const update = parsePaynowResultWebhook(rawBody);
+
+      const payment = await prisma.payment.findFirst({
+        where: { paynowPollUrl: String(update.pollUrl) },
+      });
+
+      if (payment && isPaidStatus(String(update.status))) {
+        await confirmOrderPayment(payment.orderId, String(update.paynowReference));
+      } else if (payment && String(update.status).toLowerCase() === 'cancelled') {
+        await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
+      }
+
+      res.status(200).send('OK');
+    } catch (error) {
+      logger.error({ err: error }, 'paynow webhook failed');
+      next(new ApiError('WEBHOOK_ERROR', 'Failed to process Paynow webhook', 400));
+    }
+  },
+);
 
 export default router;

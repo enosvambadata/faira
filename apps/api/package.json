@@ -23,6 +23,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "multer": "^2.2.0",
+    "paynow": "^2.2.2",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "standardwebhooks": "^1.0.0",
