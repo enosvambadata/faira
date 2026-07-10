@@ -11,6 +11,7 @@ import {
   MobileMoneyMethod,
 } from '../lib/paynow';
 import { confirmOrderPayment } from '../services/paymentConfirmation';
+import { releaseEscrowFunds } from '../services/escrowRelease';
 import { displayStatus } from '../lib/orderStateMachine';
 
 const router = Router();
@@ -224,6 +225,31 @@ router.get(
         paymentStatus: fresh!.payments[0]?.status ?? null,
       },
     });
+  },
+);
+
+router.post(
+  '/:orderId/confirm-delivery',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.buyerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your order', 403));
+      return;
+    }
+
+    const { released } = await releaseEscrowFunds(order.id);
+    if (!released) {
+      next(new ApiError('INVALID_STATE', 'Order is not awaiting delivery confirmation', 409));
+      return;
+    }
+
+    res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
   },
 );
 

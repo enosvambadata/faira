@@ -352,3 +352,54 @@ describe('GET /api/v1/orders/:orderId/payment-status', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
+  it('releases escrow (95% to seller, 5% commission) and marks the order DELIVERED', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('DELIVERED');
+    expect(orderUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: ORDER_ID, status: 'PAID' },
+      data: { status: 'DELIVERED' },
+    });
+    expect(escrowCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 43.22 }) }),
+    );
+    expect(escrowCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'COMMISSION', amount: 2.28 }) }),
+    );
+  });
+
+  it('403s when the caller is not the buyer', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ buyerId: 'someone-else' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('409s when the order is not PAID', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PENDING' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(escrowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('404s when the order does not exist', async () => {
+    orderFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+});
