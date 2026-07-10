@@ -31,6 +31,7 @@ export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList>;
   ListingDetail: { listingId: string };
   EditListing: { listingId: string };
+  Checkout: { listingId: string };
   Filters: { current: ListingFilters; onApply: (filters: ListingFilters) => void };
   SavedItems: undefined;
   Chat: { listingId: string };

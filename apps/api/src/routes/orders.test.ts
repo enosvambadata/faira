@@ -77,6 +77,7 @@ function fakeListing(overrides: Partial<Record<string, unknown>> = {}) {
     sellerId: SELLER_ID,
     status: 'ACTIVE',
     deletedAt: null,
+    deliveryOptions: ['Courier', 'Pickup'],
     ...overrides,
   };
 }
@@ -109,15 +110,35 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('PENDING');
     expect(orderCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ listingId: LISTING_ID, buyerId: BUYER_ID }),
+        data: expect.objectContaining({ listingId: LISTING_ID, buyerId: BUYER_ID, deliveryOption: 'Courier' }),
       }),
     );
+  });
+
+  it("400s when deliveryOption isn't offered on the listing", async () => {
+    listingFindUniqueMock.mockResolvedValue(fakeListing());
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set(AUTH_HEADER)
+      .send({ listingId: LISTING_ID, deliveryOption: 'Teleport' });
+
+    expect(res.status).toBe(400);
+    expect(orderCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when deliveryOption is missing', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/orders').set(AUTH_HEADER).send({ listingId: LISTING_ID });
+
+    expect(res.status).toBe(400);
   });
 
   it('404s when the listing does not exist', async () => {
@@ -127,7 +148,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
 
     expect(res.status).toBe(404);
   });
@@ -139,7 +160,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
 
     expect(res.status).toBe(409);
   });
@@ -151,7 +172,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
 
     expect(res.status).toBe(403);
   });

@@ -7,6 +7,7 @@ import AuthNavigator from './AuthNavigator';
 import ProfileSetupScreen from '@/screens/profile/ProfileSetupScreen';
 import ListingDetailScreen from '@/screens/listing/ListingDetailScreen';
 import EditListingScreen from '@/screens/listing/EditListingScreen';
+import CheckoutScreen from '@/screens/checkout/CheckoutScreen';
 import FilterScreen from '@/screens/home/FilterScreen';
 import SavedItemsScreen from '@/screens/wishlist/SavedItemsScreen';
 import ChatScreen from '@/screens/chat/ChatScreen';
@@ -53,6 +54,11 @@ export default function RootNavigator({ initialRouteName }: Props) {
         name="EditListing"
         component={EditListingScreen}
         options={{ title: 'Edit Listing' }}
+      />
+      <Stack.Screen
+        name="Checkout"
+        component={CheckoutScreen}
+        options={{ title: 'Checkout' }}
       />
       <Stack.Screen
         name="Filters"

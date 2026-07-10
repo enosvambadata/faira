@@ -65,6 +65,10 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
     navigation.navigate('Chat', { listingId });
   };
 
+  const handleBuyNow = () => {
+    navigation.navigate('Checkout', { listingId });
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -160,6 +164,12 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           </View>
         </TouchableOpacity>
 
+        {!isOwnListing && listing.status === 'ACTIVE' && (
+          <TouchableOpacity testID="buy-now-btn" style={styles.buyButton} onPress={handleBuyNow}>
+            <Text style={styles.buyButtonText}>Buy Now</Text>
+          </TouchableOpacity>
+        )}
+
         {!isOwnListing && (
           <TouchableOpacity testID="message-seller-btn" style={styles.messageButton} onPress={handleMessageSeller}>
             <Text style={styles.messageButtonText}>Message Seller</Text>
@@ -234,4 +244,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   messageButtonText: { ...textStyles.bodyMedium, color: colors.white, fontSize: 17 },
+  buyButton: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  buyButtonText: { ...textStyles.bodyMedium, color: colors.white, fontSize: 17 },
 });

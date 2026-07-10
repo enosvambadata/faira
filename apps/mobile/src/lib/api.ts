@@ -23,7 +23,45 @@ interface RequestOptions {
   raw?: boolean;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// Supabase refresh tokens rotate (single-use) — if two requests 401 at the
+// same time and both call refresh independently, the second one fails
+// because the first already consumed the token. Sharing one in-flight
+// promise across concurrent callers avoids that race.
+let refreshPromise: Promise<void> | null = null;
+
+async function refreshAccessToken(): Promise<void> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const session = await getSession();
+    if (!session) {
+      throw new ApiError('UNAUTHENTICATED', 'No session to refresh', 401);
+    }
+
+    const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      await clearSession();
+      const err = json?.error ?? {};
+      throw new ApiError(err.code ?? 'UNAUTHENTICATED', err.message ?? 'Session expired', res.status);
+    }
+
+    await saveSession(json.data);
+  })();
+
+  try {
+    await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
   const headers: Record<string, string> = {};
 
   if (options.auth) {
@@ -50,6 +88,21 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    // A 401 on an authenticated request almost always means the access
+    // token expired (Supabase tokens are short-lived) rather than a real
+    // auth failure — refresh once and retry transparently instead of
+    // surfacing an "invalid token" error the app can silently recover
+    // from. isRetry stops this from looping if the retry 401s again (that
+    // means re-login is genuinely needed).
+    if (res.status === 401 && options.auth && !isRetry) {
+      try {
+        await refreshAccessToken();
+        return await request<T>(path, options, true);
+      } catch {
+        // Refresh itself failed — fall through and surface the original 401.
+      }
+    }
+
     const err = json?.error ?? {};
     throw new ApiError(err.code ?? 'UNKNOWN_ERROR', err.message ?? 'Something went wrong', res.status);
   }
@@ -319,6 +372,54 @@ export const listings = {
     request<void>(`/api/v1/listings/${id}`, { method: 'DELETE', auth: true }),
 
   uploadImage: uploadImageToCloudinary,
+};
+
+export interface OrderSummary {
+  id: string;
+  listingId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+}
+
+export interface OrderDetail {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+  displayStatus: string;
+  sellerPayoutEligible: boolean;
+  listing: { id: string; title: string; imageUrl: string | null };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PaymentMethod = 'ECOCASH' | 'ONEMONEY' | 'ZIMSWITCH' | 'CASH_ON_DELIVERY';
+
+export interface PayOrderResult {
+  paymentId: string;
+  redirectUrl: string | null;
+  instructions: string | null;
+}
+
+export interface PaymentStatusResult {
+  orderStatus: string;
+  paymentStatus: string | null;
+}
+
+export const orders = {
+  create: (payload: { listingId: string; deliveryOption: string }) =>
+    request<OrderSummary>('/api/v1/orders', { method: 'POST', body: payload, auth: true }),
+
+  get: (id: string) => request<OrderDetail>(`/api/v1/orders/${id}`, { auth: true }),
+
+  pay: (id: string, payload: { method: PaymentMethod; email?: string; phone?: string }) =>
+    request<PayOrderResult>(`/api/v1/orders/${id}/pay`, { method: 'POST', body: payload, auth: true }),
+
+  paymentStatus: (id: string) =>
+    request<PaymentStatusResult>(`/api/v1/orders/${id}/payment-status`, { auth: true }),
 };
 
 export interface WishlistListing {
