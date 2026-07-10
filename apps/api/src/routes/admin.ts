@@ -176,14 +176,11 @@ router.post('/deletion-requests/:id/process', requireAdmin, async (req: Request<
 // (a human, or a cron pinger once one exists) is expected to poll these.
 router.get('/orders/delivery-reminders-due', requireAdmin, async (_req: Request, res: Response) => {
   const orders = await prisma.order.findMany({
-    where: {
-      status: 'PAID',
-      payments: { some: { status: 'CONFIRMED' } },
-      // An open dispute pauses the whole delivery-confirmation clock — a
-      // "please confirm delivery" nudge would be confusing once the buyer
-      // has already flagged a problem (SCRUM-57).
-      disputes: { none: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } },
-    },
+    // status: 'PAID' alone excludes disputed orders now — raising a
+    // dispute transitions the order to DISPUTED (SCRUM-60), so a "please
+    // confirm delivery" nudge naturally can't fire once the buyer has
+    // already flagged a problem.
+    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
     include: {
       listing: { select: { title: true } },
       payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 },
@@ -273,15 +270,10 @@ router.post(
 );
 
 router.get('/orders/auto-release-due', requireAdmin, async (_req: Request, res: Response) => {
+  // Same reasoning as delivery-reminders-due: status: 'PAID' alone already
+  // excludes disputed orders (they're DISPUTED now, not PAID).
   const orders = await prisma.order.findMany({
-    where: {
-      status: 'PAID',
-      payments: { some: { status: 'CONFIRMED' } },
-      // Same dispute pause as delivery-reminders-due — releaseEscrowFunds
-      // would refuse anyway, but filtering here keeps this list honest
-      // about what's actually actionable (SCRUM-57).
-      disputes: { none: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } },
-    },
+    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
     include: { payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 } },
   });
 
@@ -309,7 +301,7 @@ router.post(
       return;
     }
 
-    res.status(200).json({ data: { id: order.id, status: 'DELIVERED' } });
+    res.status(200).json({ data: { id: order.id, status: 'COMPLETED' } });
   },
 );
 
@@ -376,15 +368,17 @@ router.post(
       next(new ApiError('VALIDATION_ERROR', 'refundAmount cannot exceed the order price', 400));
       return;
     }
-    if (order.status !== 'PAID' && order.status !== 'SHIPPED') {
+    // Raising a dispute already transitioned the order to DISPUTED
+    // (SCRUM-60) — resolving it is the only way out of that state.
+    if (order.status !== 'DISPUTED') {
       next(new ApiError('INVALID_STATE', 'Order is no longer eligible for dispute resolution', 409));
       return;
     }
 
     // A refund of any size (full or partial) means the sale didn't
-    // complete normally — CANCELLED. A rejected dispute (no refund) is a
+    // complete normally — REFUNDED. A rejected dispute (no refund) is a
     // normal completed sale, same as an undisputed delivery.
-    const newOrderStatus = refundAmount > 0 ? 'CANCELLED' : 'DELIVERED';
+    const newOrderStatus = refundAmount > 0 ? 'REFUNDED' : 'COMPLETED';
 
     const { count } = await prisma.order.updateMany({
       where: { id: order.id, status: order.status },

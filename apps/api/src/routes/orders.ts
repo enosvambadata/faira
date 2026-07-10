@@ -293,7 +293,7 @@ router.post(
       return;
     }
 
-    res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
+    res.status(200).json({ data: { id: order.id, status: 'COMPLETED', displayStatus: displayStatus('COMPLETED') } });
   },
 );
 
@@ -323,14 +323,14 @@ router.post(
       next(new ApiError('INVALID_STATE', 'This order was not paid by cash on delivery', 409));
       return;
     }
-    if (!canTransition(order.status, 'DELIVERED')) {
+    if (!canTransition(order.status, 'COMPLETED')) {
       next(new ApiError('INVALID_STATE', 'Order is not awaiting collection', 409));
       return;
     }
 
     const { count } = await prisma.order.updateMany({
       where: { id: order.id, status: order.status },
-      data: { status: 'DELIVERED' },
+      data: { status: 'COMPLETED' },
     });
     if (count === 0) {
       next(new ApiError('INVALID_STATE', 'Order is not awaiting collection', 409));
@@ -339,7 +339,7 @@ router.post(
 
     await prisma.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
 
-    res.status(200).json({ data: { id: order.id, status: 'DELIVERED', displayStatus: displayStatus('DELIVERED') } });
+    res.status(200).json({ data: { id: order.id, status: 'COMPLETED', displayStatus: displayStatus('COMPLETED') } });
   },
 );
 
@@ -357,10 +357,7 @@ router.post(
       return;
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: req.params.orderId },
-      include: { disputes: { where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } } },
-    });
+    const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
 
     if (!order) {
       next(new ApiError('NOT_FOUND', 'Order not found', 404));
@@ -370,15 +367,22 @@ router.post(
       next(new ApiError('FORBIDDEN', 'Not your order', 403));
       return;
     }
-    // Only disputable while funds are still sitting in escrow — once
-    // DELIVERED (whether via buyer confirmation or auto-release) there's no
-    // held balance left for a dispute to pause.
-    if (order.status !== 'PAID' && order.status !== 'SHIPPED') {
+    // canTransition(..., 'DISPUTED') covers both eligibility (only while
+    // funds are still sitting in escrow — PAID/SHIPPED/DELIVERED) and
+    // "not already disputed" (DISPUTED has no transition into itself) in
+    // one check, now that order.status is the source of truth for dispute
+    // state (SCRUM-60) rather than a separate PaymentDispute lookup.
+    if (!canTransition(order.status, 'DISPUTED')) {
       next(new ApiError('INVALID_STATE', 'This order is not eligible for a dispute', 409));
       return;
     }
-    if (order.disputes.length > 0) {
-      next(new ApiError('DISPUTE_ALREADY_OPEN', 'A dispute is already open for this order', 409));
+
+    const { count } = await prisma.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: 'DISPUTED' },
+    });
+    if (count === 0) {
+      next(new ApiError('INVALID_STATE', 'This order is not eligible for a dispute', 409));
       return;
     }
 

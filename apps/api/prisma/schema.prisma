@@ -24,7 +24,10 @@ enum OrderStatus {
   PAID
   SHIPPED
   DELIVERED
+  COMPLETED
+  DISPUTED
   CANCELLED
+  REFUNDED
 }
 
 enum VerificationStatus {

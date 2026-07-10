@@ -1,25 +1,35 @@
 import { OrderStatus } from '@prisma/client';
 
-// Single source of truth for what transitions an order can make. Only
-// PENDING -> PAID is wired up to an actual transition today (payment
-// confirmation); SHIPPED/DELIVERED/CANCELLED are declared here too so
-// SCRUM-60/61/62 (state machine definition, shipping, delivery
-// confirmation) extend one table instead of re-deriving the rules.
+// Single source of truth for what transitions an order can make (SCRUM-60).
+//
+// COMPLETED vs DELIVERED: this app currently treats "buyer confirms
+// delivery" and "escrow releases" as the same moment (confirmOrderPayment,
+// releaseEscrowFunds, mark-collected, and admin auto-release all jump
+// straight to COMPLETED) — DELIVERED is defined here for when SCRUM-61/62
+// (seller ships, buyer tracks) introduce a real gap between "physically
+// delivered" and "funds released," but nothing sets it today.
+//
+// PAID -> DELIVERED/COMPLETED (skipping SHIPPED) is allowed because
+// there's no "seller marks shipped" step yet (SCRUM-61). Tighten to
+// require SHIPPED first once that lands.
+//
+// PENDING -> COMPLETED (skipping PAID/SHIPPED/DELIVERED entirely) covers
+// cash on delivery (SCRUM-56): payment and delivery are the same physical
+// event, so there's no escrow to release and no intermediate state to
+// pass through.
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  // PAID -> DELIVERED (skipping SHIPPED) is allowed for now because there's
-  // no "seller marks shipped" step yet (SCRUM-61) — buyer delivery
-  // confirmation (SCRUM-55) has to be able to release escrow on a PAID
-  // order today. Tighten this to require SHIPPED first once SCRUM-61 lands.
-  //
-  // PENDING -> DELIVERED (skipping PAID/SHIPPED entirely) covers cash on
-  // delivery (SCRUM-56): payment and delivery are the same physical event,
-  // so there's no separate "paid" moment to pass through, and no escrow
-  // involved to release.
-  PENDING: ['PAID', 'DELIVERED', 'CANCELLED'],
-  PAID: ['SHIPPED', 'DELIVERED', 'CANCELLED'],
-  SHIPPED: ['DELIVERED'],
-  DELIVERED: [],
+  PENDING: ['PAID', 'COMPLETED', 'CANCELLED'],
+  PAID: ['SHIPPED', 'DELIVERED', 'COMPLETED', 'DISPUTED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED', 'COMPLETED', 'DISPUTED'],
+  DELIVERED: ['COMPLETED', 'DISPUTED'],
+  // A dispute is raised while funds are still held (PAID/SHIPPED) and
+  // resolved into exactly one of these two terminal-ish outcomes —
+  // rejected (no refund) completes the sale normally, any refund amount
+  // (full or partial) refunds it. See admin.ts's resolve-dispute handler.
+  DISPUTED: ['COMPLETED', 'REFUNDED'],
+  COMPLETED: [],
   CANCELLED: [],
+  REFUNDED: [],
 };
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
@@ -27,11 +37,14 @@ export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
 }
 
 const DISPLAY_STATUS: Record<OrderStatus, string> = {
-  PENDING: 'Awaiting Payment',
-  PAID: 'Paid - Awaiting Delivery',
+  PENDING: 'Pending Payment',
+  PAID: 'Paid',
   SHIPPED: 'Shipped',
   DELIVERED: 'Delivered',
+  COMPLETED: 'Completed',
+  DISPUTED: 'Disputed',
   CANCELLED: 'Cancelled',
+  REFUNDED: 'Refunded',
 };
 
 export function displayStatus(status: OrderStatus): string {

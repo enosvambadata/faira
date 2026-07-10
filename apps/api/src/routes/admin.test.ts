@@ -534,7 +534,7 @@ describe('POST /api/v1/admin/orders/:id/auto-release', () => {
     const res = await request(app).post('/api/v1/admin/orders/order-1/auto-release').set(ADMIN_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ id: 'order-1', status: 'DELIVERED' });
+    expect(res.body.data).toEqual({ id: 'order-1', status: 'COMPLETED' });
   });
 
   it('409s when the order is not eligible for release', async () => {
@@ -567,7 +567,7 @@ function fakeDispute(overrides: Partial<Record<string, unknown>> = {}) {
     raisedBy: { id: 'buyer-1', displayName: 'Tendai' },
     order: {
       id: 'order-1',
-      status: 'PAID',
+      status: 'DISPUTED',
       priceAtPurchase: 100,
       listing: { title: 'Nike Air Max', sellerId: 'seller-1' },
     },
@@ -608,7 +608,7 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
     delete process.env.ADMIN_TOKEN;
   });
 
-  it('issues a full refund: REFUND entry only, order CANCELLED, dispute RESOLVED_BUYER', async () => {
+  it('issues a full refund: REFUND entry only, order REFUNDED, dispute RESOLVED_BUYER', async () => {
     paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
 
     const app = createApp();
@@ -618,10 +618,10 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
       .send({ refundAmount: 100 });
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_BUYER', refundAmount: 100, orderStatus: 'CANCELLED' });
+    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_BUYER', refundAmount: 100, orderStatus: 'REFUNDED' });
     expect(orderUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'order-1', status: 'PAID' },
-      data: { status: 'CANCELLED' },
+      where: { id: 'order-1', status: 'DISPUTED' },
+      data: { status: 'REFUNDED' },
     });
     expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND', amount: 100 }) }),
@@ -653,14 +653,14 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
     );
   });
 
-  it('rejects the dispute (no refund): RELEASE + COMMISSION on the full amount, order DELIVERED, RESOLVED_SELLER', async () => {
+  it('rejects the dispute (no refund): RELEASE + COMMISSION on the full amount, order COMPLETED, RESOLVED_SELLER', async () => {
     paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
 
     const app = createApp();
     const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({});
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_SELLER', refundAmount: 0, orderStatus: 'DELIVERED' });
+    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_SELLER', refundAmount: 0, orderStatus: 'COMPLETED' });
     expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND' }) }),
     );

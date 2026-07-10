@@ -29,20 +29,17 @@ export function splitCommission(amount: number): { sellerAmount: number; commiss
 // same atomic conditional-update pattern as confirmOrderPayment (guard on
 // the exact current status) to guarantee at most one RELEASE/COMMISSION
 // pair per order.
+//
+// An open dispute pauses release entirely (SCRUM-57) — since raising a
+// dispute now transitions the order to DISPUTED (SCRUM-60), that's already
+// excluded by ESCROW_RELEASABLE_STATUSES below, so no separate dispute
+// lookup is needed here — order.status is the single source of truth.
 export async function releaseEscrowFunds(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { listing: true, disputes: { where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } } },
+    include: { listing: true },
   });
   if (!order) return { released: false, order: null };
-
-  // An open dispute pauses release entirely (SCRUM-57) — whether it's the
-  // buyer's own confirm-delivery call or the admin auto-release job that
-  // triggered this. Only resolving the dispute (which does its own
-  // separate release/refund) moves the order forward from here.
-  if (order.disputes.length > 0) {
-    return { released: false, order };
-  }
 
   if (!ESCROW_RELEASABLE_STATUSES.includes(order.status)) {
     return { released: false, order };
@@ -50,7 +47,7 @@ export async function releaseEscrowFunds(orderId: string) {
 
   const { count } = await prisma.order.updateMany({
     where: { id: order.id, status: order.status },
-    data: { status: 'DELIVERED' },
+    data: { status: 'COMPLETED' },
   });
 
   if (count === 0) {
@@ -78,5 +75,5 @@ export async function releaseEscrowFunds(orderId: string) {
     }),
   ]);
 
-  return { released: true, order: { ...order, status: 'DELIVERED' as const } };
+  return { released: true, order: { ...order, status: 'COMPLETED' as const } };
 }
