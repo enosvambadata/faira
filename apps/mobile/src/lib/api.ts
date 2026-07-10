@@ -382,6 +382,12 @@ export interface OrderSummary {
   status: string;
 }
 
+export interface OrderTimelineEntry {
+  status: string;
+  label: string;
+  at: string;
+}
+
 export interface OrderDetail {
   id: string;
   buyerId: string;
@@ -390,7 +396,11 @@ export interface OrderDetail {
   deliveryOption: string;
   status: string;
   displayStatus: string;
+  shippingMethod: string | null;
+  trackingReference: string | null;
+  shippedAt: string | null;
   sellerPayoutEligible: boolean;
+  timeline: OrderTimelineEntry[];
   listing: { id: string; title: string; imageUrl: string | null };
   createdAt: string;
   updatedAt: string;
@@ -420,6 +430,12 @@ export const orders = {
 
   paymentStatus: (id: string) =>
     request<PaymentStatusResult>(`/api/v1/orders/${id}/payment-status`, { auth: true }),
+
+  confirmDelivery: (id: string) =>
+    request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${id}/confirm-delivery`, {
+      method: 'POST',
+      auth: true,
+    }),
 };
 
 export interface WishlistListing {

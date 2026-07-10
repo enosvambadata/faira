@@ -189,6 +189,8 @@ describe('GET /api/v1/orders/:orderId', () => {
       updatedAt: new Date('2026-07-10T00:00:00Z'),
       listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'], sellerId: SELLER_ID },
       escrowEntries: [],
+      payments: [],
+      disputes: [],
       shippingMethod: null,
       trackingReference: null,
       shippedAt: null,
@@ -207,6 +209,51 @@ describe('GET /api/v1/orders/:orderId', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.shippingMethod).toBe('COURIER');
     expect(res.body.data.trackingReference).toBe('CR-12345');
+  });
+
+  it('builds a chronological timeline from pending through completed', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({
+        status: 'COMPLETED',
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+        updatedAt: new Date('2026-07-05T00:00:00Z'),
+        shippedAt: new Date('2026-07-03T00:00:00Z'),
+        payments: [{ confirmedAt: new Date('2026-07-02T00:00:00Z') }],
+        escrowEntries: [{ type: 'HOLD', createdAt: new Date('2026-07-02T00:00:00Z') }, { type: 'RELEASE', createdAt: new Date('2026-07-04T00:00:00Z') }],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.timeline).toEqual([
+      { status: 'PENDING', label: 'Pending Payment', at: '2026-07-01T00:00:00.000Z' },
+      { status: 'PAID', label: 'Paid', at: '2026-07-02T00:00:00.000Z' },
+      { status: 'SHIPPED', label: 'Shipped', at: '2026-07-03T00:00:00.000Z' },
+      { status: 'COMPLETED', label: 'Completed', at: '2026-07-04T00:00:00.000Z' },
+    ]);
+  });
+
+  it('includes a DISPUTED entry when a dispute was raised', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({
+        status: 'REFUNDED',
+        payments: [{ confirmedAt: new Date('2026-07-02T00:00:00Z') }],
+        disputes: [{ createdAt: new Date('2026-07-03T00:00:00Z'), resolvedAt: new Date('2026-07-06T00:00:00Z') }],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.timeline).toEqual([
+      { status: 'PENDING', label: 'Pending Payment', at: '2026-07-10T00:00:00.000Z' },
+      { status: 'PAID', label: 'Paid', at: '2026-07-02T00:00:00.000Z' },
+      { status: 'DISPUTED', label: 'Disputed', at: '2026-07-03T00:00:00.000Z' },
+      { status: 'REFUNDED', label: 'Refunded', at: '2026-07-06T00:00:00.000Z' },
+    ]);
   });
 
   it('shows the seller a Paid status while escrow is held', async () => {
