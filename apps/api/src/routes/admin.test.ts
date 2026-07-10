@@ -21,6 +21,9 @@ const paymentDisputeFindManyMock = vi.fn();
 const paymentDisputeFindUniqueMock = vi.fn();
 const paymentDisputeUpdateMock = vi.fn();
 const escrowLedgerEntryCreateMock = vi.fn();
+const payoutRequestFindManyMock = vi.fn();
+const payoutRequestFindUniqueMock = vi.fn();
+const payoutRequestUpdateMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -69,6 +72,11 @@ vi.mock('../prisma', () => ({
       update: (...args: unknown[]) => paymentDisputeUpdateMock(...args),
     },
     escrowLedgerEntry: { create: (...args: unknown[]) => escrowLedgerEntryCreateMock(...args) },
+    payoutRequest: {
+      findMany: (...args: unknown[]) => payoutRequestFindManyMock(...args),
+      findUnique: (...args: unknown[]) => payoutRequestFindUniqueMock(...args),
+      update: (...args: unknown[]) => payoutRequestUpdateMock(...args),
+    },
     sellerProfile: { upsert: vi.fn() },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
@@ -698,6 +706,120 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
 
     const app = createApp();
     const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(409);
+    expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+function fakePayoutRequest(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'payout-1',
+    sellerId: 'seller-1',
+    amount: { toString: () => '50' },
+    status: 'PENDING',
+    payoutMethodDetails: '+263771234567',
+    requestedAt: new Date('2026-07-10T00:00:00Z'),
+    seller: { id: 'seller-1', displayName: 'Rudo' },
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/admin/payout-requests', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('defaults to listing PENDING requests', async () => {
+    payoutRequestFindManyMock.mockResolvedValue([fakePayoutRequest()]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/payout-requests').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([expect.objectContaining({ id: 'payout-1', amount: '50' })]);
+    expect(payoutRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'PENDING' } }),
+    );
+  });
+});
+
+describe('POST /api/v1/admin/payout-requests/:id/mark-paid', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    payoutRequestUpdateMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('marks a PENDING request PAID', async () => {
+    payoutRequestFindUniqueMock.mockResolvedValue(fakePayoutRequest());
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/payout-requests/payout-1/mark-paid').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'payout-1', status: 'PAID' });
+    expect(payoutRequestUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'PAID' }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the request was already resolved', async () => {
+    payoutRequestFindUniqueMock.mockResolvedValue(fakePayoutRequest({ status: 'PAID' }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/payout-requests/payout-1/mark-paid').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('404s when the request does not exist', async () => {
+    payoutRequestFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/payout-requests/nonexistent/mark-paid').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/v1/admin/payout-requests/:id/mark-failed', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    payoutRequestUpdateMock.mockReset();
+    escrowLedgerEntryCreateMock.mockReset();
+    transactionMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('marks the request FAILED and reverses the reserved amount with a RELEASE entry', async () => {
+    payoutRequestFindUniqueMock.mockResolvedValue(fakePayoutRequest());
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/payout-requests/payout-1/mark-failed').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'payout-1', status: 'FAILED' });
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ type: 'RELEASE', sellerId: 'seller-1', payoutRequestId: 'payout-1' }),
+      }),
+    );
+  });
+
+  it('409s when the request was already resolved', async () => {
+    payoutRequestFindUniqueMock.mockResolvedValue(fakePayoutRequest({ status: 'FAILED' }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/payout-requests/payout-1/mark-failed').set(ADMIN_HEADER);
 
     expect(res.status).toBe(409);
     expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalled();
