@@ -433,4 +433,89 @@ router.post(
   },
 );
 
+// "Processed via Paynow or manual bank transfer" (SCRUM-58) means this app
+// only needs to log and track the request — the actual disbursement
+// happens outside it (a manual EcoCash/bank transfer, or a Paynow payout
+// call once real Paynow credentials exist, see the payments blocker noted
+// elsewhere). These two endpoints just record the outcome.
+router.get('/payout-requests', requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  const statusSchema = z.object({ status: z.enum(['PENDING', 'PROCESSING', 'PAID', 'FAILED']).optional() });
+  const parsed = statusSchema.safeParse(req.query);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid status filter', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const requests = await prisma.payoutRequest.findMany({
+    where: { status: parsed.data.status ?? 'PENDING' },
+    orderBy: { requestedAt: 'asc' },
+    include: { seller: { select: { id: true, displayName: true } } },
+  });
+
+  res.status(200).json({
+    data: requests.map(r => ({
+      id: r.id,
+      seller: r.seller,
+      amount: r.amount.toString(),
+      payoutMethodDetails: r.payoutMethodDetails,
+      status: r.status,
+      requestedAt: r.requestedAt,
+    })),
+  });
+});
+
+router.post(
+  '/payout-requests/:id/mark-paid',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const request = await prisma.payoutRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) {
+      next(new ApiError('NOT_FOUND', 'Payout request not found', 404));
+      return;
+    }
+    if (request.status !== 'PENDING' && request.status !== 'PROCESSING') {
+      next(new ApiError('INVALID_STATE', 'This payout request has already been resolved', 409));
+      return;
+    }
+
+    await prisma.payoutRequest.update({
+      where: { id: request.id },
+      data: { status: 'PAID', processedAt: new Date() },
+    });
+
+    res.status(200).json({ data: { id: request.id, status: 'PAID' } });
+  },
+);
+
+router.post(
+  '/payout-requests/:id/mark-failed',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const request = await prisma.payoutRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) {
+      next(new ApiError('NOT_FOUND', 'Payout request not found', 404));
+      return;
+    }
+    if (request.status !== 'PENDING' && request.status !== 'PROCESSING') {
+      next(new ApiError('INVALID_STATE', 'This payout request has already been resolved', 409));
+      return;
+    }
+
+    // A failed payout must give the reserved amount back — otherwise the
+    // seller's available balance would be permanently short by the failed
+    // amount even though they never actually got paid.
+    await prisma.$transaction([
+      prisma.payoutRequest.update({
+        where: { id: request.id },
+        data: { status: 'FAILED', processedAt: new Date() },
+      }),
+      prisma.escrowLedgerEntry.create({
+        data: { sellerId: request.sellerId, type: 'RELEASE', amount: request.amount, payoutRequestId: request.id },
+      }),
+    ]);
+
+    res.status(200).json({ data: { id: request.id, status: 'FAILED' } });
+  },
+);
+
 export default router;

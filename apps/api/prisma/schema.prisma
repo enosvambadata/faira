@@ -374,14 +374,17 @@ model Payment {
 // sum(PAYOUT) — can be queried without joining through order -> listing.
 model EscrowLedgerEntry {
   id              String          @id @default(uuid()) @db.Uuid
-  orderId         String          @map("order_id") @db.Uuid
+  // Nullable: PAYOUT entries (and their RELEASE reversal if a payout
+  // fails, SCRUM-58) aren't tied to any single order — they're against the
+  // seller's aggregate balance across all their released orders.
+  orderId         String?         @map("order_id") @db.Uuid
   sellerId        String          @map("seller_id") @db.Uuid
   type            EscrowEntryType
   amount          Decimal         @db.Decimal(10, 2)
   payoutRequestId String?         @map("payout_request_id") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at")
 
-  order         Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order         Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   seller        User           @relation(fields: [sellerId], references: [id], onDelete: Restrict)
   payoutRequest PayoutRequest? @relation(fields: [payoutRequestId], references: [id], onDelete: SetNull)
 

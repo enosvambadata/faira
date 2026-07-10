@@ -11,6 +11,10 @@ const followUpsertMock = vi.fn();
 const followDeleteManyMock = vi.fn();
 const conversationCountMock = vi.fn();
 const sellerProfileUpsertMock = vi.fn();
+const escrowLedgerEntryAggregateMock = vi.fn();
+const escrowLedgerEntryCreateMock = vi.fn();
+const payoutRequestCreateMock = vi.fn();
+const transactionMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -37,6 +41,12 @@ vi.mock('../prisma', () => ({
     },
     conversation: { count: (...args: unknown[]) => conversationCountMock(...args) },
     sellerProfile: { upsert: (...args: unknown[]) => sellerProfileUpsertMock(...args) },
+    escrowLedgerEntry: {
+      aggregate: (...args: unknown[]) => escrowLedgerEntryAggregateMock(...args),
+      create: (...args: unknown[]) => escrowLedgerEntryCreateMock(...args),
+    },
+    payoutRequest: { create: (...args: unknown[]) => payoutRequestCreateMock(...args) },
+    $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
 
@@ -283,5 +293,109 @@ describe('PATCH /api/v1/sellers/me/settings', () => {
 
     expect(res.status).toBe(401);
     expect(sellerProfileUpsertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/sellers/me/balance', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    escrowLedgerEntryAggregateMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+  });
+
+  it('returns released minus paid-out as the available balance', async () => {
+    escrowLedgerEntryAggregateMock
+      .mockResolvedValueOnce({ _sum: { amount: 150 } })
+      .mockResolvedValueOnce({ _sum: { amount: 30 } });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/sellers/me/balance').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ availableBalance: 120, minimumPayoutAmount: 5 });
+  });
+
+  it('returns 0 when there are no ledger entries yet', async () => {
+    escrowLedgerEntryAggregateMock
+      .mockResolvedValueOnce({ _sum: { amount: null } })
+      .mockResolvedValueOnce({ _sum: { amount: null } });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/sellers/me/balance').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.availableBalance).toBe(0);
+  });
+});
+
+describe('POST /api/v1/sellers/me/payout-requests', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    escrowLedgerEntryAggregateMock.mockReset();
+    payoutRequestCreateMock.mockReset();
+    escrowLedgerEntryCreateMock.mockReset();
+    transactionMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+    transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        payoutRequest: { create: (...args: unknown[]) => payoutRequestCreateMock(...args) },
+        escrowLedgerEntry: { create: (...args: unknown[]) => escrowLedgerEntryCreateMock(...args) },
+      }),
+    );
+  });
+
+  it('creates a payout request and reserves the amount via a PAYOUT ledger entry', async () => {
+    escrowLedgerEntryAggregateMock
+      .mockResolvedValueOnce({ _sum: { amount: 100 } })
+      .mockResolvedValueOnce({ _sum: { amount: 0 } });
+    payoutRequestCreateMock.mockResolvedValue({
+      id: 'payout-1',
+      amount: { toString: () => '50' },
+      status: 'PENDING',
+      requestedAt: new Date('2026-07-10T00:00:00Z'),
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/sellers/me/payout-requests')
+      .set(AUTH_HEADER)
+      .send({ amount: 50, payoutMethodDetails: '+263771234567' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('PENDING');
+    expect(payoutRequestCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ sellerId: SELLER_ID, amount: 50 }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'PAYOUT', amount: 50, payoutRequestId: 'payout-1' }) }),
+    );
+  });
+
+  it('400s below the $5 minimum', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/sellers/me/payout-requests')
+      .set(AUTH_HEADER)
+      .send({ amount: 2, payoutMethodDetails: '+263771234567' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('BELOW_MINIMUM_PAYOUT');
+    expect(payoutRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when the amount exceeds the available balance', async () => {
+    escrowLedgerEntryAggregateMock
+      .mockResolvedValueOnce({ _sum: { amount: 20 } })
+      .mockResolvedValueOnce({ _sum: { amount: 0 } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/sellers/me/payout-requests')
+      .set(AUTH_HEADER)
+      .send({ amount: 50, payoutMethodDetails: '+263771234567' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect(payoutRequestCreateMock).not.toHaveBeenCalled();
   });
 });

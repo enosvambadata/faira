@@ -3,11 +3,19 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { ApiError } from '../errors/ApiError';
+import { getSellerAvailableBalance } from '../services/sellerBalance';
 
 const router = Router();
 
+const MINIMUM_PAYOUT_AMOUNT = 5;
+
 const sellerSettingsSchema = z.object({
   codEnabled: z.boolean(),
+});
+
+const requestPayoutSchema = z.object({
+  amount: z.number().positive(),
+  payoutMethodDetails: z.string().trim().min(1).max(200),
 });
 
 // /me/settings, not /:id/settings — this only ever operates on the caller's
@@ -27,6 +35,58 @@ router.patch('/me/settings', requireAuth, async (req: AuthenticatedRequest, res:
   });
 
   res.status(200).json({ data: { codEnabled: profile.codEnabled } });
+});
+
+router.get('/me/balance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const availableBalance = await getSellerAvailableBalance(req.userId!);
+  res.status(200).json({ data: { availableBalance, minimumPayoutAmount: MINIMUM_PAYOUT_AMOUNT } });
+});
+
+router.post('/me/payout-requests', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const parsed = requestPayoutSchema.safeParse(req.body);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid payout request payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { amount, payoutMethodDetails } = parsed.data;
+
+  if (amount < MINIMUM_PAYOUT_AMOUNT) {
+    next(new ApiError('BELOW_MINIMUM_PAYOUT', `Minimum payout amount is $${MINIMUM_PAYOUT_AMOUNT}`, 400));
+    return;
+  }
+
+  const availableBalance = await getSellerAvailableBalance(req.userId!);
+  if (amount > availableBalance) {
+    next(new ApiError('INSUFFICIENT_BALANCE', 'Requested amount exceeds available balance', 400));
+    return;
+  }
+
+  // An interactive transaction (not the array form used elsewhere in this
+  // codebase) is needed here specifically because the ledger entry has to
+  // reference the payout request's own id — there's no way to know that id
+  // before the request row is created.
+  const payoutRequest = await prisma.$transaction(async tx => {
+    const request = await tx.payoutRequest.create({
+      data: { sellerId: req.userId!, amount, payoutMethodDetails, status: 'PENDING' },
+    });
+    // Reserving the amount immediately (rather than at processing time)
+    // prevents a seller from requesting the same balance twice before the
+    // first request is processed.
+    await tx.escrowLedgerEntry.create({
+      data: { sellerId: req.userId!, type: 'PAYOUT', amount, payoutRequestId: request.id },
+    });
+    return request;
+  });
+
+  res.status(201).json({
+    data: {
+      id: payoutRequest.id,
+      amount: payoutRequest.amount.toString(),
+      status: payoutRequest.status,
+      requestedAt: payoutRequest.requestedAt,
+    },
+  });
 });
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
