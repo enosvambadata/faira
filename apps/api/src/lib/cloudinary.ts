@@ -56,3 +56,7 @@ export function signChatUpload() {
 export function signVerificationUpload() {
   return signUpload('verification', 'w_1600,h_1600,c_limit');
 }
+
+export function signDisputeEvidenceUpload() {
+  return signUpload('disputes', 'w_1600,h_1600,c_limit');
+}

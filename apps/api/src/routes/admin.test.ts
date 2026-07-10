@@ -16,6 +16,11 @@ const orderFindUniqueMock = vi.fn();
 const orderUpdateMock = vi.fn();
 const sendPushNotificationMock = vi.fn();
 const releaseEscrowFundsMock = vi.fn();
+const orderUpdateManyMock = vi.fn();
+const paymentDisputeFindManyMock = vi.fn();
+const paymentDisputeFindUniqueMock = vi.fn();
+const paymentDisputeUpdateMock = vi.fn();
+const escrowLedgerEntryCreateMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -31,9 +36,13 @@ vi.mock('../lib/push', () => ({
   sendPushNotification: (...args: unknown[]) => sendPushNotificationMock(...args),
 }));
 
-vi.mock('../services/escrowRelease', () => ({
-  releaseEscrowFunds: (...args: unknown[]) => releaseEscrowFundsMock(...args),
-}));
+vi.mock('../services/escrowRelease', async importOriginal => {
+  const actual = await importOriginal<typeof import('../services/escrowRelease')>();
+  return {
+    ...actual,
+    releaseEscrowFunds: (...args: unknown[]) => releaseEscrowFundsMock(...args),
+  };
+});
 
 vi.mock('../prisma', () => ({
   prisma: {
@@ -52,7 +61,14 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => orderFindManyMock(...args),
       findUnique: (...args: unknown[]) => orderFindUniqueMock(...args),
       update: (...args: unknown[]) => orderUpdateMock(...args),
+      updateMany: (...args: unknown[]) => orderUpdateManyMock(...args),
     },
+    paymentDispute: {
+      findMany: (...args: unknown[]) => paymentDisputeFindManyMock(...args),
+      findUnique: (...args: unknown[]) => paymentDisputeFindUniqueMock(...args),
+      update: (...args: unknown[]) => paymentDisputeUpdateMock(...args),
+    },
+    escrowLedgerEntry: { create: (...args: unknown[]) => escrowLedgerEntryCreateMock(...args) },
     sellerProfile: { upsert: vi.fn() },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
@@ -529,5 +545,161 @@ describe('POST /api/v1/admin/orders/:id/auto-release', () => {
     const res = await request(app).post('/api/v1/admin/orders/nonexistent/auto-release').set(ADMIN_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+function fakeDispute(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'dispute-1',
+    orderId: 'order-1',
+    reason: 'Item arrived damaged',
+    evidenceImageUrls: ['https://res.cloudinary.com/x/disputes/a.jpg'],
+    status: 'OPEN',
+    createdAt: new Date('2026-07-10T00:00:00Z'),
+    raisedBy: { id: 'buyer-1', displayName: 'Tendai' },
+    order: {
+      id: 'order-1',
+      status: 'PAID',
+      priceAtPurchase: 100,
+      listing: { title: 'Nike Air Max', sellerId: 'seller-1' },
+    },
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/admin/disputes', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('lists open disputes with order and buyer context', async () => {
+    paymentDisputeFindManyMock.mockResolvedValue([fakeDispute()]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/disputes').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ id: 'dispute-1', sellerId: 'seller-1', listingTitle: 'Nike Air Max' }),
+    ]);
+  });
+});
+
+describe('POST /api/v1/admin/disputes/:id/resolve', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    orderUpdateManyMock.mockReset().mockResolvedValue({ count: 1 });
+    escrowLedgerEntryCreateMock.mockReset();
+    paymentDisputeUpdateMock.mockReset();
+    transactionMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('issues a full refund: REFUND entry only, order CANCELLED, dispute RESOLVED_BUYER', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/disputes/dispute-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ refundAmount: 100 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_BUYER', refundAmount: 100, orderStatus: 'CANCELLED' });
+    expect(orderUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'order-1', status: 'PAID' },
+      data: { status: 'CANCELLED' },
+    });
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND', amount: 100 }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE' }) }),
+    );
+  });
+
+  it('issues a partial refund: REFUND + RELEASE + COMMISSION on the remainder', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/disputes/dispute-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ refundAmount: 20 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('RESOLVED_BUYER');
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND', amount: 20 }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 76 }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'COMMISSION', amount: 4 }) }),
+    );
+  });
+
+  it('rejects the dispute (no refund): RELEASE + COMMISSION on the full amount, order DELIVERED, RESOLVED_SELLER', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'dispute-1', status: 'RESOLVED_SELLER', refundAmount: 0, orderStatus: 'DELIVERED' });
+    expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'REFUND' }) }),
+    );
+    expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 95 }) }),
+    );
+  });
+
+  it('400s when refundAmount exceeds the order price', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/disputes/dispute-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ refundAmount: 150 });
+
+    expect(res.status).toBe(400);
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the dispute is already resolved', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute({ status: 'RESOLVED_SELLER' }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(409);
+  });
+
+  it('404s when the dispute does not exist', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/nonexistent/resolve').set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(404);
+  });
+
+  it('409s when another request already changed the order status (race)', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+    orderUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(409);
+    expect(escrowLedgerEntryCreateMock).not.toHaveBeenCalled();
   });
 });

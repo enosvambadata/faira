@@ -13,8 +13,10 @@ const ESCROW_RELEASABLE_STATUSES: OrderStatus[] = ['PAID', 'SHIPPED'];
 
 // Rounds to cents first so seller + commission always sum to exactly the
 // original amount — computing both independently from percentages could
-// drift by a cent either way.
-function splitCommission(amount: number): { sellerAmount: number; commissionAmount: number } {
+// drift by a cent either way. Exported so the dispute-resolution admin
+// endpoint (SCRUM-57) can apply the same split to a partial-refund
+// remainder rather than duplicating the rounding logic.
+export function splitCommission(amount: number): { sellerAmount: number; commissionAmount: number } {
   const commissionAmount = Math.round(amount * COMMISSION_RATE * 100) / 100;
   return { sellerAmount: amount - commissionAmount, commissionAmount };
 }
@@ -27,9 +29,17 @@ function splitCommission(amount: number): { sellerAmount: number; commissionAmou
 export async function releaseEscrowFunds(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { listing: true },
+    include: { listing: true, disputes: { where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } } },
   });
   if (!order) return { released: false, order: null };
+
+  // An open dispute pauses release entirely (SCRUM-57) — whether it's the
+  // buyer's own confirm-delivery call or the admin auto-release job that
+  // triggered this. Only resolving the dispute (which does its own
+  // separate release/refund) moves the order forward from here.
+  if (order.disputes.length > 0) {
+    return { released: false, order };
+  }
 
   if (!ESCROW_RELEASABLE_STATUSES.includes(order.status)) {
     return { released: false, order };
