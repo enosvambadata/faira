@@ -189,9 +189,25 @@ describe('GET /api/v1/orders/:orderId', () => {
       updatedAt: new Date('2026-07-10T00:00:00Z'),
       listing: { id: LISTING_ID, title: 'Nike Air Max', imageUrls: ['https://res.cloudinary.com/x/listings/a.jpg'], sellerId: SELLER_ID },
       escrowEntries: [],
+      shippingMethod: null,
+      trackingReference: null,
+      shippedAt: null,
       ...overrides,
     };
   }
+
+  it('shows the buyer the shipping method and tracking reference once shipped', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ status: 'SHIPPED', shippingMethod: 'COURIER', trackingReference: 'CR-12345', shippedAt: new Date('2026-07-11T00:00:00Z') }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.shippingMethod).toBe('COURIER');
+    expect(res.body.data.trackingReference).toBe('CR-12345');
+  });
 
   it('shows the seller a Paid status while escrow is held', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrderDetail());
@@ -644,5 +660,102 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
 
     expect(res.status).toBe(400);
     expect(paymentDisputeCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/ship', () => {
+  beforeEach(() => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+  });
+
+  it('ships via courier with a tracking reference', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'COURIER', trackingReference: 'CR-12345' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      id: ORDER_ID,
+      status: 'SHIPPED',
+      displayStatus: 'Shipped',
+      shippingMethod: 'COURIER',
+      trackingReference: 'CR-12345',
+    });
+    expect(orderUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: ORDER_ID, status: 'PAID' },
+      data: {
+        status: 'SHIPPED',
+        shippingMethod: 'COURIER',
+        trackingReference: 'CR-12345',
+        shippedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('ships via meetup with no tracking reference required', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'MEETUP' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.trackingReference).toBeNull();
+  });
+
+  it('400s when courier is chosen without a tracking reference', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'COURIER' });
+
+    expect(res.status).toBe(400);
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('403s when the caller is not the listing seller', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+    getUserMock.mockResolvedValue({ data: { user: { id: 'not-the-seller' } }, error: null });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'MEETUP' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('409s when the order is not PAID', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PENDING' }));
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'MEETUP' });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('404s when the order does not exist', async () => {
+    orderFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/orders/${ORDER_ID}/ship`)
+      .set(AUTH_HEADER)
+      .send({ shippingMethod: 'MEETUP' });
+
+    expect(res.status).toBe(404);
   });
 });
