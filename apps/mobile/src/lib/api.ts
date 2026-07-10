@@ -23,7 +23,45 @@ interface RequestOptions {
   raw?: boolean;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// Supabase refresh tokens rotate (single-use) — if two requests 401 at the
+// same time and both call refresh independently, the second one fails
+// because the first already consumed the token. Sharing one in-flight
+// promise across concurrent callers avoids that race.
+let refreshPromise: Promise<void> | null = null;
+
+async function refreshAccessToken(): Promise<void> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const session = await getSession();
+    if (!session) {
+      throw new ApiError('UNAUTHENTICATED', 'No session to refresh', 401);
+    }
+
+    const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      await clearSession();
+      const err = json?.error ?? {};
+      throw new ApiError(err.code ?? 'UNAUTHENTICATED', err.message ?? 'Session expired', res.status);
+    }
+
+    await saveSession(json.data);
+  })();
+
+  try {
+    await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function request<T>(path: string, options: RequestOptions = {}, isRetry = false): Promise<T> {
   const headers: Record<string, string> = {};
 
   if (options.auth) {
@@ -50,6 +88,21 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    // A 401 on an authenticated request almost always means the access
+    // token expired (Supabase tokens are short-lived) rather than a real
+    // auth failure — refresh once and retry transparently instead of
+    // surfacing an "invalid token" error the app can silently recover
+    // from. isRetry stops this from looping if the retry 401s again (that
+    // means re-login is genuinely needed).
+    if (res.status === 401 && options.auth && !isRetry) {
+      try {
+        await refreshAccessToken();
+        return await request<T>(path, options, true);
+      } catch {
+        // Refresh itself failed — fall through and surface the original 401.
+      }
+    }
+
     const err = json?.error ?? {};
     throw new ApiError(err.code ?? 'UNKNOWN_ERROR', err.message ?? 'Something went wrong', res.status);
   }
