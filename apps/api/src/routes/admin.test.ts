@@ -11,6 +11,11 @@ const deletionFindUniqueMock = vi.fn();
 const deletionUpdateMock = vi.fn();
 const userUpdateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
+const orderFindManyMock = vi.fn();
+const orderFindUniqueMock = vi.fn();
+const orderUpdateMock = vi.fn();
+const sendPushNotificationMock = vi.fn();
+const releaseEscrowFundsMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -20,6 +25,14 @@ vi.mock('../supabase', () => ({
     },
   },
   supabasePublic: { auth: {} },
+}));
+
+vi.mock('../lib/push', () => ({
+  sendPushNotification: (...args: unknown[]) => sendPushNotificationMock(...args),
+}));
+
+vi.mock('../services/escrowRelease', () => ({
+  releaseEscrowFunds: (...args: unknown[]) => releaseEscrowFundsMock(...args),
 }));
 
 vi.mock('../prisma', () => ({
@@ -34,6 +47,11 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => deletionFindManyMock(...args),
       findUnique: (...args: unknown[]) => deletionFindUniqueMock(...args),
       update: (...args: unknown[]) => deletionUpdateMock(...args),
+    },
+    order: {
+      findMany: (...args: unknown[]) => orderFindManyMock(...args),
+      findUnique: (...args: unknown[]) => orderFindUniqueMock(...args),
+      update: (...args: unknown[]) => orderUpdateMock(...args),
     },
     sellerProfile: { upsert: vi.fn() },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
@@ -324,5 +342,192 @@ describe('POST /api/v1/admin/deletion-requests/:id/process', () => {
 
     expect(res.status).toBe(401);
     expect(deletionFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
+function fakeOrder(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'order-1',
+    buyerId: 'buyer-1',
+    status: 'PAID',
+    deliveryReminderDay3SentAt: null,
+    deliveryReminderDay4SentAt: null,
+    listing: { title: 'Nike Air Max' },
+    buyer: { expoPushToken: 'ExponentPushToken[abc]', pushNotificationsEnabled: true },
+    payments: [{ status: 'CONFIRMED', confirmedAt: new Date(Date.now() - 3.5 * 24 * 60 * 60 * 1000) }],
+    ...overrides,
+  };
+}
+
+describe('GET /api/v1/admin/orders/delivery-reminders-due', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('flags an order paid 3.5 days ago as due for the day-3 reminder', async () => {
+    orderFindManyMock.mockResolvedValue([fakeOrder()]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/orders/delivery-reminders-due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ id: 'order-1', reminderDay: 3 }),
+    ]);
+  });
+
+  it('skips an order that already got its day-3 reminder and is not yet at day 4', async () => {
+    orderFindManyMock.mockResolvedValue([fakeOrder({ deliveryReminderDay3SentAt: new Date() })]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/orders/delivery-reminders-due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('flags an order paid 4.5 days ago as due for the day-4 reminder', async () => {
+    orderFindManyMock.mockResolvedValue([
+      fakeOrder({
+        deliveryReminderDay3SentAt: new Date(),
+        payments: [{ status: 'CONFIRMED', confirmedAt: new Date(Date.now() - 4.5 * 24 * 60 * 60 * 1000) }],
+      }),
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/orders/delivery-reminders-due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ id: 'order-1', reminderDay: 4 }),
+    ]);
+  });
+});
+
+describe('POST /api/v1/admin/orders/:id/send-delivery-reminder', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    sendPushNotificationMock.mockReset().mockResolvedValue(undefined);
+    orderUpdateMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('sends the push notification and records the reminder timestamp', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder());
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/orders/order-1/send-delivery-reminder')
+      .set(ADMIN_HEADER)
+      .send({ reminderDay: 3 });
+
+    expect(res.status).toBe(200);
+    expect(sendPushNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'ExponentPushToken[abc]' }),
+    );
+    expect(orderUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ deliveryReminderDay3SentAt: expect.any(Date) }) }),
+    );
+  });
+
+  it('409s if that reminder was already sent', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ deliveryReminderDay3SentAt: new Date() }));
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/orders/order-1/send-delivery-reminder')
+      .set(ADMIN_HEADER)
+      .send({ reminderDay: 3 });
+
+    expect(res.status).toBe(409);
+    expect(sendPushNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('409s if the order is not PAID', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'DELIVERED' }));
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/orders/order-1/send-delivery-reminder')
+      .set(ADMIN_HEADER)
+      .send({ reminderDay: 3 });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('GET /api/v1/admin/orders/auto-release-due', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('lists an order paid 5.5 days ago', async () => {
+    orderFindManyMock.mockResolvedValue([
+      fakeOrder({ payments: [{ status: 'CONFIRMED', confirmedAt: new Date(Date.now() - 5.5 * 24 * 60 * 60 * 1000) }] }),
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/orders/auto-release-due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ id: 'order-1', buyerId: 'buyer-1' }]);
+  });
+
+  it('excludes an order paid only 2 days ago', async () => {
+    orderFindManyMock.mockResolvedValue([
+      fakeOrder({ payments: [{ status: 'CONFIRMED', confirmedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) }] }),
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/orders/auto-release-due').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+});
+
+describe('POST /api/v1/admin/orders/:id/auto-release', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    releaseEscrowFundsMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('releases escrow for an eligible order', async () => {
+    releaseEscrowFundsMock.mockResolvedValue({ released: true, order: { id: 'order-1' } });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/orders/order-1/auto-release').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'order-1', status: 'DELIVERED' });
+  });
+
+  it('409s when the order is not eligible for release', async () => {
+    releaseEscrowFundsMock.mockResolvedValue({ released: false, order: { id: 'order-1', status: 'PENDING' } });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/orders/order-1/auto-release').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('404s when the order does not exist', async () => {
+    releaseEscrowFundsMock.mockResolvedValue({ released: false, order: null });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/orders/nonexistent/auto-release').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(404);
   });
 });

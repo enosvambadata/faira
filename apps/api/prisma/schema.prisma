@@ -58,6 +58,7 @@ enum EscrowEntryType {
   RELEASE
   REFUND
   PAYOUT
+  COMMISSION
 }
 
 enum DisputeStatus {
@@ -323,6 +324,10 @@ model Order {
   buyerId         String      @map("buyer_id") @db.Uuid
   priceAtPurchase Decimal     @map("price_at_purchase") @db.Decimal(10, 2)
   status          OrderStatus @default(PENDING)
+  // Tracks the 5-day no-response auto-release window (SCRUM-55) — nullable
+  // so "reminder not yet sent" is representable without a sentinel date.
+  deliveryReminderDay3SentAt DateTime? @map("delivery_reminder_day3_sent_at")
+  deliveryReminderDay4SentAt DateTime? @map("delivery_reminder_day4_sent_at")
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
 
