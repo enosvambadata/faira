@@ -1,7 +1,10 @@
 import { prisma } from '../prisma';
 import { OrderStatus } from '@prisma/client';
 
-const COMMISSION_RATE = 0.05;
+// Exported so the checkout summary (SCRUM-59) can show buyers the same
+// rate that's actually deducted from the seller's payout at release time,
+// rather than a second hardcoded number that could drift out of sync.
+export const COMMISSION_RATE = 0.05;
 
 // Deliberately narrower than the state machine's generic PAID/SHIPPED ->
 // DELIVERED *and* PENDING -> DELIVERED (the latter added for cash-on-

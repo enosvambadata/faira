@@ -321,6 +321,54 @@ export const listings = {
   uploadImage: uploadImageToCloudinary,
 };
 
+export interface OrderSummary {
+  id: string;
+  listingId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+}
+
+export interface OrderDetail {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+  displayStatus: string;
+  sellerPayoutEligible: boolean;
+  listing: { id: string; title: string; imageUrl: string | null };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PaymentMethod = 'ECOCASH' | 'ONEMONEY' | 'ZIMSWITCH' | 'CASH_ON_DELIVERY';
+
+export interface PayOrderResult {
+  paymentId: string;
+  redirectUrl: string | null;
+  instructions: string | null;
+}
+
+export interface PaymentStatusResult {
+  orderStatus: string;
+  paymentStatus: string | null;
+}
+
+export const orders = {
+  create: (payload: { listingId: string; deliveryOption: string }) =>
+    request<OrderSummary>('/api/v1/orders', { method: 'POST', body: payload, auth: true }),
+
+  get: (id: string) => request<OrderDetail>(`/api/v1/orders/${id}`, { auth: true }),
+
+  pay: (id: string, payload: { method: PaymentMethod; email?: string; phone?: string }) =>
+    request<PayOrderResult>(`/api/v1/orders/${id}/pay`, { method: 'POST', body: payload, auth: true }),
+
+  paymentStatus: (id: string) =>
+    request<PaymentStatusResult>(`/api/v1/orders/${id}/payment-status`, { auth: true }),
+};
+
 export interface WishlistListing {
   id: string;
   title: string;

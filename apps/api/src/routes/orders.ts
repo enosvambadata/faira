@@ -24,6 +24,7 @@ const raiseDisputeSchema = z.object({
 
 const createOrderSchema = z.object({
   listingId: z.string().uuid(),
+  deliveryOption: z.string().min(1),
 });
 
 const payOrderSchema = z
@@ -63,9 +64,19 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     next(new ApiError('FORBIDDEN', 'You cannot buy your own listing', 403));
     return;
   }
+  if (!listing.deliveryOptions.includes(parsed.data.deliveryOption)) {
+    next(new ApiError('VALIDATION_ERROR', 'deliveryOption is not offered on this listing', 400));
+    return;
+  }
 
   const order = await prisma.order.create({
-    data: { listingId: listing.id, buyerId, priceAtPurchase: listing.price, status: 'PENDING' },
+    data: {
+      listingId: listing.id,
+      buyerId,
+      priceAtPurchase: listing.price,
+      deliveryOption: parsed.data.deliveryOption,
+      status: 'PENDING',
+    },
   });
 
   res.status(201).json({
@@ -73,6 +84,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       id: order.id,
       listingId: order.listingId,
       priceAtPurchase: order.priceAtPurchase.toString(),
+      deliveryOption: order.deliveryOption,
       status: order.status,
     },
   });
@@ -105,6 +117,7 @@ router.get(
         buyerId: order.buyerId,
         sellerId: order.listing.sellerId,
         priceAtPurchase: order.priceAtPurchase.toString(),
+        deliveryOption: order.deliveryOption,
         status: order.status,
         displayStatus: displayStatus(order.status),
         // True once the seller's escrow HOLD for this order has been
