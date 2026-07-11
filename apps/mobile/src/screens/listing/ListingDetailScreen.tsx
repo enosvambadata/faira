@@ -13,6 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
 import { listings as listingsApi, wishlist as wishlistApi, profile as profileApi, ListingDetail, ApiError } from '@/lib/api';
+import ReportModal from '@/components/ReportModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ListingDetail'>;
 
@@ -34,6 +35,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   const [saved, setSaved] = useState(false);
   const [activePhoto, setActivePhoto] = useState(0);
   const [isOwnListing, setIsOwnListing] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -175,7 +177,21 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
             <Text style={styles.messageButtonText}>Message Seller</Text>
           </TouchableOpacity>
         )}
+
+        {!isOwnListing && (
+          <TouchableOpacity testID="report-listing-btn" style={styles.reportLink} onPress={() => setReportModalVisible(true)}>
+            <Text style={styles.reportLinkText}>Report this listing</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      <ReportModal
+        visible={reportModalVisible}
+        targetType="LISTING"
+        targetId={listingId}
+        title="Report this listing"
+        onClose={() => setReportModalVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -252,4 +268,6 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   buyButtonText: { ...textStyles.bodyMedium, color: colors.white, fontSize: 17 },
+  reportLink: { alignItems: 'center', marginTop: 16 },
+  reportLinkText: { ...textStyles.caption, color: colors.muted, textDecorationLine: 'underline' },
 });

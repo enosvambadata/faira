@@ -60,3 +60,7 @@ export function signVerificationUpload() {
 export function signDisputeEvidenceUpload() {
   return signUpload('disputes', 'w_1600,h_1600,c_limit');
 }
+
+export function signReportEvidenceUpload() {
+  return signUpload('reports', 'w_1600,h_1600,c_limit');
+}

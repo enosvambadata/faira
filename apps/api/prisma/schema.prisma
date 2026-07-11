@@ -109,6 +109,13 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum ReportReason {
+  FAKE_ITEM
+  SCAM
+  INAPPROPRIATE
+  OTHER
+}
+
 // id matches auth.users.id (Supabase-managed); no Prisma-level relation since
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
@@ -560,14 +567,17 @@ model ReviewFlag {
 // ReviewFlag (which only ever targets a Review). targetId is polymorphic
 // — it references a Listing, User, or Message row depending on
 // targetType — so there's no Prisma-level FK to the target, only to the
-// reporter. This ticket is schema-only; the report-creation endpoint(s)
-// and admin moderation queue are built in later tickets in this epic.
+// reporter.
 model Report {
   id                String           @id @default(uuid()) @db.Uuid
   reporterId        String           @map("reporter_id") @db.Uuid
   targetType        ReportTargetType @map("target_type")
   targetId          String           @map("target_id") @db.Uuid
-  reason            String
+  // Fixed category (SCRUM-71 acceptance criteria: fake item/scam/
+  // inappropriate/other) — the free-text elaboration is `note`, kept
+  // separate so admin tooling can filter/aggregate by reason.
+  reason            ReportReason
+  note              String?
   evidenceImageUrls String[]         @default([]) @map("evidence_image_urls")
   status            ReportStatus     @default(PENDING)
   createdAt         DateTime         @default(now()) @map("created_at")
