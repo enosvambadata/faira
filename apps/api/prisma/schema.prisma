@@ -119,6 +119,8 @@ model User {
   escrowLedgerEntries   EscrowLedgerEntry[]
   disputesRaised        PaymentDispute[]
   payoutRequests        PayoutRequest[]
+  reviewsGiven          Review[]                 @relation("ReviewsGiven")
+  reviewsReceived       Review[]                 @relation("ReviewsReceived")
 
   @@map("users")
 }
@@ -366,6 +368,7 @@ model Order {
   payments      Payment[]
   escrowEntries EscrowLedgerEntry[]
   disputes      PaymentDispute[]
+  reviews       Review[]
 
   @@index([listingId])
   @@index([buyerId])
@@ -480,4 +483,32 @@ model DeliveryFeeRate {
 
   @@unique([city, weightTier])
   @@map("delivery_fee_rates")
+}
+
+// One row per (order, reviewer) — since every order has exactly one buyer
+// and one seller, that pair uniquely identifies the direction (buyer
+// reviewing the seller, or seller reviewing the buyer), giving "one review
+// per completed order per direction" without a separate direction column.
+// rating's 1-5 range is enforced with a hand-written CHECK constraint in
+// the migration (same approach as the Message body-or-image constraint —
+// Prisma has no native way to express a numeric range check). Whether the
+// order is actually COMPLETED, and that reviewer/reviewee are its real
+// buyer/seller, is enforced at the application layer once SCRUM-67 builds
+// the review-creation endpoint — this ticket is schema-only.
+model Review {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @map("order_id") @db.Uuid
+  reviewerId String   @map("reviewer_id") @db.Uuid
+  revieweeId String   @map("reviewee_id") @db.Uuid
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewer User  @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee User  @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, reviewerId])
+  @@index([revieweeId])
+  @@map("reviews")
 }
