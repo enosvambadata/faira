@@ -290,6 +290,21 @@ export const hubOps = {
       body: { sealNumber },
       auth: true,
     }),
+
+  // Bypasses request<T>() since this returns an SVG image, not JSON.
+  getLabelSvg: async (id: string): Promise<string> => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const res = await fetch(`${API_URL}/api/v1/fulfilment/hub-ops/shipments/${id}/label`, {
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new ApiError(json?.error?.code ?? "UNKNOWN_ERROR", json?.error?.message ?? "Could not generate the label", res.status);
+    }
+    return res.text();
+  },
 };
 
 export interface CloudinarySignedUpload {

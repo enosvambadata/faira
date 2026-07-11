@@ -27,6 +27,19 @@ const CONDITION_OPTIONS: { value: ParcelCondition; label: string }[] = [
   { value: "SUSPICIOUS", label: "Suspicious — needs a closer look" },
 ];
 
+// Mirrors apps/api/src/routes/hubOps.ts's PRE_SEAL_STATUSES -- a label can
+// be printed (or reprinted) for a SEALED shipment or anything later in the
+// pipeline, not just the instant it's sealed.
+const PRE_SEAL_STATUSES = [
+  "DRAFT",
+  "AWAITING_PAYMENT",
+  "AWAITING_DROPOFF",
+  "DROPOFF_OVERDUE",
+  "RECEIVED_AT_ORIGIN",
+  "INSPECTED",
+  "REJECTED_AT_ORIGIN",
+];
+
 interface PhotoSlot {
   file: File;
   previewUrl: string;
@@ -54,6 +67,9 @@ export default function HubOpsInspectPage() {
   const [sealNumber, setSealNumber] = useState("");
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState<string | null>(null);
+
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
 
   const handleSignOut = async () => {
     await createClient().auth.signOut();
@@ -106,6 +122,7 @@ export default function HubOpsInspectPage() {
 
   const canInspect = shipment?.status === "RECEIVED_AT_ORIGIN";
   const canSeal = shipment?.status === "INSPECTED";
+  const canPrintLabel = !!shipment && !PRE_SEAL_STATUSES.includes(shipment.status);
   const successfulPhotoIds = photos.filter(p => p.state === "success" && p.publicId).map(p => p.publicId!);
 
   const handleInspect = async (e: FormEvent) => {
@@ -144,6 +161,21 @@ export default function HubOpsInspectPage() {
       setSealError(err instanceof FulfilmentApiError ? err.message : "Could not seal this parcel right now.");
     } finally {
       setSealing(false);
+    }
+  };
+
+  const handlePrintLabel = async () => {
+    if (!shipment) return;
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const svg = await hubOpsApi.getLabelSvg(shipment.id);
+      const blobUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+      window.open(blobUrl, "_blank");
+    } catch (err) {
+      setPrintError(err instanceof FulfilmentApiError ? err.message : "Could not generate the label right now.");
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -188,7 +220,7 @@ export default function HubOpsInspectPage() {
               <StatusBadge label={shipment.displayStatus} tone={canInspect || canSeal ? "info" : "neutral"} />
             </div>
 
-            {!canInspect && !canSeal && shipment.status !== "SEALED" && (
+            {!canInspect && !canSeal && !canPrintLabel && (
               <div className="mt-4">
                 <Alert tone="warning">
                   This shipment isn&apos;t ready for inspection or sealing right now — it must be received at the hub
@@ -265,9 +297,13 @@ export default function HubOpsInspectPage() {
               </form>
             )}
 
-            {shipment.status === "SEALED" && (
-              <div className="mt-4">
-                <Alert tone="success">This parcel is sealed and ready for dispatch.</Alert>
+            {canPrintLabel && (
+              <div className="mt-4 flex flex-col gap-3">
+                {shipment.status === "SEALED" && <Alert tone="success">This parcel is sealed and ready for dispatch.</Alert>}
+                {printError && <Alert tone="error">{printError}</Alert>}
+                <Button size="lg" variant="secondary" onClick={handlePrintLabel} loading={printing}>
+                  Print label
+                </Button>
               </div>
             )}
           </Card>

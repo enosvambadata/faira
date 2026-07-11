@@ -9,10 +9,24 @@ import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyDropoffRejected } from '../services/fulfilmentNotifications';
 import { signParcelEvidenceUpload } from '../lib/cloudinary';
+import { renderShipmentLabelSvg } from '../services/shipmentLabel';
 
 const router = Router();
 
 const HUB_OPS_ROLES = ['HUB_AGENT', 'HUB_SUPERVISOR'] as const;
+
+// Anything before SEALED in the pipeline — a label needs a reference and
+// QR code (both set at confirm-time, SCRUM-135) plus confirmation the
+// parcel was actually sealed shut, not just accepted or inspected.
+const PRE_SEAL_STATUSES = [
+  'DRAFT',
+  'AWAITING_PAYMENT',
+  'AWAITING_DROPOFF',
+  'DROPOFF_OVERDUE',
+  'RECEIVED_AT_ORIGIN',
+  'INSPECTED',
+  'REJECTED_AT_ORIGIN',
+] as const;
 
 // First hub-ops route (SCRUM-136) — every route here requires the actor
 // to hold a hub-scoped role AND be assigned to the specific shipment's
@@ -376,6 +390,55 @@ router.post(
     res.status(200).json({
       data: { id: shipment.id, status: 'SEALED', displayStatus: displayStatus('SEALED') },
     });
+  },
+);
+
+// Reprintable any number of times, on purpose (a torn/lost physical label
+// shouldn't strand a parcel) — every generation, first print or Nth
+// reprint alike, is logged identically to AuditLog so an unusual reprint
+// pattern (e.g. many reprints of the same shipment) is investigable,
+// per the ticket's label-swapping-fraud security note.
+router.get(
+  '/shipments/:id/label',
+  requireAuth,
+  requireFulfilmentRole(...HUB_OPS_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const result = await loadAssignedShipment(req, req.params.id);
+    if ('error' in result) {
+      next(result.error);
+      return;
+    }
+    const { shipment } = result;
+
+    if ((PRE_SEAL_STATUSES as readonly string[]).includes(shipment.status)) {
+      next(new ApiError('INVALID_STATE', 'This shipment has not been sealed yet', 409));
+      return;
+    }
+    if (!shipment.reference || !shipment.qrCodeUrl) {
+      next(new ApiError('INVALID_STATE', 'This shipment has no reference or QR code yet', 409));
+      return;
+    }
+
+    const [originHub, destinationHub] = await Promise.all([
+      prisma.hub.findUnique({ where: { id: shipment.originHubId } }),
+      prisma.hub.findUnique({ where: { id: shipment.destinationHubId } }),
+    ]);
+
+    const svg = renderShipmentLabelSvg({
+      reference: shipment.reference,
+      qrCodeUrl: shipment.qrCodeUrl,
+      originHubName: originHub?.name ?? 'Unknown hub',
+      destinationHubName: destinationHub?.name ?? 'Unknown hub',
+      sizeTier: shipment.sizeTier,
+      declaredValue: shipment.declaredValue.toString(),
+    });
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_LABEL_PRINTED', {
+      shipmentId: shipment.id,
+      reference: shipment.reference,
+    });
+
+    res.status(200).type('image/svg+xml').send(svg);
   },
 );
 

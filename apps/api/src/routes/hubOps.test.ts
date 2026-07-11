@@ -13,6 +13,7 @@ const parcelEvidenceCreateManyMock = vi.fn();
 const parcelEvidenceCountMock = vi.fn();
 const parcelSealCreateMock = vi.fn();
 const signParcelEvidenceUploadMock = vi.fn();
+const hubFindUniqueMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -34,6 +35,7 @@ vi.mock('../prisma', () => ({
       count: (...args: unknown[]) => parcelEvidenceCountMock(...args),
     },
     parcelSeal: { create: (...args: unknown[]) => parcelSealCreateMock(...args) },
+    hub: { findUnique: (...args: unknown[]) => hubFindUniqueMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -71,6 +73,15 @@ beforeEach(() => {
     transformation: 'w_1600,h_1600,c_limit',
     type: 'authenticated',
   });
+  hubFindUniqueMock.mockImplementation(({ where }: { where: { id: string } }) =>
+    Promise.resolve(
+      where.id === HARARE_ID
+        ? { id: HARARE_ID, name: 'Faira Harare Hub' }
+        : where.id === BULAWAYO_ID
+          ? { id: BULAWAYO_ID, name: 'Faira Bulawayo Hub' }
+          : null,
+    ),
+  );
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       shipment: { updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args) },
@@ -548,5 +559,94 @@ describe('full happy path: accept -> inspect -> seal', () => {
       .send({ sealNumber: 'SEAL-000123' });
     expect(sealRes.status).toBe(200);
     expect(sealRes.body.data.status).toBe('SEALED');
+  });
+});
+
+const SEALED_SHIPMENT = {
+  id: 'shipment-1',
+  status: 'SEALED',
+  originHubId: HARARE_ID,
+  destinationHubId: BULAWAYO_ID,
+  reference: 'FF-HRE-000001',
+  qrCodeUrl: 'data:image/png;base64,abc123',
+  sizeTier: 'MEDIUM',
+  declaredValue: { toString: () => '100.00' },
+};
+
+describe('GET /api/v1/fulfilment/hub-ops/shipments/:id/label', () => {
+  it('returns an SVG label with the reference, QR, hubs, size, and value', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(SEALED_SHIPMENT);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/image\/svg\+xml/);
+    const body = Buffer.isBuffer(res.body) ? res.body.toString('utf-8') : res.text;
+    expect(body).toContain('FF-HRE-000001');
+    expect(body).toContain('Faira Harare Hub');
+    expect(body).toContain('Faira Bulawayo Hub');
+    expect(body).toContain('MEDIUM');
+  });
+
+  it('logs every generation to AuditLog, including reprints', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(SEALED_SHIPMENT);
+
+    const app = createApp();
+    await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+    await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(2);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'FULFILMENT_LABEL_PRINTED',
+        details: expect.objectContaining({ shipmentId: 'shipment-1', reference: 'FF-HRE-000001' }),
+      }),
+    });
+  });
+
+  it.each(['DRAFT', 'AWAITING_DROPOFF', 'RECEIVED_AT_ORIGIN', 'INSPECTED'])(
+    '409s (not yet sealed) when the shipment is still %s',
+    async status => {
+      shipmentFindUniqueMock.mockResolvedValue({ ...SEALED_SHIPMENT, status });
+
+      const app = createApp();
+      const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+      expect(res.status).toBe(409);
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows printing for statuses after SEALED too (e.g. DISPATCHED)', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...SEALED_SHIPMENT, status: 'DISPATCHED' });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('403s (wrong-hub) when the agent is assigned to a different hub', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...SEALED_SHIPMENT, originHubId: BULAWAYO_ID });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    // A denial IS logged (FULFILMENT_HUB_ASSIGNMENT_DENIED, from
+    // loadAssignedShipment) -- just never the label-printed action.
+    expect(auditLogCreateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'FULFILMENT_LABEL_PRINTED' }) }),
+    );
+  });
+
+  it('404s for a nonexistent shipment', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
   });
 });

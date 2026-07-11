@@ -125,5 +125,14 @@ test.describe("hub-ops inspect and seal workflow", () => {
     await page.getByRole("button", { name: "Seal parcel" }).click();
 
     await expect(page.getByText("This parcel is sealed and ready for dispatch.")).toBeVisible({ timeout: 15_000 });
+
+    const [labelPage] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.getByRole("button", { name: "Print label" }).click(),
+    ]);
+    await labelPage.waitForLoadState();
+    expect(labelPage.url()).toMatch(/^blob:/);
+    const svgContent = await labelPage.locator("svg").innerHTML();
+    expect(svgContent).toContain(confirmed.reference);
   });
 });
