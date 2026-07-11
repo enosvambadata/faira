@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -97,9 +98,14 @@ export default function HubOpsDropoffPage() {
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
           <span className="text-lg font-semibold text-primary">Faira Fulfilment — Hub Ops</span>
-          <Button variant="ghost" size="md" onClick={handleSignOut}>
-            Sign out
-          </Button>
+          <nav className="flex items-center gap-4">
+            <Link href="/hub-ops/inspect" className="text-sm font-medium text-muted hover:text-text">
+              Inspect &amp; seal
+            </Link>
+            <Button variant="ghost" size="md" onClick={handleSignOut}>
+              Sign out
+            </Button>
+          </nav>
         </div>
       </header>
 
