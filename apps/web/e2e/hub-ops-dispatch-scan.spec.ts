@@ -78,6 +78,10 @@ test.describe("hub-ops origin-hub dispatch scanning", () => {
     page,
     request,
   }) => {
+    // This spec sets up two full seller->seal cycles plus manifest
+    // creation before ever touching the browser -- comfortably past the
+    // 60s default given real network round trips to staging + Cloudinary.
+    test.setTimeout(150_000);
     const uniqueId = Date.now();
 
     // Bootstrap account purely to read the hub list.

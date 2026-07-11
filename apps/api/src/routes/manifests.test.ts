@@ -127,6 +127,21 @@ describe('POST /api/v1/fulfilment/manifests', () => {
     expect(manifestCreateMock).not.toHaveBeenCalled();
   });
 
+  it('409s (returning the existing manifest id) when the run already has a FINALIZED manifest', async () => {
+    // A run should only ever have one manifest -- re-picking an
+    // already-dispatched run (e.g. to scan parcels out) must surface the
+    // existing finalized manifest, not silently create a second, empty one.
+    runFindUniqueMock.mockResolvedValue(RUN);
+    manifestFindFirstMock.mockResolvedValue(FINALIZED_MANIFEST);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests').set(AUTH_HEADER).send({ runId: RUN_ID });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.details.manifestId).toBe(FINALIZED_MANIFEST.id);
+    expect(manifestCreateMock).not.toHaveBeenCalled();
+  });
+
   it('404s when the run does not exist', async () => {
     runFindUniqueMock.mockResolvedValue(null);
 
