@@ -17,6 +17,7 @@ import adminRouter from './routes/admin';
 import ordersRouter from './routes/orders';
 import reviewsRouter from './routes/reviews';
 import reportsRouter from './routes/reports';
+import fulfilmentRolesRouter from './routes/fulfilmentRoles';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -54,6 +55,7 @@ export function createApp(): Express {
   app.use('/api/v1/orders', ordersRouter);
   app.use('/api/v1/reviews', reviewsRouter);
   app.use('/api/v1/reports', reportsRouter);
+  app.use('/api/v1/fulfilment/user-roles', fulfilmentRolesRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
