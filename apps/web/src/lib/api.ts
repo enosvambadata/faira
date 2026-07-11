@@ -234,6 +234,47 @@ export interface ShipmentConfirmation {
   qrCodeUrl: string;
 }
 
+export interface HubOpsShipment {
+  id: string;
+  reference: string | null;
+  status: string;
+  displayStatus: string;
+  buyerName: string;
+  buyerContact: string;
+  category: string;
+  description: string | null;
+  declaredValue: string;
+  sizeTier: ParcelSizeTier;
+  originHubId: string;
+  destinationHubId: string;
+}
+
+export interface HubOpsTransitionResult {
+  id: string;
+  status: string;
+  displayStatus: string;
+}
+
+export const hubOps = {
+  search: (reference: string) =>
+    request<HubOpsShipment>(`/api/v1/fulfilment/hub-ops/shipments/search?reference=${encodeURIComponent(reference)}`, {
+      auth: true,
+    }),
+
+  acceptDropoff: (id: string) =>
+    request<HubOpsTransitionResult>(`/api/v1/fulfilment/hub-ops/shipments/${id}/accept-dropoff`, {
+      method: "POST",
+      auth: true,
+    }),
+
+  rejectDropoff: (id: string, reason: string) =>
+    request<HubOpsTransitionResult>(`/api/v1/fulfilment/hub-ops/shipments/${id}/reject-dropoff`, {
+      method: "POST",
+      body: { reason },
+      auth: true,
+    }),
+};
+
 export interface CreateShipmentPayload {
   buyerName: string;
   buyerContact: string;

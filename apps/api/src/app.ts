@@ -21,6 +21,7 @@ import fulfilmentRolesRouter from './routes/fulfilmentRoles';
 import fulfilmentSellersRouter from './routes/fulfilmentSellers';
 import fulfilmentHubsRouter from './routes/fulfilmentHubs';
 import fulfilmentShipmentsRouter from './routes/fulfilmentShipments';
+import hubOpsRouter from './routes/hubOps';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -62,6 +63,7 @@ export function createApp(): Express {
   app.use('/api/v1/fulfilment/sellers', fulfilmentSellersRouter);
   app.use('/api/v1/fulfilment/hubs', fulfilmentHubsRouter);
   app.use('/api/v1/fulfilment/shipments', fulfilmentShipmentsRouter);
+  app.use('/api/v1/fulfilment/hub-ops', hubOpsRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);

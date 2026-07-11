@@ -35,11 +35,13 @@ Mirrors the pattern in `apps/api/src/lib/orderStateMachine.ts` (marketplace): a 
 
 ## Allowed transitions
 
+> **Amended by SCRUM-136** (seller drop-off workflow): `AWAITING_DROPOFF`/`DROPOFF_OVERDUE` -> `REJECTED_AT_ORIGIN` is reachable directly, not only via `RECEIVED_AT_ORIGIN`. A hub agent rejecting a drop-off on the spot (wrong parcel, already damaged, no ID match) never actually took custody — there's no real "received then rejected" moment to force through an extra transition.
+
 ```
 DRAFT                 -> AWAITING_PAYMENT, AWAITING_DROPOFF, CANCELLED
 AWAITING_PAYMENT       -> AWAITING_DROPOFF, CANCELLED
-AWAITING_DROPOFF       -> RECEIVED_AT_ORIGIN, DROPOFF_OVERDUE, CANCELLED
-DROPOFF_OVERDUE        -> RECEIVED_AT_ORIGIN, CANCELLED
+AWAITING_DROPOFF       -> RECEIVED_AT_ORIGIN, DROPOFF_OVERDUE, REJECTED_AT_ORIGIN, CANCELLED
+DROPOFF_OVERDUE        -> RECEIVED_AT_ORIGIN, REJECTED_AT_ORIGIN, CANCELLED
 RECEIVED_AT_ORIGIN     -> INSPECTED, REJECTED_AT_ORIGIN
 REJECTED_AT_ORIGIN     -> CLOSED                                    (terminal; seller re-creates a new shipment)
 INSPECTED              -> SEALED, DAMAGED
