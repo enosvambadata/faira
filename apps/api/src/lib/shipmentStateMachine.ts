@@ -9,8 +9,14 @@ import { ShipmentStatus } from '@prisma/client';
 const ALLOWED_TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
   DRAFT: ['AWAITING_PAYMENT', 'AWAITING_DROPOFF', 'CANCELLED'],
   AWAITING_PAYMENT: ['AWAITING_DROPOFF', 'CANCELLED'],
-  AWAITING_DROPOFF: ['RECEIVED_AT_ORIGIN', 'DROPOFF_OVERDUE', 'CANCELLED'],
-  DROPOFF_OVERDUE: ['RECEIVED_AT_ORIGIN', 'CANCELLED'],
+  // REJECTED_AT_ORIGIN reachable directly here (not only via
+  // RECEIVED_AT_ORIGIN) — SCRUM-136 refined the original spec once actual
+  // hub-ops flow was designed: a hub agent who rejects a drop-off on the
+  // spot (wrong parcel, already damaged, no ID match) never actually took
+  // custody of it, so there's no real "received then rejected" moment to
+  // model separately.
+  AWAITING_DROPOFF: ['RECEIVED_AT_ORIGIN', 'DROPOFF_OVERDUE', 'REJECTED_AT_ORIGIN', 'CANCELLED'],
+  DROPOFF_OVERDUE: ['RECEIVED_AT_ORIGIN', 'REJECTED_AT_ORIGIN', 'CANCELLED'],
   RECEIVED_AT_ORIGIN: ['INSPECTED', 'REJECTED_AT_ORIGIN'],
   // Terminal; seller re-creates a new shipment rather than reusing this one.
   REJECTED_AT_ORIGIN: ['CLOSED'],
