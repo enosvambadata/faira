@@ -4,6 +4,7 @@ import request from 'supertest';
 const getUserMock = vi.fn();
 const userRoleFindManyMock = vi.fn();
 const hubFindUniqueMock = vi.fn();
+const hubUpdateMock = vi.fn();
 const verificationFindFirstMock = vi.fn();
 const systemConfigFindManyMock = vi.fn();
 const shipmentCreateMock = vi.fn();
@@ -27,7 +28,10 @@ vi.mock('../prisma', () => ({
   prisma: {
     user: { upsert: vi.fn().mockResolvedValue({}) },
     userRole: { findMany: (...args: unknown[]) => userRoleFindManyMock(...args) },
-    hub: { findUnique: (...args: unknown[]) => hubFindUniqueMock(...args) },
+    hub: {
+      findUnique: (...args: unknown[]) => hubFindUniqueMock(...args),
+      update: (...args: unknown[]) => hubUpdateMock(...args),
+    },
     fulfilmentVerificationRequest: { findFirst: (...args: unknown[]) => verificationFindFirstMock(...args) },
     systemConfiguration: {
       findMany: (...args: unknown[]) => systemConfigFindManyMock(...args),
@@ -87,11 +91,17 @@ beforeEach(() => {
   pricingRuleFindUniqueMock.mockResolvedValue(null);
   quoteConfigFindUniqueMock.mockResolvedValue({ value: '15' });
   shipmentUpdateManyMock.mockResolvedValue({ count: 1 });
+  shipmentUpdateMock.mockResolvedValue({});
   trackingEventCreateMock.mockResolvedValue({});
+  hubUpdateMock.mockResolvedValue({ id: HARARE_ID, code: 'HRE', nextShipmentSequence: 2 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
-      shipment: { updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args) },
+      shipment: {
+        updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args),
+        update: (...args: unknown[]) => shipmentUpdateMock(...args),
+      },
       trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
+      hub: { update: (...args: unknown[]) => hubUpdateMock(...args) },
     }),
   );
 });
@@ -385,20 +395,32 @@ describe('POST /api/v1/fulfilment/shipments/:id/quote', () => {
 });
 
 describe('POST /api/v1/fulfilment/shipments/:id/confirm', () => {
-  it('transitions to AWAITING_PAYMENT when the seller pays', async () => {
+  it('transitions to AWAITING_PAYMENT when the seller pays, generating a reference and QR code', async () => {
     shipmentFindUniqueMock.mockResolvedValue({
       id: 'shipment-1',
       sellerId: SELLER_ID,
       status: 'DRAFT',
       feePayer: 'SELLER',
+      originHubId: HARARE_ID,
     });
     quoteConfigFindUniqueMock.mockResolvedValue({ value: '48' });
+    hubUpdateMock.mockResolvedValue({ id: HARARE_ID, code: 'HRE', nextShipmentSequence: 2 });
 
     const app = createApp();
     const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('AWAITING_PAYMENT');
+    expect(res.body.data.reference).toBe('FF-HRE-000001');
+    expect(res.body.data.qrCodeUrl).toMatch(/^data:image\/png;base64,/);
+    expect(hubUpdateMock).toHaveBeenCalledWith({
+      where: { id: HARARE_ID },
+      data: { nextShipmentSequence: { increment: 1 } },
+    });
+    expect(shipmentUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'shipment-1' },
+      data: { reference: 'FF-HRE-000001', qrCodeUrl: expect.stringMatching(/^data:image\/png;base64,/) },
+    });
     expect(shipmentUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'shipment-1', status: 'DRAFT' },
       data: { status: 'AWAITING_PAYMENT', dropoffDeadline: expect.any(Date) },
@@ -406,6 +428,27 @@ describe('POST /api/v1/fulfilment/shipments/:id/confirm', () => {
     expect(trackingEventCreateMock).toHaveBeenCalledWith({
       data: { shipmentId: 'shipment-1', fromStatus: 'DRAFT', toStatus: 'AWAITING_PAYMENT', actorUserId: SELLER_ID },
     });
+  });
+
+  it('generates distinct references for two shipments confirmed against the same origin hub', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      feePayer: 'BUYER',
+      originHubId: HARARE_ID,
+    });
+    quoteConfigFindUniqueMock.mockResolvedValue({ value: '48' });
+    hubUpdateMock.mockResolvedValueOnce({ id: HARARE_ID, code: 'HRE', nextShipmentSequence: 2 });
+    hubUpdateMock.mockResolvedValueOnce({ id: HARARE_ID, code: 'HRE', nextShipmentSequence: 3 });
+
+    const app = createApp();
+    const first = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+    const second = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(first.body.data.reference).toBe('FF-HRE-000001');
+    expect(second.body.data.reference).toBe('FF-HRE-000002');
+    expect(first.body.data.reference).not.toBe(second.body.data.reference);
   });
 
   it('transitions straight to AWAITING_DROPOFF when the buyer pays', async () => {

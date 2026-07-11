@@ -79,7 +79,17 @@ export default function ShipmentDetailPage() {
     setConfirmError(null);
     try {
       const result = await shipmentsApi.confirm(id);
-      setShipment(prev => (prev ? { ...prev, status: result.status, dropoffDeadline: result.dropoffDeadline } : prev));
+      setShipment(prev =>
+        prev
+          ? {
+              ...prev,
+              status: result.status,
+              dropoffDeadline: result.dropoffDeadline,
+              reference: result.reference,
+              qrCodeUrl: result.qrCodeUrl,
+            }
+          : prev,
+      );
       toast({ title: "Shipment confirmed", tone: "success" });
     } catch (err) {
       setConfirmError(err instanceof FulfilmentApiError ? err.message : "Could not confirm this shipment right now.");
@@ -203,6 +213,18 @@ export default function ShipmentDetailPage() {
                 <span className="text-text">{new Date(shipment.dropoffDeadline).toLocaleString()}</span>
               </div>
             )}
+
+            {shipment.reference && (
+              <div className="mt-4 flex flex-col items-center gap-3 border-t border-border pt-4">
+                <p className="text-sm text-muted">Print this and attach it to the parcel</p>
+                {shipment.qrCodeUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element -- a data: URL, not an optimizable remote image
+                  <img src={shipment.qrCodeUrl} alt={`QR code for shipment ${shipment.reference}`} className="h-40 w-40" />
+                )}
+                <p className="font-mono text-lg font-semibold tracking-wide text-text">{shipment.reference}</p>
+              </div>
+            )}
+
             {shipment.status === "AWAITING_PAYMENT" && (
               <p className="mt-3 text-sm text-muted">
                 Delivery fee payment isn&apos;t available yet — this is coming soon.

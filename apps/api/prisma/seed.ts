@@ -412,6 +412,7 @@ async function seedFulfilmentPilot(): Promise<{ hubs: number; routes: number; pr
     update: {},
     create: {
       name: 'Faira Harare Hub',
+      code: 'HRE',
       city: 'Harare',
       address: 'Cnr Julius Nyerere Way & Robert Mugabe Rd, Harare CBD',
       openingHours: 'Mon-Fri 8am-5pm, Sat 8am-1pm',
@@ -422,6 +423,7 @@ async function seedFulfilmentPilot(): Promise<{ hubs: number; routes: number; pr
     update: {},
     create: {
       name: 'Faira Bulawayo Hub',
+      code: 'BUL',
       city: 'Bulawayo',
       address: 'Cnr Fife St & 9th Ave, Bulawayo CBD',
       openingHours: 'Mon-Fri 8am-5pm, Sat 8am-1pm',

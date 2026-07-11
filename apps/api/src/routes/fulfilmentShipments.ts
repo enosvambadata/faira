@@ -8,6 +8,7 @@ import { SYSTEM_CONFIG_KEYS } from '../lib/systemConfigKeys';
 import { calculateShipmentQuote } from '../services/shipmentQuote';
 import { canTransition, displayStatus } from '../lib/shipmentStateMachine';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { generateShipmentReference } from '../services/shipmentReference';
 
 const router = Router();
 
@@ -155,6 +156,7 @@ router.get(
         feePayer: shipment.feePayer,
         deliveryFee: shipment.deliveryFee?.toString() ?? null,
         reference: shipment.reference,
+        qrCodeUrl: shipment.qrCodeUrl,
         dropoffDeadline: shipment.dropoffDeadline,
         createdAt: shipment.createdAt,
       },
@@ -283,6 +285,9 @@ router.post(
     const deadlineHours = deadlineConfig ? Number(deadlineConfig.value) : DEFAULT_DROPOFF_DEADLINE_HOURS;
     const dropoffDeadline = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
 
+    let reference = '';
+    let qrCodeUrl = '';
+
     try {
       await prisma.$transaction(async tx => {
         const result = await tx.shipment.updateMany({
@@ -292,6 +297,13 @@ router.post(
         if (result.count === 0) {
           throw new ShipmentTransitionConflict();
         }
+
+        // Generated inside the same transaction as the status transition —
+        // a shipment never ends up confirmed without a reference/QR, and
+        // the hub's sequence counter never increments for a confirm that
+        // ultimately rolls back.
+        ({ reference, qrCodeUrl } = await generateShipmentReference(tx, shipment.originHubId));
+        await tx.shipment.update({ where: { id: shipment.id }, data: { reference, qrCodeUrl } });
 
         await tx.trackingEvent.create({
           data: {
@@ -322,6 +334,8 @@ router.post(
         status: targetStatus,
         displayStatus: displayStatus(targetStatus),
         dropoffDeadline,
+        reference,
+        qrCodeUrl,
       },
     });
   },
