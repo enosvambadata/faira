@@ -57,6 +57,6 @@ test("verified-limit seller can create a shipment draft after registering", asyn
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page).toHaveURL(/\/shipments\/[0-9a-f-]+$/, { timeout: 15_000 });
-  await expect(page.getByText("DRAFT", { exact: false })).toBeVisible();
+  await expect(page.getByText("DRAFT", { exact: true })).toBeVisible();
   await expect(page.getByText("Buyer Example")).toBeVisible();
 });
