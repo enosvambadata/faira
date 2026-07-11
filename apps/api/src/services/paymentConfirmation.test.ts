@@ -5,6 +5,11 @@ const orderUpdateManyMock = vi.fn();
 const paymentUpdateMock = vi.fn();
 const escrowCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const notifyOrderStatusChangeMock = vi.fn();
+
+vi.mock('./orderNotifications', () => ({
+  notifyOrderStatusChange: (...args: unknown[]) => notifyOrderStatusChangeMock(...args),
+}));
 
 vi.mock('../prisma', () => ({
   prisma: {

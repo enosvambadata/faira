@@ -13,6 +13,7 @@ import {
 import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
 import { calculateDeliveryFee } from '../services/deliveryFee';
+import { notifyOrderStatusChange } from '../services/orderNotifications';
 import { OrderStatus } from '@prisma/client';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
 import { signDisputeEvidenceUpload } from '../lib/cloudinary';
@@ -473,6 +474,8 @@ router.post(
       return;
     }
 
+    await notifyOrderStatusChange(order.id, 'SHIPPED');
+
     res.status(200).json({
       data: {
         id: order.id,
@@ -551,6 +554,7 @@ router.post(
     }
 
     await prisma.payment.update({ where: { id: payment.id }, data: { status: 'CONFIRMED', confirmedAt: new Date() } });
+    await notifyOrderStatusChange(order.id, 'COMPLETED');
 
     res.status(200).json({ data: { id: order.id, status: 'COMPLETED', displayStatus: displayStatus('COMPLETED') } });
   },
@@ -607,6 +611,8 @@ router.post(
         evidenceImageUrls: parsed.data.evidenceImageUrls,
       },
     });
+
+    await notifyOrderStatusChange(order.id, 'DISPUTED');
 
     res.status(201).json({
       data: {
