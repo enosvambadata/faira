@@ -1050,6 +1050,83 @@ describe('GET /api/v1/orders/:orderId/reviews', () => {
     expect(res.body.data.counterpartReview.rating).toBe(4);
   });
 
+  it('hides a PENDING-flagged counterpart review even once revealed', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: new Date('2026-07-05T00:00:00Z'),
+        escrowEntries: [],
+        reviews: [
+          { id: 'r1', reviewerId: BUYER_ID, revieweeId: SELLER_ID, rating: 5, comment: 'Great!', createdAt: new Date('2026-07-05T00:00:00Z'), flag: null },
+          {
+            id: 'r2',
+            reviewerId: SELLER_ID,
+            revieweeId: BUYER_ID,
+            rating: 1,
+            comment: 'Abusive comment',
+            createdAt: new Date('2026-07-05T01:00:00Z'),
+            flag: { status: 'PENDING' },
+          },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.revealed).toBe(true);
+    expect(res.body.data.counterpartReview).toBeNull();
+  });
+
+  it('still shows your own review to you when it has been flagged, with a flagged indicator', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: new Date('2026-07-05T00:00:00Z'),
+        escrowEntries: [],
+        reviews: [
+          { id: 'r1', reviewerId: BUYER_ID, revieweeId: SELLER_ID, rating: 1, comment: 'Abusive', createdAt: new Date(), flag: { status: 'PENDING' } },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.yourReview.rating).toBe(1);
+    expect(res.body.data.yourReview.flagged).toBe(true);
+  });
+
+  it('shows a DISMISSED-flagged counterpart review normally', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: new Date('2026-07-05T00:00:00Z'),
+        escrowEntries: [],
+        reviews: [
+          { id: 'r1', reviewerId: BUYER_ID, revieweeId: SELLER_ID, rating: 5, comment: 'Great!', createdAt: new Date(), flag: null },
+          {
+            id: 'r2',
+            reviewerId: SELLER_ID,
+            revieweeId: BUYER_ID,
+            rating: 4,
+            comment: 'Good buyer',
+            createdAt: new Date(),
+            flag: { status: 'DISMISSED' },
+          },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.counterpartReview.rating).toBe(4);
+  });
+
   it('403s when the caller is not part of the order', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED', buyerId: 'someone-else', escrowEntries: [], reviews: [] }));
 

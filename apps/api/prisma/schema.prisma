@@ -90,6 +90,12 @@ enum PayoutStatus {
   FAILED
 }
 
+enum ReviewFlagStatus {
+  PENDING
+  DISMISSED
+  REMOVED
+}
+
 // id matches auth.users.id (Supabase-managed); no Prisma-level relation since
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
@@ -121,6 +127,7 @@ model User {
   payoutRequests        PayoutRequest[]
   reviewsGiven          Review[]                 @relation("ReviewsGiven")
   reviewsReceived       Review[]                 @relation("ReviewsReceived")
+  reviewFlagsRaised     ReviewFlag[]
 
   @@map("users")
 }
@@ -507,8 +514,30 @@ model Review {
   order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   reviewer User  @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
   reviewee User  @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  flag     ReviewFlag?
 
   @@unique([orderId, reviewerId])
   @@index([revieweeId])
   @@map("reviews")
+}
+
+// One flag per review (SCRUM-69) — either party to the underlying order
+// can flag it as abusive/false. A PENDING flag hides the review from
+// everyone except its author (see reviews.ts/sellers.ts read paths);
+// an admin then DISMISSes it (review becomes visible again) or REMOVEs
+// it (stays hidden permanently).
+model ReviewFlag {
+  id          String           @id @default(uuid()) @db.Uuid
+  reviewId    String           @unique @map("review_id") @db.Uuid
+  flaggedById String           @map("flagged_by_id") @db.Uuid
+  reason      String
+  status      ReviewFlagStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  resolvedAt  DateTime?        @map("resolved_at")
+
+  review    Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  flaggedBy User   @relation(fields: [flaggedById], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("review_flags")
 }

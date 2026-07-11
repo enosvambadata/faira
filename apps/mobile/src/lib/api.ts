@@ -488,7 +488,7 @@ export interface OrderReview {
 export interface OrderReviewsResult {
   canReview: boolean;
   revealed: boolean;
-  yourReview: OrderReview | null;
+  yourReview: (OrderReview & { flagged: boolean }) | null;
   counterpartReview: OrderReview | null;
 }
 
@@ -619,6 +619,14 @@ export interface SellerReview {
   createdAt: string;
   reviewer: { displayName: string | null; avatarUrl: string | null };
 }
+
+export const reviews = {
+  flag: (reviewId: string, reason: string) =>
+    request<{ id: string; reviewId: string; status: string; createdAt: string }>(
+      `/api/v1/reviews/${reviewId}/flag`,
+      { method: 'POST', body: { reason }, auth: true },
+    ),
+};
 
 export interface VerificationRequestData {
   id: string;
