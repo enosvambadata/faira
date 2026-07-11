@@ -420,7 +420,20 @@ describe('GET /api/v1/orders/:orderId', () => {
     expect(res.body.data.paymentMethod).toBe('CASH_ON_DELIVERY');
   });
 
-  it('sets canMarkCollected true only for the seller on a still-PAID COD order', async () => {
+  it('sets canMarkCollected true for the seller on a still-PENDING COD order (payment and collection are the same event)', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ status: 'PENDING', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: null }] }),
+    );
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.canMarkCollected).toBe(true);
+  });
+
+  it('sets canMarkCollected true for the seller on a PAID COD order too', async () => {
     orderFindUniqueMock.mockResolvedValue(
       fakeOrderDetail({ status: 'PAID', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: null }] }),
     );
@@ -445,7 +458,7 @@ describe('GET /api/v1/orders/:orderId', () => {
     expect(res.body.data.canMarkCollected).toBe(false);
   });
 
-  it('sets canMarkCollected false once the order has already moved past PAID', async () => {
+  it('sets canMarkCollected false once the order has already reached COMPLETED', async () => {
     orderFindUniqueMock.mockResolvedValue(
       fakeOrderDetail({ status: 'COMPLETED', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: new Date() }] }),
     );
