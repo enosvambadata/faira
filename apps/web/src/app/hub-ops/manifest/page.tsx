@@ -69,8 +69,9 @@ export default function HubOpsManifestPage() {
 
   const runOptions = runs.map(run => {
     const route = routeFor(run.routeId);
+    const vehicle = run.vehicleReference ? ` (${run.vehicleReference})` : "";
     const label = route
-      ? `${hubName(route.originHubId)} → ${hubName(route.destinationHubId)} — ${new Date(run.scheduledDeparture).toLocaleString()}`
+      ? `${hubName(route.originHubId)} → ${hubName(route.destinationHubId)} — ${new Date(run.scheduledDeparture).toLocaleString()}${vehicle}`
       : run.id;
     return { value: run.id, label };
   });
