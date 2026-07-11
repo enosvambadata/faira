@@ -67,7 +67,7 @@ test("seller can confirm a shipment and see its drop-off deadline", async ({ pag
 
   await page.getByRole("button", { name: "Confirm shipment" }).click();
 
-  await expect(page.getByText("Shipment confirmed")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Shipment confirmed" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("AWAITING PAYMENT")).toBeVisible();
   await expect(page.getByText("Drop off by")).toBeVisible();
 });
