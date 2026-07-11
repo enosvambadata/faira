@@ -1,0 +1,188 @@
+import { createClient } from "./supabase";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const supabase = createClient();
+
+export class ApiError extends Error {
+  code: string;
+  status: number;
+  details: unknown;
+
+  constructor(code: string, message: string, status: number, details: unknown = null) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  auth?: boolean;
+}
+
+// Mirrors apps/mobile/src/lib/api.ts's request<T>() shape so both clients
+// talk to the same backend the same way — auth is always a Supabase
+// access token in the Authorization header, never a cookie/session sent
+// to apps/api directly.
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+
+  if (options.auth) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  }
+
+  let body: BodyInit | undefined;
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: options.method ?? "GET",
+    headers,
+    body,
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = json?.error ?? {};
+    throw new ApiError(err.code ?? "UNKNOWN_ERROR", err.message ?? "Something went wrong", res.status, err.details ?? null);
+  }
+
+  return json.data as T;
+}
+
+export interface OnboardingDraft {
+  id: string;
+  fullName: string | null;
+  mobileNumber: string | null;
+  sellerType: "INDIVIDUAL" | "REGISTERED_BUSINESS" | null;
+  businessName: string | null;
+  productCategories: string[];
+  hasPhysicalShop: boolean | null;
+  shopAddress: string | null;
+  city: string | null;
+  preferredHubId: string | null;
+  nationalIdNumber: string | null;
+  agreedToTerms: boolean;
+  status: "DRAFT" | "SUBMITTED";
+  submittedAt: string | null;
+}
+
+export type OnboardingDraftUpdate = Partial<{
+  fullName: string;
+  mobileNumber: string;
+  sellerType: "INDIVIDUAL" | "REGISTERED_BUSINESS";
+  businessName: string;
+  productCategories: string[];
+  hasPhysicalShop: boolean;
+  shopAddress: string;
+  city: string;
+  preferredHubId: string;
+  nationalIdNumber: string;
+  agreeToTerms: boolean;
+}>;
+
+export interface Hub {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  openingHours: string;
+}
+
+export type VerificationDocType = "ID" | "BUSINESS" | "SHOP_PHOTO";
+
+export type VerificationStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "MORE_INFO_REQUIRED"
+  | "APPROVED"
+  | "REJECTED"
+  | "SUSPENDED"
+  | "EXPIRED";
+
+export interface VerificationStatusResult {
+  id?: string;
+  status: VerificationStatus;
+  idDocumentUrl: string | null;
+  businessDocumentUrl: string | null;
+  shopPhotoUrl: string | null;
+  reviewNotes: string | null;
+  submittedAt?: string;
+  reviewedAt?: string | null;
+}
+
+export interface SignedUpload {
+  path: string;
+  signedUrl: string;
+  token: string;
+}
+
+export const auth = {
+  // Reuses the existing Express endpoint (not the Supabase browser client's
+  // own signUp) specifically because it creates the account through
+  // supabaseAdmin.auth.admin.createUser with email_confirm: true — the same
+  // auto-confirmed rule the mobile app's signup already relies on. Login,
+  // by contrast, goes straight through the browser Supabase client (see
+  // signup/page.tsx and login/page.tsx) so @supabase/ssr's cookie-based
+  // session sync stays correct.
+  signup: (payload: { email: string; password: string }) =>
+    request<{ id: string; email: string | null; phone: string | null }>("/api/v1/auth/signup", {
+      method: "POST",
+      body: payload,
+    }),
+};
+
+export const hubs = {
+  list: () => request<Hub[]>("/api/v1/fulfilment/hubs", { auth: true }),
+};
+
+export const sellerOnboarding = {
+  getDraft: () => request<OnboardingDraft>("/api/v1/fulfilment/sellers/me/onboarding", { auth: true }),
+
+  saveDraft: (payload: OnboardingDraftUpdate) =>
+    request<OnboardingDraft>("/api/v1/fulfilment/sellers/me/onboarding", { method: "PATCH", body: payload, auth: true }),
+
+  submit: () => request<OnboardingDraft>("/api/v1/fulfilment/sellers/me/onboarding/submit", { method: "POST", auth: true }),
+};
+
+export const sellerVerification = {
+  getStatus: () => request<VerificationStatusResult>("/api/v1/fulfilment/sellers/me/verification", { auth: true }),
+
+  getUploadUrl: (docType: VerificationDocType) =>
+    request<SignedUpload>("/api/v1/fulfilment/sellers/me/verification/upload-url", {
+      method: "POST",
+      body: { docType },
+      auth: true,
+    }),
+
+  submit: (payload: { idDocumentPath: string; businessDocumentPath?: string; shopPhotoPath?: string }) =>
+    request<VerificationStatusResult>("/api/v1/fulfilment/sellers/me/verification/submit", {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  // Uploads directly to Supabase Storage using the signed URL/token from
+  // getUploadUrl — the file bytes never pass through apps/api.
+  uploadFile: async (upload: SignedUpload, file: File) => {
+    const supabaseClient = createClient();
+    const { error } = await supabaseClient.storage
+      .from("seller-verification")
+      .uploadToSignedUrl(upload.path, upload.token, file, { contentType: file.type });
+    if (error) throw new ApiError("UPLOAD_FAILED", error.message, 400);
+  },
+};
+
+export { ApiError as FulfilmentApiError };

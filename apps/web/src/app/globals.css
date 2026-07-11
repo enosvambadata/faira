@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/*
+  Faira design tokens — mirrors apps/mobile/src/theme/colors.ts exactly so
+  the brand is consistent between the consumer app and this web app. Do not
+  add colors here that don't exist there without updating both.
+*/
+:root {
+  --color-primary: #c2501b;
+  --color-primary-dark: #9c3f15;
+  --color-primary-light: #f7e4d9;
+  --color-gold: #d9a441;
+  --color-dark: #2e1a0d;
+  --color-bg: #f5efe2;
+  --color-white: #ffffff;
+  --color-text: #2e1a0d;
+  --color-muted: #8a7a6e;
+  --color-border: #e5ddd0;
+  --color-light: #faf6ef;
+  --color-red: #c0392b;
+  --color-green: #2e7d32;
+  --color-warning: #d9a441;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 2px rgba(46, 26, 13, 0.06), 0 1px 3px rgba(46, 26, 13, 0.08);
+  --shadow-modal: 0 8px 24px rgba(46, 26, 13, 0.16);
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-gold: var(--color-gold);
+  --color-dark: var(--color-dark);
+  --color-bg: var(--color-bg);
+  --color-white: var(--color-white);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-light: var(--color-light);
+  --color-red: var(--color-red);
+  --color-green: var(--color-green);
+  --color-warning: var(--color-warning);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Visible focus ring for keyboard navigation everywhere, including on
+   elements that don't otherwise get Tailwind's focus utilities applied
+   (e.g. via Radix primitives that render their own DOM). */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
