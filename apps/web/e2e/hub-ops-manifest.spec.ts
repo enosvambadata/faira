@@ -159,7 +159,9 @@ test.describe("hub-ops dispatch manifest workflow", () => {
 
     await page.goto("/hub-ops/manifest");
     await page.getByRole("combobox").click();
-    await page.getByRole("option", { name: new RegExp(`E2E-${uniqueId}|Harare.*Bulawayo`) }).first().click();
+    // Match on the vehicle reference specifically -- the route/date label
+    // alone is ambiguous across repeated test runs sharing the pilot route.
+    await page.getByRole("option", { name: new RegExp(`E2E-${uniqueId}`) }).click();
     await page.getByRole("button", { name: "Open manifest" }).click();
 
     await expect(page.getByText("No parcels assigned yet.")).toBeVisible({ timeout: 15_000 });
@@ -167,7 +169,7 @@ test.describe("hub-ops dispatch manifest workflow", () => {
     await page.getByLabel("Add a sealed parcel by reference").fill(confirmed.reference);
     await page.getByRole("button", { name: "Add to manifest" }).click();
 
-    await expect(page.getByText(confirmed.reference)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(confirmed.reference).first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("button", { name: "Finalize manifest" }).click();
     await expect(page.getByText("FINALIZED", { exact: true })).toBeVisible({ timeout: 15_000 });
