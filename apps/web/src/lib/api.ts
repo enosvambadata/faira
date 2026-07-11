@@ -207,6 +207,22 @@ export interface ShipmentDetail extends ShipmentDraft {
   reference: string | null;
 }
 
+export type QuoteSource = "pricing_rule" | "fallback_default";
+
+export interface ShipmentQuote {
+  fee: number;
+  source: QuoteSource;
+  sizeTier: ParcelSizeTier;
+}
+
+export interface ShipmentQuoteConfirmation {
+  id: string;
+  status: string;
+  feePayer: "SELLER" | "BUYER";
+  deliveryFee: string;
+  quoteSource: QuoteSource;
+}
+
 export interface CreateShipmentPayload {
   buyerName: string;
   buyerContact: string;
@@ -225,6 +241,15 @@ export const shipments = {
   get: (id: string) => request<ShipmentDetail>(`/api/v1/fulfilment/shipments/${id}`, { auth: true }),
 
   abandon: (id: string) => request<void>(`/api/v1/fulfilment/shipments/${id}`, { method: "DELETE", auth: true }),
+
+  getQuote: (id: string) => request<ShipmentQuote>(`/api/v1/fulfilment/shipments/${id}/quote`, { auth: true }),
+
+  confirmQuote: (id: string, feePayer: "SELLER" | "BUYER") =>
+    request<ShipmentQuoteConfirmation>(`/api/v1/fulfilment/shipments/${id}/quote`, {
+      method: "POST",
+      body: { feePayer },
+      auth: true,
+    }),
 };
 
 export { ApiError as FulfilmentApiError };

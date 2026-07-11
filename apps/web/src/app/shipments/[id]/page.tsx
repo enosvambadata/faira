@@ -8,8 +8,14 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { RadioGroup } from "@/components/ui/RadioGroup";
 import { useToast } from "@/components/ui/Toast";
-import { shipments as shipmentsApi, ShipmentDetail, hubs as hubsApi, Hub } from "@/lib/api";
+import { shipments as shipmentsApi, ShipmentDetail, hubs as hubsApi, Hub, ShipmentQuote, FulfilmentApiError } from "@/lib/api";
+
+const FEE_PAYER_OPTIONS = [
+  { value: "SELLER", label: "I'll pay", description: "The delivery fee comes out of your payout." },
+  { value: "BUYER", label: "Buyer pays", description: "The buyer pays the delivery fee on collection." },
+];
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,16 +26,44 @@ export default function ShipmentDetailPage() {
   const [hubOptions, setHubOptions] = useState<Hub[]>([]);
   const [abandoning, setAbandoning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<ShipmentQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [feePayer, setFeePayer] = useState<string | undefined>(undefined);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     Promise.all([shipmentsApi.get(id), hubsApi.list()])
       .then(([shipmentResult, hubs]) => {
         setShipment(shipmentResult);
         setHubOptions(hubs);
+        if (shipmentResult.status === "DRAFT" && !shipmentResult.feePayer) {
+          setQuoteLoading(true);
+          shipmentsApi
+            .getQuote(id)
+            .then(setQuote)
+            .catch(() => setQuoteError("Could not load a delivery quote right now."))
+            .finally(() => setQuoteLoading(false));
+        }
       })
       .catch(() => setError("Could not load this shipment."))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const handleConfirmQuote = async () => {
+    if (!feePayer) return;
+    setConfirming(true);
+    setQuoteError(null);
+    try {
+      const result = await shipmentsApi.confirmQuote(id, feePayer as "SELLER" | "BUYER");
+      setShipment(prev => (prev ? { ...prev, feePayer: result.feePayer, deliveryFee: result.deliveryFee } : prev));
+      toast({ title: "Delivery fee confirmed", tone: "success" });
+    } catch (err) {
+      setQuoteError(err instanceof FulfilmentApiError ? err.message : "Could not confirm the delivery fee right now.");
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const hubName = (hubId: string) => hubOptions.find(h => h.id === hubId)?.name ?? hubId;
 
@@ -107,13 +141,60 @@ export default function ShipmentDetailPage() {
           </dl>
         </Card>
 
+        {shipment.status === "DRAFT" && shipment.feePayer && (
+          <Card className="mt-4">
+            <h2 className="text-base font-semibold text-text">Delivery fee</h2>
+            <div className="mt-2 flex justify-between text-sm">
+              <span className="text-muted">Fee</span>
+              <span className="text-text">${shipment.deliveryFee}</span>
+            </div>
+            <div className="mt-1 flex justify-between text-sm">
+              <span className="text-muted">Paid by</span>
+              <span className="text-text">{shipment.feePayer === "SELLER" ? "You" : "Buyer"}</span>
+            </div>
+          </Card>
+        )}
+
+        {shipment.status === "DRAFT" && !shipment.feePayer && (
+          <Card className="mt-4">
+            <h2 className="text-base font-semibold text-text">Delivery fee</h2>
+            {quoteLoading ? (
+              <Skeleton className="mt-3 h-20 w-full" />
+            ) : quote ? (
+              <>
+                <p className="mt-2 text-2xl font-semibold text-text">${quote.fee.toFixed(2)}</p>
+                <p className="text-sm text-muted">
+                  {quote.source === "pricing_rule"
+                    ? "Based on your selected route and parcel size."
+                    : "Estimated — this route doesn't have a custom rate yet."}
+                </p>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-sm font-medium text-text">Who pays the delivery fee?</p>
+                  <RadioGroup value={feePayer} onValueChange={setFeePayer} options={FEE_PAYER_OPTIONS} name="feePayer" />
+                </div>
+
+                {quoteError && (
+                  <div className="mt-3">
+                    <Alert tone="error">{quoteError}</Alert>
+                  </div>
+                )}
+
+                <Button className="mt-4" size="lg" onClick={handleConfirmQuote} loading={confirming} disabled={!feePayer}>
+                  Confirm delivery fee
+                </Button>
+              </>
+            ) : (
+              <div className="mt-3">
+                <Alert tone="error">{quoteError ?? "Could not load a delivery quote."}</Alert>
+              </div>
+            )}
+          </Card>
+        )}
+
         {shipment.status === "DRAFT" && (
-          <Card className="mt-4 bg-primary-light">
-            <p className="text-sm text-primary-dark">
-              Delivery quote and drop-off details are coming soon. For now, this draft is saved — you can come back to
-              it from your dashboard.
-            </p>
-            <Button variant="danger" size="md" className="mt-3" onClick={handleAbandon} loading={abandoning}>
+          <Card className="mt-4">
+            <Button variant="danger" size="md" onClick={handleAbandon} loading={abandoning}>
               Remove this draft
             </Button>
           </Card>
