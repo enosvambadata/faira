@@ -5,6 +5,7 @@ import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-naviga
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
 import { sellers as sellersApi, reviews as reviewsApi, SellerProfileData, SellerReview, ApiError } from '@/lib/api';
+import ReportModal from '@/components/ReportModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SellerProfile'>;
 
@@ -30,6 +31,7 @@ export default function SellerProfileScreen({ route }: Props) {
   const [flagReason, setFlagReason] = useState('');
   const [flagBusy, setFlagBusy] = useState(false);
   const [flagError, setFlagError] = useState<string | null>(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,6 +131,7 @@ export default function SellerProfileScreen({ route }: Props) {
   }
 
   return (
+    <>
     <FlatList
       style={styles.container}
       data={profile.activeListings}
@@ -186,6 +189,10 @@ export default function SellerProfileScreen({ route }: Props) {
             <Text style={[styles.followButtonText, profile.isFollowing && styles.followButtonTextActive]}>
               {profile.isFollowing ? 'Following' : 'Follow'}
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity testID="report-seller-btn" style={styles.reportLink} onPress={() => setReportModalVisible(true)}>
+            <Text style={styles.reportLinkText}>Report this seller</Text>
           </TouchableOpacity>
 
           <Text style={styles.sectionTitle}>Active Listings</Text>
@@ -277,6 +284,14 @@ export default function SellerProfileScreen({ route }: Props) {
         </View>
       }
     />
+    <ReportModal
+      visible={reportModalVisible}
+      targetType="USER"
+      targetId={sellerId}
+      title="Report this seller"
+      onClose={() => setReportModalVisible(false)}
+    />
+    </>
   );
 }
 
@@ -307,6 +322,8 @@ const styles = StyleSheet.create({
   followButtonActive: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.primary },
   followButtonText: { ...textStyles.bodyMedium, color: colors.white },
   followButtonTextActive: { color: colors.primary },
+  reportLink: { marginTop: 12 },
+  reportLinkText: { ...textStyles.caption, color: colors.muted, textDecorationLine: 'underline' },
   sectionTitle: { ...textStyles.bodyMedium, color: colors.text, alignSelf: 'flex-start', marginTop: 28 },
   grid: { paddingHorizontal: 12, paddingBottom: 24 },
   row: { gap: 12 },

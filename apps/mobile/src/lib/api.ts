@@ -628,6 +628,19 @@ export const reviews = {
     ),
 };
 
+export type ReportReason = 'FAKE_ITEM' | 'SCAM' | 'INAPPROPRIATE' | 'OTHER';
+
+export const reports = {
+  getUploadSignature: () =>
+    request<UploadSignature>('/api/v1/reports/upload-signature', { method: 'POST', auth: true }),
+
+  create: (payload: { targetType: 'LISTING' | 'USER'; targetId: string; reason: ReportReason; note?: string; evidenceImageUrls?: string[] }) =>
+    request<{ id: string; targetType: string; targetId: string; status: string; createdAt: string }>(
+      '/api/v1/reports',
+      { method: 'POST', body: payload, auth: true },
+    ),
+};
+
 export interface VerificationRequestData {
   id: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
