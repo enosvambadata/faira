@@ -15,6 +15,9 @@ const escrowLedgerEntryAggregateMock = vi.fn();
 const escrowLedgerEntryCreateMock = vi.fn();
 const payoutRequestCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const reviewAggregateMock = vi.fn();
+const reviewFindManyMock = vi.fn();
+const reviewCountMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -46,6 +49,11 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => escrowLedgerEntryCreateMock(...args),
     },
     payoutRequest: { create: (...args: unknown[]) => payoutRequestCreateMock(...args) },
+    review: {
+      aggregate: (...args: unknown[]) => reviewAggregateMock(...args),
+      findMany: (...args: unknown[]) => reviewFindManyMock(...args),
+      count: (...args: unknown[]) => reviewCountMock(...args),
+    },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -77,12 +85,14 @@ describe('GET /api/v1/sellers/:id', () => {
     followCountMock.mockReset();
     followFindUniqueMock.mockReset();
     conversationCountMock.mockReset();
+    reviewAggregateMock.mockReset();
     getUserMock.mockResolvedValue({ data: { user: { id: VIEWER_ID } }, error: null });
     listingFindManyMock.mockResolvedValue([]);
     orderCountMock.mockResolvedValue(0);
     followCountMock.mockResolvedValue(0);
     followFindUniqueMock.mockResolvedValue(null);
     conversationCountMock.mockResolvedValue(0);
+    reviewAggregateMock.mockResolvedValue({ _avg: { rating: null }, _count: 0 });
   });
 
   it('returns the public seller profile', async () => {
@@ -94,6 +104,7 @@ describe('GET /api/v1/sellers/:id', () => {
     followCountMock.mockResolvedValue(7);
     followFindUniqueMock.mockResolvedValue({ id: 'follow-1' });
     conversationCountMock.mockResolvedValueOnce(4).mockResolvedValueOnce(3);
+    reviewAggregateMock.mockResolvedValue({ _avg: { rating: 4.5 }, _count: 12 });
 
     const app = createApp();
     const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
@@ -116,17 +127,32 @@ describe('GET /api/v1/sellers/:id', () => {
         { id: 'l1', title: 'Nike Air Max', price: '45.5', city: 'Harare', imageUrls: ['a.jpg'], createdAt: expect.any(String) },
       ],
     });
+    expect(reviewAggregateMock).toHaveBeenCalledWith({
+      where: { revieweeId: SELLER_ID, order: { listing: { sellerId: SELLER_ID } } },
+      _avg: { rating: true },
+      _count: true,
+    });
   });
 
-  it('defaults rating and verified status when the seller has no SellerProfile row', async () => {
+  it('defaults rating to 0.00 when the seller has no reviews yet', async () => {
+    userFindUniqueMock.mockResolvedValue(fakeSeller());
+    reviewAggregateMock.mockResolvedValue({ _avg: { rating: null }, _count: 0 });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.ratingAvg).toBe('0.00');
+    expect(res.body.data.ratingCount).toBe(0);
+  });
+
+  it('defaults verified status when the seller has no SellerProfile row', async () => {
     userFindUniqueMock.mockResolvedValue(fakeSeller({ sellerProfile: null }));
 
     const app = createApp();
     const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}`).set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.ratingAvg).toBe('0');
-    expect(res.body.data.ratingCount).toBe(0);
     expect(res.body.data.isVerified).toBe(false);
   });
 
@@ -166,6 +192,98 @@ describe('GET /api/v1/sellers/:id', () => {
 
     expect(res.status).toBe(401);
     expect(userFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/sellers/:id/reviews', () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    reviewFindManyMock.mockReset();
+    reviewCountMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: VIEWER_ID } }, error: null });
+  });
+
+  it('returns the newest-first paginated review list with reviewer name and avatar', async () => {
+    reviewFindManyMock.mockResolvedValue([
+      {
+        id: 'r1',
+        rating: 5,
+        comment: 'Great seller',
+        createdAt: new Date('2026-07-10T00:00:00Z'),
+        reviewer: { displayName: 'Tino', avatarUrl: 'https://cdn/tino.jpg' },
+      },
+    ]);
+    reviewCountMock.mockResolvedValue(1);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      {
+        id: 'r1',
+        rating: 5,
+        comment: 'Great seller',
+        createdAt: '2026-07-10T00:00:00.000Z',
+        reviewer: { displayName: 'Tino', avatarUrl: 'https://cdn/tino.jpg' },
+      },
+    ]);
+    expect(res.body.hasMore).toBe(false);
+    expect(res.body.total).toBe(1);
+    expect(reviewFindManyMock).toHaveBeenCalledWith({
+      where: { revieweeId: SELLER_ID, order: { listing: { sellerId: SELLER_ID } } },
+      orderBy: { createdAt: 'desc' },
+      skip: 0,
+      take: 11,
+      include: { reviewer: { select: { displayName: true, avatarUrl: true } } },
+    });
+  });
+
+  it('sets hasMore true when there is an extra page beyond the current one', async () => {
+    reviewFindManyMock.mockResolvedValue(
+      Array.from({ length: 11 }, (_, i) => ({
+        id: `r${i}`,
+        rating: 4,
+        comment: null,
+        createdAt: new Date(),
+        reviewer: { displayName: 'Tino', avatarUrl: null },
+      })),
+    );
+    reviewCountMock.mockResolvedValue(11);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(10);
+    expect(res.body.hasMore).toBe(true);
+  });
+
+  it('applies the page offset', async () => {
+    reviewFindManyMock.mockResolvedValue([]);
+    reviewCountMock.mockResolvedValue(0);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}/reviews?page=2`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(reviewFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 11 }));
+  });
+
+  it('400s on an invalid page param', async () => {
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}/reviews?page=0`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(400);
+    expect(reviewFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/sellers/${SELLER_ID}/reviews`);
+
+    expect(res.status).toBe(401);
+    expect(reviewFindManyMock).not.toHaveBeenCalled();
   });
 });
 

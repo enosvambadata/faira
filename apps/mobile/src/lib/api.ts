@@ -604,7 +604,21 @@ export const sellers = {
     request<{ sellerId: string; following: boolean }>(`/api/v1/sellers/${id}/follow`, { method: 'POST', auth: true }),
 
   unfollow: (id: string) => request<void>(`/api/v1/sellers/${id}/follow`, { method: 'DELETE', auth: true }),
+
+  reviews: (id: string, page = 1) =>
+    request<{ data: SellerReview[]; hasMore: boolean; total: number }>(
+      `/api/v1/sellers/${id}/reviews?page=${page}`,
+      { auth: true, raw: true },
+    ),
 };
+
+export interface SellerReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewer: { displayName: string | null; avatarUrl: string | null };
+}
 
 export interface VerificationRequestData {
   id: string;

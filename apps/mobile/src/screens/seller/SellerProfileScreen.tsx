@@ -4,12 +4,16 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { sellers as sellersApi, SellerProfileData } from '@/lib/api';
+import { sellers as sellersApi, SellerProfileData, SellerReview } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SellerProfile'>;
 
 function joinedLabel(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function reviewDateLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function SellerProfileScreen({ route }: Props) {
@@ -18,12 +22,19 @@ export default function SellerProfileScreen({ route }: Props) {
   const [profile, setProfile] = useState<SellerProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [followBusy, setFollowBusy] = useState(false);
+  const [reviews, setReviews] = useState<SellerReview[]>([]);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [reviewsHasMore, setReviewsHasMore] = useState(false);
+  const [reviewsLoadingMore, setReviewsLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await sellersApi.get(sellerId);
+      const [data, reviewsResult] = await Promise.all([sellersApi.get(sellerId), sellersApi.reviews(sellerId, 1)]);
       setProfile(data);
+      setReviews(reviewsResult.data);
+      setReviewsPage(1);
+      setReviewsHasMore(reviewsResult.hasMore);
     } catch {
       setProfile(null);
     } finally {
@@ -36,6 +47,20 @@ export default function SellerProfileScreen({ route }: Props) {
       load();
     }, [load]),
   );
+
+  const handleLoadMoreReviews = async () => {
+    if (reviewsLoadingMore) return;
+    setReviewsLoadingMore(true);
+    try {
+      const nextPage = reviewsPage + 1;
+      const result = await sellersApi.reviews(sellerId, nextPage);
+      setReviews(prev => [...prev, ...result.data]);
+      setReviewsPage(nextPage);
+      setReviewsHasMore(result.hasMore);
+    } finally {
+      setReviewsLoadingMore(false);
+    }
+  };
 
   const handleToggleFollow = async () => {
     if (!profile || followBusy) return;
@@ -158,6 +183,41 @@ export default function SellerProfileScreen({ route }: Props) {
           <Text style={styles.listingTitle} numberOfLines={1}>{item.title}</Text>
         </TouchableOpacity>
       )}
+      ListFooterComponent={
+        <View style={styles.reviewsSection}>
+          <Text style={styles.sectionTitle}>Reviews</Text>
+          {reviews.length === 0 ? (
+            <Text style={styles.emptyText}>No reviews yet.</Text>
+          ) : (
+            reviews.map(review => (
+              <View key={review.id} testID="seller-review-row" style={styles.reviewCard}>
+                {review.reviewer.avatarUrl ? (
+                  <Image source={{ uri: review.reviewer.avatarUrl }} style={styles.reviewAvatar} />
+                ) : (
+                  <View style={[styles.reviewAvatar, styles.avatarPlaceholder]} />
+                )}
+                <View style={styles.reviewBody}>
+                  <View style={styles.reviewHeaderRow}>
+                    <Text style={styles.reviewerName}>{review.reviewer.displayName ?? 'User'}</Text>
+                    <Text style={styles.reviewStars}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</Text>
+                  </View>
+                  <Text style={styles.reviewDate}>{reviewDateLabel(review.createdAt)}</Text>
+                  {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
+                </View>
+              </View>
+            ))
+          )}
+          {reviewsHasMore && (
+            <TouchableOpacity testID="load-more-reviews-btn" style={styles.loadMoreButton} onPress={handleLoadMoreReviews} disabled={reviewsLoadingMore}>
+              {reviewsLoadingMore ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.loadMoreButtonText}>Load more reviews</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      }
     />
   );
 }
@@ -199,4 +259,15 @@ const styles = StyleSheet.create({
   imagePlaceholder: { backgroundColor: colors.border },
   price: { ...textStyles.bodyMedium, color: colors.text, marginTop: 8 },
   listingTitle: { ...textStyles.caption, color: colors.muted },
+  reviewsSection: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 24 },
+  reviewCard: { flexDirection: 'row', gap: 10, backgroundColor: colors.white, borderRadius: 10, padding: 12, marginTop: 12 },
+  reviewAvatar: { width: 40, height: 40, borderRadius: 20 },
+  reviewBody: { flex: 1 },
+  reviewHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reviewerName: { ...textStyles.bodyMedium, color: colors.text },
+  reviewStars: { ...textStyles.body, color: colors.primary },
+  reviewDate: { ...textStyles.caption, color: colors.muted, marginTop: 2 },
+  reviewComment: { ...textStyles.body, color: colors.text, marginTop: 6 },
+  loadMoreButton: { alignItems: 'center', paddingVertical: 14, marginTop: 8 },
+  loadMoreButtonText: { ...textStyles.bodyMedium, color: colors.primary },
 });

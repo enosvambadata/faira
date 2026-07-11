@@ -8,6 +8,11 @@ import { getSellerAvailableBalance } from '../services/sellerBalance';
 const router = Router();
 
 const MINIMUM_PAYOUT_AMOUNT = 5;
+const REVIEWS_PAGE_SIZE = 10;
+
+const reviewsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+});
 
 const sellerSettingsSchema = z.object({
   codEnabled: z.boolean(),
@@ -102,17 +107,24 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id:
     return;
   }
 
-  const [activeListings, salesCount, followerCount, isFollowing, conversationsAsSeller, conversationsWithReply] = await Promise.all([
-    prisma.listing.findMany({
-      where: { sellerId, status: 'ACTIVE', deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.order.count({ where: { status: 'DELIVERED', listing: { sellerId } } }),
-    prisma.follow.count({ where: { sellerId } }),
-    prisma.follow.findUnique({ where: { followerId_sellerId: { followerId: req.userId!, sellerId } } }),
-    prisma.conversation.count({ where: { sellerId } }),
-    prisma.conversation.count({ where: { sellerId, messages: { some: { senderId: sellerId } } } }),
-  ]);
+  // reviews-as-seller only: a review counts toward this rating when the
+  // reviewee was the seller of that specific order (not every review this
+  // user has ever received — they could also be rated as a buyer).
+  const reviewsAsSellerFilter = { revieweeId: sellerId, order: { listing: { sellerId } } };
+
+  const [activeListings, salesCount, followerCount, isFollowing, conversationsAsSeller, conversationsWithReply, ratingAgg] =
+    await Promise.all([
+      prisma.listing.findMany({
+        where: { sellerId, status: 'ACTIVE', deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.order.count({ where: { status: 'DELIVERED', listing: { sellerId } } }),
+      prisma.follow.count({ where: { sellerId } }),
+      prisma.follow.findUnique({ where: { followerId_sellerId: { followerId: req.userId!, sellerId } } }),
+      prisma.conversation.count({ where: { sellerId } }),
+      prisma.conversation.count({ where: { sellerId, messages: { some: { senderId: sellerId } } } }),
+      prisma.review.aggregate({ where: reviewsAsSellerFilter, _avg: { rating: true }, _count: true }),
+    ]);
 
   // Null (not 0%) when the seller has no conversations yet — "0% response
   // rate" would misleadingly read as unresponsive rather than "no data".
@@ -125,8 +137,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id:
       avatarUrl: user.avatarUrl,
       city: user.city,
       joinedAt: user.createdAt,
-      ratingAvg: user.sellerProfile?.ratingAvg.toString() ?? '0',
-      ratingCount: user.sellerProfile?.ratingCount ?? 0,
+      ratingAvg: (ratingAgg._avg.rating ?? 0).toFixed(2),
+      ratingCount: ratingAgg._count,
       isVerified: user.sellerProfile?.isVerified ?? false,
       salesCount,
       responseRate,
@@ -143,6 +155,48 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id:
     },
   });
 });
+
+router.get(
+  '/:id/reviews',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const sellerId = req.params.id;
+    const parsed = reviewsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid query params', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const where = { revieweeId: sellerId, order: { listing: { sellerId } } };
+    const { page } = parsed.data;
+
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * REVIEWS_PAGE_SIZE,
+        take: REVIEWS_PAGE_SIZE + 1,
+        include: { reviewer: { select: { displayName: true, avatarUrl: true } } },
+      }),
+      prisma.review.count({ where }),
+    ]);
+
+    const hasMore = reviews.length > REVIEWS_PAGE_SIZE;
+    const pageItems = reviews.slice(0, REVIEWS_PAGE_SIZE);
+
+    res.status(200).json({
+      data: pageItems.map(review => ({
+        id: review.id,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.createdAt,
+        reviewer: { displayName: review.reviewer.displayName, avatarUrl: review.reviewer.avatarUrl },
+      })),
+      hasMore,
+      total,
+    });
+  },
+);
 
 router.post('/:id/follow', requireAuth, async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
   const sellerId = req.params.id;
