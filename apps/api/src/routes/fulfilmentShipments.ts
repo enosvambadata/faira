@@ -5,6 +5,7 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { requireFulfilmentRole, FulfilmentRequest } from '../middleware/requireFulfilmentRole';
 import { ApiError } from '../errors/ApiError';
 import { SYSTEM_CONFIG_KEYS } from '../lib/systemConfigKeys';
+import { calculateShipmentQuote } from '../services/shipmentQuote';
 
 const router = Router();
 
@@ -145,6 +146,90 @@ router.get(
         deliveryFee: shipment.deliveryFee?.toString() ?? null,
         reference: shipment.reference,
         createdAt: shipment.createdAt,
+      },
+    });
+  },
+);
+
+const selectFeePayerSchema = z.object({
+  feePayer: z.enum(['SELLER', 'BUYER']),
+});
+
+// Preview only — never persists. The seller may check this repeatedly while
+// deciding who should pay before committing via the POST below.
+router.get(
+  '/:id/quote',
+  requireAuth,
+  requireFulfilmentRole('SELLER'),
+  async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const shipment = await prisma.shipment.findUnique({ where: { id: req.params.id } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'Shipment not found', 404));
+      return;
+    }
+    if (shipment.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your shipment', 403));
+      return;
+    }
+    if (shipment.status !== 'DRAFT') {
+      next(new ApiError('INVALID_STATE', 'Only draft shipments can be quoted', 409));
+      return;
+    }
+
+    const quote = await calculateShipmentQuote(shipment.originHubId, shipment.destinationHubId, shipment.sizeTier);
+
+    res.status(200).json({
+      data: {
+        fee: quote.fee,
+        source: quote.source,
+        sizeTier: shipment.sizeTier,
+      },
+    });
+  },
+);
+
+// Recomputes the quote server-side (never trusts a client-supplied fee) and
+// persists it alongside the seller's fee-payer choice. Still leaves the
+// shipment in DRAFT — confirming it into the state machine is SCRUM-134.
+router.post(
+  '/:id/quote',
+  requireAuth,
+  requireFulfilmentRole('SELLER'),
+  async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = selectFeePayerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const shipment = await prisma.shipment.findUnique({ where: { id: req.params.id } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'Shipment not found', 404));
+      return;
+    }
+    if (shipment.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your shipment', 403));
+      return;
+    }
+    if (shipment.status !== 'DRAFT') {
+      next(new ApiError('INVALID_STATE', 'Only draft shipments can be quoted', 409));
+      return;
+    }
+
+    const quote = await calculateShipmentQuote(shipment.originHubId, shipment.destinationHubId, shipment.sizeTier);
+
+    const updated = await prisma.shipment.update({
+      where: { id: shipment.id },
+      data: { deliveryFee: quote.fee, feePayer: parsed.data.feePayer },
+    });
+
+    res.status(200).json({
+      data: {
+        id: updated.id,
+        status: updated.status,
+        feePayer: updated.feePayer,
+        deliveryFee: updated.deliveryFee?.toString() ?? null,
+        quoteSource: quote.source,
       },
     });
   },

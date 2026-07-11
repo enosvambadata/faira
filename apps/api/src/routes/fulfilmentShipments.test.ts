@@ -9,7 +9,11 @@ const systemConfigFindManyMock = vi.fn();
 const shipmentCreateMock = vi.fn();
 const shipmentFindUniqueMock = vi.fn();
 const shipmentDeleteMock = vi.fn();
+const shipmentUpdateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
+const routeFindUniqueMock = vi.fn();
+const pricingRuleFindUniqueMock = vi.fn();
+const quoteConfigFindUniqueMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -22,12 +26,18 @@ vi.mock('../prisma', () => ({
     userRole: { findMany: (...args: unknown[]) => userRoleFindManyMock(...args) },
     hub: { findUnique: (...args: unknown[]) => hubFindUniqueMock(...args) },
     fulfilmentVerificationRequest: { findFirst: (...args: unknown[]) => verificationFindFirstMock(...args) },
-    systemConfiguration: { findMany: (...args: unknown[]) => systemConfigFindManyMock(...args) },
+    systemConfiguration: {
+      findMany: (...args: unknown[]) => systemConfigFindManyMock(...args),
+      findUnique: (...args: unknown[]) => quoteConfigFindUniqueMock(...args),
+    },
     shipment: {
       create: (...args: unknown[]) => shipmentCreateMock(...args),
       findUnique: (...args: unknown[]) => shipmentFindUniqueMock(...args),
+      update: (...args: unknown[]) => shipmentUpdateMock(...args),
       delete: (...args: unknown[]) => shipmentDeleteMock(...args),
     },
+    transportRoute: { findUnique: (...args: unknown[]) => routeFindUniqueMock(...args) },
+    pricingRule: { findUnique: (...args: unknown[]) => pricingRuleFindUniqueMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
   },
 }));
@@ -67,6 +77,9 @@ beforeEach(() => {
     { key: 'declared_value_limit_unverified', value: '200' },
     { key: 'declared_value_limit_verified', value: '2000' },
   ]);
+  routeFindUniqueMock.mockResolvedValue(null);
+  pricingRuleFindUniqueMock.mockResolvedValue(null);
+  quoteConfigFindUniqueMock.mockResolvedValue({ value: '15' });
 });
 
 describe('POST /api/v1/fulfilment/shipments', () => {
@@ -219,6 +232,141 @@ describe('GET /api/v1/fulfilment/shipments/:id', () => {
     const res = await request(app).get('/api/v1/fulfilment/shipments/nonexistent').set(AUTH_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/v1/fulfilment/shipments/:id/quote', () => {
+  it('returns the exact-match pricing rule fee for a draft shipment', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      originHubId: HARARE_ID,
+      destinationHubId: BULAWAYO_ID,
+      sizeTier: 'MEDIUM',
+    });
+    routeFindUniqueMock.mockResolvedValue({ id: 'route-1' });
+    pricingRuleFindUniqueMock.mockResolvedValue({ fee: { toString: () => '12.5' } });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/quote').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ fee: 12.5, source: 'pricing_rule', sizeTier: 'MEDIUM' });
+  });
+
+  it('falls back to the configured default when no pricing rule exists', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      originHubId: HARARE_ID,
+      destinationHubId: BULAWAYO_ID,
+      sizeTier: 'MEDIUM',
+    });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/quote').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ fee: 15, source: 'fallback_default', sizeTier: 'MEDIUM' });
+  });
+
+  it('409s when the shipment is no longer a draft', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: SELLER_ID, status: 'AWAITING_DROPOFF' });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/quote').set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('403s when the shipment belongs to a different seller', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: 'someone-else', status: 'DRAFT' });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/quote').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/v1/fulfilment/shipments/:id/quote', () => {
+  it('persists the quoted fee and chosen fee-payer', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      originHubId: HARARE_ID,
+      destinationHubId: BULAWAYO_ID,
+      sizeTier: 'MEDIUM',
+    });
+    routeFindUniqueMock.mockResolvedValue({ id: 'route-1' });
+    pricingRuleFindUniqueMock.mockResolvedValue({ fee: { toString: () => '12.5' } });
+    shipmentUpdateMock.mockResolvedValue({
+      id: 'shipment-1',
+      status: 'DRAFT',
+      feePayer: 'BUYER',
+      deliveryFee: { toString: () => '12.5' },
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/shipments/shipment-1/quote')
+      .set(AUTH_HEADER)
+      .send({ feePayer: 'BUYER' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      id: 'shipment-1',
+      status: 'DRAFT',
+      feePayer: 'BUYER',
+      deliveryFee: '12.5',
+      quoteSource: 'pricing_rule',
+    });
+    expect(shipmentUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'shipment-1' },
+      data: { deliveryFee: 12.5, feePayer: 'BUYER' },
+    });
+  });
+
+  it('400s on an invalid feePayer value', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: SELLER_ID, status: 'DRAFT' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/shipments/shipment-1/quote')
+      .set(AUTH_HEADER)
+      .send({ feePayer: 'HUB' });
+
+    expect(res.status).toBe(400);
+    expect(shipmentUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the shipment is no longer a draft', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: SELLER_ID, status: 'AWAITING_DROPOFF' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/shipments/shipment-1/quote')
+      .set(AUTH_HEADER)
+      .send({ feePayer: 'SELLER' });
+
+    expect(res.status).toBe(409);
+    expect(shipmentUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('403s when the shipment belongs to a different seller', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: 'someone-else', status: 'DRAFT' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/shipments/shipment-1/quote')
+      .set(AUTH_HEADER)
+      .send({ feePayer: 'SELLER' });
+
+    expect(res.status).toBe(403);
+    expect(shipmentUpdateMock).not.toHaveBeenCalled();
   });
 });
 

@@ -4,4 +4,5 @@
 export const SYSTEM_CONFIG_KEYS = {
   DECLARED_VALUE_LIMIT_UNVERIFIED: 'declared_value_limit_unverified',
   DECLARED_VALUE_LIMIT_VERIFIED: 'declared_value_limit_verified',
+  SHIPMENT_QUOTE_FALLBACK_FEE: 'shipment_quote_fallback_fee',
 } as const;
