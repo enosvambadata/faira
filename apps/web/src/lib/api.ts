@@ -273,7 +273,69 @@ export const hubOps = {
       body: { reason },
       auth: true,
     }),
+
+  getEvidenceUploadParams: () =>
+    request<CloudinarySignedUpload>("/api/v1/fulfilment/hub-ops/evidence-upload-params", { auth: true }),
+
+  inspect: (id: string, payload: InspectPayload) =>
+    request<HubOpsTransitionResult>(`/api/v1/fulfilment/hub-ops/shipments/${id}/inspect`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  seal: (id: string, sealNumber: string) =>
+    request<HubOpsTransitionResult>(`/api/v1/fulfilment/hub-ops/shipments/${id}/seal`, {
+      method: "POST",
+      body: { sealNumber },
+      auth: true,
+    }),
 };
+
+export interface CloudinarySignedUpload {
+  signature: string;
+  timestamp: number;
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+  transformation: string;
+  type: "upload" | "authenticated";
+}
+
+export type ParcelCondition = "GOOD" | "DAMAGED" | "SUSPICIOUS";
+
+export interface InspectPayload {
+  weightKg: number;
+  dimensions: string;
+  condition: ParcelCondition;
+  photoPublicIds: string[];
+}
+
+// Uploads directly to Cloudinary using the signed params from
+// getEvidenceUploadParams — the image bytes never pass through apps/api.
+// Returns the public_id, which is what gets sent to POST .../inspect (not
+// a URL, since this folder uses authenticated delivery -- see
+// getParcelEvidenceViewUrl in apps/api/src/lib/cloudinary.ts).
+export async function uploadParcelEvidencePhoto(upload: CloudinarySignedUpload, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", upload.apiKey);
+  formData.append("timestamp", String(upload.timestamp));
+  formData.append("signature", upload.signature);
+  formData.append("folder", upload.folder);
+  formData.append("transformation", upload.transformation);
+  formData.append("type", upload.type);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${upload.cloudName}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new ApiError("UPLOAD_FAILED", json?.error?.message ?? "Photo upload failed", res.status);
+  }
+  return json.public_id as string;
+}
 
 export interface CreateShipmentPayload {
   buyerName: string;

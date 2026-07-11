@@ -8,6 +8,7 @@ import { canTransition, displayStatus } from '../lib/shipmentStateMachine';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyDropoffRejected } from '../services/fulfilmentNotifications';
+import { signParcelEvidenceUpload } from '../lib/cloudinary';
 
 const router = Router();
 
@@ -203,6 +204,177 @@ router.post(
 
     res.status(200).json({
       data: { id: shipment.id, status: 'REJECTED_AT_ORIGIN', displayStatus: displayStatus('REJECTED_AT_ORIGIN') },
+    });
+  },
+);
+
+// Doesn't need a specific shipment/hub in scope -- the signed params
+// (folder + authenticated type) are the same for every capture, so any
+// hub-scoped caller can request them; the actual write to a shipment
+// (below) is where hub assignment is enforced.
+router.get('/evidence-upload-params', requireAuth, requireFulfilmentRole(...HUB_OPS_ROLES), (_req, res) => {
+  res.status(200).json({ data: signParcelEvidenceUpload() });
+});
+
+const inspectSchema = z.object({
+  weightKg: z.number().positive(),
+  dimensions: z.string().trim().min(1).max(100),
+  condition: z.enum(['GOOD', 'DAMAGED', 'SUSPICIOUS']),
+  photoPublicIds: z.array(z.string().trim().min(1)).min(1, 'At least one photo is required'),
+});
+
+router.post(
+  '/shipments/:id/inspect',
+  requireAuth,
+  requireFulfilmentRole(...HUB_OPS_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = inspectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const result = await loadAssignedShipment(req, req.params.id);
+    if ('error' in result) {
+      next(result.error);
+      return;
+    }
+    const { shipment } = result;
+
+    if (!canTransition(shipment.status, 'INSPECTED')) {
+      next(new ApiError('INVALID_STATE', 'This shipment has not been received at this hub yet', 409));
+      return;
+    }
+
+    try {
+      await prisma.$transaction(async tx => {
+        const updateResult = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: shipment.status },
+          data: {
+            status: 'INSPECTED',
+            weightKg: parsed.data.weightKg,
+            dimensions: parsed.data.dimensions,
+            condition: parsed.data.condition,
+          },
+        });
+        if (updateResult.count === 0) {
+          throw new ShipmentTransitionConflict();
+        }
+
+        await tx.parcelEvidence.createMany({
+          data: parsed.data.photoPublicIds.map(publicId => ({
+            shipmentId: shipment.id,
+            type: 'PARCEL_PHOTO' as const,
+            imageUrl: publicId,
+            capturedById: req.userId!,
+          })),
+        });
+
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: shipment.status,
+            toStatus: 'INSPECTED',
+            actorUserId: req.userId!,
+            hubId: shipment.originHubId,
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof ShipmentTransitionConflict) {
+        next(new ApiError('INVALID_STATE', 'This shipment has not been received at this hub yet', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_PARCEL_INSPECTED', {
+      shipmentId: shipment.id,
+      condition: parsed.data.condition,
+      photoCount: parsed.data.photoPublicIds.length,
+    });
+
+    res.status(200).json({
+      data: { id: shipment.id, status: 'INSPECTED', displayStatus: displayStatus('INSPECTED') },
+    });
+  },
+);
+
+const sealSchema = z.object({
+  sealNumber: z.string().trim().min(1).max(100),
+});
+
+router.post(
+  '/shipments/:id/seal',
+  requireAuth,
+  requireFulfilmentRole(...HUB_OPS_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = sealSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'A seal number is required', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const result = await loadAssignedShipment(req, req.params.id);
+    if ('error' in result) {
+      next(result.error);
+      return;
+    }
+    const { shipment } = result;
+
+    if (!canTransition(shipment.status, 'SEALED')) {
+      next(new ApiError('INVALID_STATE', 'This shipment has not been inspected yet', 409));
+      return;
+    }
+
+    // Re-checked here (not just at /inspect time) since inspection and
+    // sealing are separate calls -- defense in depth against a shipment
+    // somehow reaching INSPECTED with no recorded evidence.
+    const evidenceCount = await prisma.parcelEvidence.count({ where: { shipmentId: shipment.id } });
+    if (evidenceCount === 0) {
+      next(new ApiError('EVIDENCE_REQUIRED', 'At least one photo must be recorded before sealing', 409));
+      return;
+    }
+
+    try {
+      await prisma.$transaction(async tx => {
+        const updateResult = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: shipment.status },
+          data: { status: 'SEALED' },
+        });
+        if (updateResult.count === 0) {
+          throw new ShipmentTransitionConflict();
+        }
+
+        await tx.parcelSeal.create({
+          data: { shipmentId: shipment.id, sealNumber: parsed.data.sealNumber, appliedById: req.userId! },
+        });
+
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: shipment.status,
+            toStatus: 'SEALED',
+            actorUserId: req.userId!,
+            hubId: shipment.originHubId,
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof ShipmentTransitionConflict) {
+        next(new ApiError('INVALID_STATE', 'This shipment has not been inspected yet', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_PARCEL_SEALED', {
+      shipmentId: shipment.id,
+      sealNumber: parsed.data.sealNumber,
+    });
+
+    res.status(200).json({
+      data: { id: shipment.id, status: 'SEALED', displayStatus: displayStatus('SEALED') },
     });
   },
 );

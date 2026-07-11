@@ -22,9 +22,10 @@ export async function uploadAvatar(buffer: Buffer, mimetype: string, userId: str
 // server — this just signs the exact params the client will send, so
 // Cloudinary can verify the upload is authorized without us ever handling
 // the image bytes ourselves.
-function signUpload(folder: string, transformation: string) {
+function signUpload(folder: string, transformation: string, options: { type?: 'upload' | 'authenticated' } = {}) {
   const timestamp = Math.round(Date.now() / 1000);
-  const paramsToSign = { timestamp, folder, transformation };
+  const paramsToSign: Record<string, string | number> = { timestamp, folder, transformation };
+  if (options.type) paramsToSign.type = options.type;
 
   const signature = cloudinary.utils.api_sign_request(
     paramsToSign,
@@ -38,6 +39,7 @@ function signUpload(folder: string, transformation: string) {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || 'placeholder-cloud-name',
     folder: paramsToSign.folder,
     transformation: paramsToSign.transformation,
+    ...(options.type ? { type: options.type } : {}),
   };
 }
 
@@ -63,4 +65,27 @@ export function signDisputeEvidenceUpload() {
 
 export function signReportEvidenceUpload() {
   return signUpload('reports', 'w_1600,h_1600,c_limit');
+}
+
+// Unlike every folder above, parcel evidence is genuinely access-controlled:
+// type "authenticated" means the upload itself is never publicly reachable —
+// viewing it requires a freshly-signed delivery URL (getParcelEvidenceViewUrl
+// below), not just an unlisted-but-public one. Per SCRUM-137's security
+// note: evidence photos can reveal buyer/seller item details, so this is the
+// one Cloudinary folder in this app that needs real access control, not
+// just security-by-obscurity.
+export function signParcelEvidenceUpload() {
+  return signUpload('parcel-evidence', 'w_1600,h_1600,c_limit', { type: 'authenticated' });
+}
+
+// The value stored in ParcelEvidence.imageUrl is the Cloudinary public_id
+// returned by the signed upload above, not a directly-usable URL — a fresh
+// signed delivery URL must be generated here every time it's actually
+// displayed, since "authenticated" assets 404 without one.
+export function getParcelEvidenceViewUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    type: 'authenticated',
+    sign_url: true,
+    secure: true,
+  });
 }
