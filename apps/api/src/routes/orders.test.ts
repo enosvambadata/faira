@@ -14,6 +14,7 @@ const escrowCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const sellerProfileFindUniqueMock = vi.fn();
 const paymentDisputeCreateMock = vi.fn();
+const reviewCreateMock = vi.fn();
 
 const initiateWebPaymentMock = vi.fn();
 const initiateMobilePaymentMock = vi.fn();
@@ -73,6 +74,9 @@ vi.mock('../prisma', () => ({
     },
     paymentDispute: {
       create: (...args: unknown[]) => paymentDisputeCreateMock(...args),
+    },
+    review: {
+      create: (...args: unknown[]) => reviewCreateMock(...args),
     },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -833,6 +837,163 @@ describe('POST /api/v1/orders/:orderId/dispute', () => {
 
     expect(res.status).toBe(400);
     expect(paymentDisputeCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/reviews', () => {
+  const body = { rating: 5, comment: 'Great experience' };
+
+  it('lets the buyer review the seller on a COMPLETED order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED' }));
+    reviewCreateMock.mockResolvedValue({
+      id: 'review-1',
+      orderId: ORDER_ID,
+      rating: 5,
+      comment: 'Great experience',
+      createdAt: new Date('2026-07-11T00:00:00Z'),
+    });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.rating).toBe(5);
+    expect(reviewCreateMock).toHaveBeenCalledWith({
+      data: { orderId: ORDER_ID, reviewerId: BUYER_ID, revieweeId: SELLER_ID, rating: 5, comment: 'Great experience' },
+    });
+  });
+
+  it('lets the seller review the buyer too', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED' }));
+    reviewCreateMock.mockResolvedValue({ id: 'review-2', orderId: ORDER_ID, rating: 4, comment: null, createdAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send({ rating: 4 });
+
+    expect(res.status).toBe(201);
+    expect(reviewCreateMock).toHaveBeenCalledWith({
+      data: { orderId: ORDER_ID, reviewerId: SELLER_ID, revieweeId: BUYER_ID, rating: 4, comment: null },
+    });
+  });
+
+  it('403s when the caller is not part of the order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED', buyerId: 'someone-else' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(403);
+    expect(reviewCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the order is not COMPLETED', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(409);
+    expect(reviewCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the reviewer has already reviewed this order', async () => {
+    const { Prisma } = await import('@prisma/client');
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED' }));
+    reviewCreateMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }),
+    );
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send(body);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('400s when rating is out of range', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER).send({ rating: 6 });
+
+    expect(res.status).toBe(400);
+    expect(reviewCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/orders/:orderId/reviews', () => {
+  it('shows your own review and hides the counterpart until revealed', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: new Date('2026-07-05T00:00:00Z'),
+        escrowEntries: [],
+        reviews: [
+          { id: 'r1', reviewerId: BUYER_ID, revieweeId: SELLER_ID, rating: 5, comment: 'Great!', createdAt: new Date('2026-07-05T00:00:00Z') },
+          { id: 'r2', reviewerId: SELLER_ID, revieweeId: BUYER_ID, rating: 4, comment: 'Good buyer', createdAt: new Date('2026-07-05T01:00:00Z') },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.yourReview.rating).toBe(5);
+    expect(res.body.data.counterpartReview.rating).toBe(4);
+    expect(res.body.data.revealed).toBe(true);
+  });
+
+  it('hides the counterpart review when you have not reviewed yet and 7 days have not passed', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: new Date(),
+        escrowEntries: [],
+        reviews: [
+          { id: 'r2', reviewerId: SELLER_ID, revieweeId: BUYER_ID, rating: 4, comment: 'Good buyer', createdAt: new Date() },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.yourReview).toBeNull();
+    expect(res.body.data.counterpartReview).toBeNull();
+    expect(res.body.data.revealed).toBe(false);
+    expect(res.body.data.canReview).toBe(true);
+  });
+
+  it('reveals the counterpart review once 7 days have passed even without your own review', async () => {
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrder({
+        status: 'COMPLETED',
+        updatedAt: eightDaysAgo,
+        escrowEntries: [],
+        reviews: [
+          { id: 'r2', reviewerId: SELLER_ID, revieweeId: BUYER_ID, rating: 4, comment: 'Good buyer', createdAt: eightDaysAgo },
+        ],
+      }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.revealed).toBe(true);
+    expect(res.body.data.counterpartReview.rating).toBe(4);
+  });
+
+  it('403s when the caller is not part of the order', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'COMPLETED', buyerId: 'someone-else', escrowEntries: [], reviews: [] }));
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}/reviews`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
   });
 });
 
