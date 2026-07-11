@@ -100,6 +100,10 @@ test.describe("hub-ops drop-off workflow", () => {
     await page.getByLabel("Email address").fill(agentEmail);
     await page.locator('input[type="password"]').fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
+    // Login redirects to /dashboard on success -- wait for that redirect to
+    // actually land (and the session cookie to be set) before navigating
+    // away, otherwise proxy.ts's auth check bounces the next goto back here.
+    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
 
     await page.goto("/hub-ops/dropoff");
     await page.getByLabel("Shipment reference").fill(confirmed.reference);
@@ -108,6 +112,9 @@ test.describe("hub-ops drop-off workflow", () => {
     await expect(page.getByText(confirmed.reference)).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Accept drop-off" }).click();
 
-    await expect(page.getByText(/accepted/i)).toBeVisible({ timeout: 15_000 });
+    // Radix Toast renders both the visible toast and a duplicate aria-live
+    // announcer with the same text -- .first() is enough to prove the
+    // success toast fired.
+    await expect(page.getByText(/accepted/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });
