@@ -31,6 +31,8 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [collecting, setCollecting] = useState(false);
+  const [collectError, setCollectError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<OrderReviewsResult | null>(null);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -73,6 +75,19 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
       setConfirmError(err instanceof ApiError ? err.message : 'Could not confirm receipt right now');
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleMarkCollected = async () => {
+    setCollecting(true);
+    setCollectError(null);
+    try {
+      await ordersApi.markCollected(orderId);
+      await load();
+    } catch (err) {
+      setCollectError(err instanceof ApiError ? err.message : 'Could not mark this order as collected right now');
+    } finally {
+      setCollecting(false);
     }
   };
 
@@ -237,6 +252,18 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
           onPress={handleConfirmReceipt}
         >
           {confirming ? <ActivityIndicator color={colors.white} /> : <Text style={styles.confirmButtonText}>Confirm Receipt</Text>}
+        </TouchableOpacity>
+      )}
+
+      {collectError && <Text style={styles.submitError}>{collectError}</Text>}
+
+      {order.canMarkCollected && (
+        <TouchableOpacity
+          style={[styles.confirmButton, collecting && styles.confirmButtonDisabled]}
+          disabled={collecting}
+          onPress={handleMarkCollected}
+        >
+          {collecting ? <ActivityIndicator color={colors.white} /> : <Text style={styles.confirmButtonText}>Mark as Collected</Text>}
         </TouchableOpacity>
       )}
 
