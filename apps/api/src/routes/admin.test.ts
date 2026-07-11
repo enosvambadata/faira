@@ -26,6 +26,11 @@ const payoutRequestFindUniqueMock = vi.fn();
 const payoutRequestUpdateMock = vi.fn();
 const deliveryFeeRateFindManyMock = vi.fn();
 const deliveryFeeRateUpsertMock = vi.fn();
+const notifyOrderStatusChangeMock = vi.fn();
+
+vi.mock('../services/orderNotifications', () => ({
+  notifyOrderStatusChange: (...args: unknown[]) => notifyOrderStatusChangeMock(...args),
+}));
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {

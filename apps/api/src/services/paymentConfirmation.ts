@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { canTransition } from '../lib/orderStateMachine';
+import { notifyOrderStatusChange } from './orderNotifications';
 
 // Called from both the buyer-facing poll route and the Paynow result
 // webhook — either can win the race to confirm a payment, so this uses an
@@ -58,6 +59,8 @@ export async function confirmOrderPayment(orderId: string, paynowReference: stri
       },
     }),
   ]);
+
+  await notifyOrderStatusChange(order.id, 'PAID');
 
   return order;
 }

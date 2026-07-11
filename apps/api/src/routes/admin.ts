@@ -6,6 +6,7 @@ import { supabaseAdmin } from '../supabase';
 import { ApiError } from '../errors/ApiError';
 import { sendPushNotification } from '../lib/push';
 import { releaseEscrowFunds, splitCommission } from '../services/escrowRelease';
+import { notifyOrderStatusChange } from '../services/orderNotifications';
 
 const router = Router();
 
@@ -420,6 +421,8 @@ router.post(
     );
 
     await prisma.$transaction(ledgerWrites);
+
+    await notifyOrderStatusChange(order.id, newOrderStatus);
 
     res.status(200).json({
       data: { id: dispute.id, status: resolvedStatus, refundAmount, orderStatus: newOrderStatus },

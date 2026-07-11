@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import { OrderStatus } from '@prisma/client';
+import { notifyOrderStatusChange } from './orderNotifications';
 
 // Exported so the checkout summary (SCRUM-59) can show buyers the same
 // rate that's actually deducted from the seller's payout at release time,
@@ -74,6 +75,8 @@ export async function releaseEscrowFunds(orderId: string) {
       },
     }),
   ]);
+
+  await notifyOrderStatusChange(order.id, 'COMPLETED');
 
   return { released: true, order: { ...order, status: 'COMPLETED' as const } };
 }

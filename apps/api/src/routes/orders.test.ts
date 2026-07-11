@@ -20,12 +20,17 @@ const initiateMobilePaymentMock = vi.fn();
 const pollPaymentStatusMock = vi.fn();
 const calculateDeliveryFeeMock = vi.fn();
 const userFindUniqueMock = vi.fn();
+const notifyOrderStatusChangeMock = vi.fn();
 
 vi.mock('../lib/paynow', () => ({
   initiateWebPayment: (...args: unknown[]) => initiateWebPaymentMock(...args),
   initiateMobilePayment: (...args: unknown[]) => initiateMobilePaymentMock(...args),
   pollPaymentStatus: (...args: unknown[]) => pollPaymentStatusMock(...args),
   isPaidStatus: (status: string) => status.toLowerCase() === 'paid',
+}));
+
+vi.mock('../services/orderNotifications', () => ({
+  notifyOrderStatusChange: (...args: unknown[]) => notifyOrderStatusChangeMock(...args),
 }));
 
 vi.mock('../services/deliveryFee', () => ({
