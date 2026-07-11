@@ -185,4 +185,46 @@ export const sellerVerification = {
   },
 };
 
+export type ParcelSizeTier = "SMALL" | "MEDIUM" | "LARGE" | "EXTRA_LARGE";
+
+export interface ShipmentDraft {
+  id: string;
+  status: string;
+  buyerName: string;
+  buyerContact: string;
+  originHubId: string;
+  destinationHubId: string;
+  category: string;
+  description: string | null;
+  declaredValue: string;
+  sizeTier: ParcelSizeTier;
+  createdAt: string;
+}
+
+export interface ShipmentDetail extends ShipmentDraft {
+  feePayer: "SELLER" | "BUYER" | null;
+  deliveryFee: string | null;
+  reference: string | null;
+}
+
+export interface CreateShipmentPayload {
+  buyerName: string;
+  buyerContact: string;
+  originHubId: string;
+  destinationHubId: string;
+  category: string;
+  description?: string;
+  declaredValue: number;
+  sizeTier: ParcelSizeTier;
+}
+
+export const shipments = {
+  create: (payload: CreateShipmentPayload) =>
+    request<ShipmentDraft>("/api/v1/fulfilment/shipments", { method: "POST", body: payload, auth: true }),
+
+  get: (id: string) => request<ShipmentDetail>(`/api/v1/fulfilment/shipments/${id}`, { auth: true }),
+
+  abandon: (id: string) => request<void>(`/api/v1/fulfilment/shipments/${id}`, { method: "DELETE", auth: true }),
+};
+
 export { ApiError as FulfilmentApiError };

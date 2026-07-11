@@ -21,8 +21,13 @@ interface Props {
 }
 
 export function Select({ id, value, onValueChange, options, placeholder = "Select…", disabled, ...aria }: Props) {
+  // Radix's Root must receive a string on every render, never undefined,
+  // or React logs a "changing from uncontrolled to controlled" warning
+  // the first time a value gets picked. Callers may still pass undefined
+  // for "nothing selected yet" — normalize it here rather than in every
+  // call site.
   return (
-    <RadixSelect.Root value={value} onValueChange={onValueChange} disabled={disabled}>
+    <RadixSelect.Root value={value ?? ""} onValueChange={onValueChange} disabled={disabled}>
       <RadixSelect.Trigger
         id={id}
         aria-describedby={aria["aria-describedby"]}

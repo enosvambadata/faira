@@ -732,7 +732,11 @@ enum ParcelCondition {
 
 model Shipment {
   id                     String           @id @default(uuid()) @db.Uuid
-  reference              String           @unique
+  // Null until SCRUM-135 generates it (only sealed/confirmed shipments
+  // need a physical-label reference); still @unique since Postgres
+  // treats multiple NULLs as distinct, so this doesn't weaken the
+  // uniqueness guarantee once a reference is assigned.
+  reference              String?          @unique
   sellerId               String           @map("seller_id") @db.Uuid
   buyerName              String           @map("buyer_name")
   // Phone/WhatsApp number — buyers have no account (pivot brief), so
@@ -744,8 +748,11 @@ model Shipment {
   description            String?
   declaredValue          Decimal          @map("declared_value") @db.Decimal(10, 2)
   sizeTier               ParcelSizeTier   @map("size_tier")
-  feePayer               FeePayer         @map("fee_payer")
-  deliveryFee            Decimal          @map("delivery_fee") @db.Decimal(10, 2)
+  // Both null at DRAFT — chosen at the SCRUM-133 quotation step, not
+  // draft creation, since the fee (and who pays it) depends on a computed
+  // quote the seller hasn't seen yet.
+  feePayer               FeePayer?        @map("fee_payer")
+  deliveryFee            Decimal?         @map("delivery_fee") @db.Decimal(10, 2)
   status                 ShipmentStatus   @default(DRAFT)
   dropoffDeadline        DateTime?        @map("dropoff_deadline")
   collectionWindowEndsAt DateTime?        @map("collection_window_ends_at")

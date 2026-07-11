@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/verification", "/profile", "/notifications", "/support"];
+const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/verification", "/profile", "/notifications", "/support", "/shipments"];
 const PUBLIC_ONLY_PREFIXES = ["/login", "/signup"];
 
 // This is an optimistic check only (redirect unauthenticated visitors away
