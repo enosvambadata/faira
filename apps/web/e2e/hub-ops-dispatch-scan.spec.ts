@@ -203,14 +203,14 @@ test.describe("hub-ops origin-hub dispatch scanning", () => {
 
     await page.getByLabel("Parcel reference").fill(toScan.reference);
     await page.getByRole("button", { name: "Scan out" }).click();
-    await expect(page.getByText("Scanned out")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Scanned out").first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByLabel("Parcel reference").fill(toShortShip.reference);
     await page.getByRole("button", { name: "Mark short-shipped" }).click();
     await page.getByLabel("Reason").fill("Not found at the hub during dispatch prep");
     await page.getByRole("button", { name: "Confirm short-shipment" }).click();
 
-    await expect(page.getByText("Short-shipped")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Short-shipped").first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/run marked as departed/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });
