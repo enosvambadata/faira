@@ -10,7 +10,14 @@ import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RadioGroup } from "@/components/ui/RadioGroup";
 import { useToast } from "@/components/ui/Toast";
-import { shipments as shipmentsApi, ShipmentDetail, hubs as hubsApi, Hub, ShipmentQuote, FulfilmentApiError } from "@/lib/api";
+import {
+  shipments as shipmentsApi,
+  ShipmentDetail,
+  hubs as hubsApi,
+  Hub,
+  ShipmentQuote,
+  FulfilmentApiError,
+} from "@/lib/api";
 
 const FEE_PAYER_OPTIONS = [
   { value: "SELLER", label: "I'll pay", description: "The delivery fee comes out of your payout." },
@@ -31,6 +38,8 @@ export default function ShipmentDetailPage() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [feePayer, setFeePayer] = useState<string | undefined>(undefined);
   const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmingShipment, setConfirmingShipment] = useState(false);
 
   useEffect(() => {
     Promise.all([shipmentsApi.get(id), hubsApi.list()])
@@ -62,6 +71,20 @@ export default function ShipmentDetailPage() {
       setQuoteError(err instanceof FulfilmentApiError ? err.message : "Could not confirm the delivery fee right now.");
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleConfirmShipment = async () => {
+    setConfirmingShipment(true);
+    setConfirmError(null);
+    try {
+      const result = await shipmentsApi.confirm(id);
+      setShipment(prev => (prev ? { ...prev, status: result.status, dropoffDeadline: result.dropoffDeadline } : prev));
+      toast({ title: "Shipment confirmed", tone: "success" });
+    } catch (err) {
+      setConfirmError(err instanceof FulfilmentApiError ? err.message : "Could not confirm this shipment right now.");
+    } finally {
+      setConfirmingShipment(false);
     }
   };
 
@@ -152,6 +175,39 @@ export default function ShipmentDetailPage() {
               <span className="text-muted">Paid by</span>
               <span className="text-text">{shipment.feePayer === "SELLER" ? "You" : "Buyer"}</span>
             </div>
+
+            {confirmError && (
+              <div className="mt-3">
+                <Alert tone="error">{confirmError}</Alert>
+              </div>
+            )}
+
+            <Button className="mt-4" size="lg" onClick={handleConfirmShipment} loading={confirmingShipment}>
+              Confirm shipment
+            </Button>
+          </Card>
+        )}
+
+        {shipment.status !== "DRAFT" && (
+          <Card className="mt-4">
+            <h2 className="text-base font-semibold text-text">Shipment confirmed</h2>
+            <div className="mt-2 flex justify-between text-sm">
+              <span className="text-muted">Delivery fee</span>
+              <span className="text-text">
+                ${shipment.deliveryFee} ({shipment.feePayer === "SELLER" ? "you" : "buyer"} pays)
+              </span>
+            </div>
+            {shipment.dropoffDeadline && (
+              <div className="mt-1 flex justify-between text-sm">
+                <span className="text-muted">Drop off by</span>
+                <span className="text-text">{new Date(shipment.dropoffDeadline).toLocaleString()}</span>
+              </div>
+            )}
+            {shipment.status === "AWAITING_PAYMENT" && (
+              <p className="mt-3 text-sm text-muted">
+                Delivery fee payment isn&apos;t available yet — this is coming soon.
+              </p>
+            )}
           </Card>
         )}
 
