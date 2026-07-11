@@ -384,4 +384,90 @@ export const shipments = {
     request<ShipmentConfirmation>(`/api/v1/fulfilment/shipments/${id}/confirm`, { method: "POST", auth: true }),
 };
 
+export interface TransportRoute {
+  id: string;
+  originHubId: string;
+  destinationHubId: string;
+  providerId: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TransportRun {
+  id: string;
+  routeId: string;
+  providerId: string | null;
+  operatorUserId: string | null;
+  vehicleReference: string | null;
+  scheduledDeparture: string;
+  scheduledArrival: string;
+  actualDeparture: string | null;
+  actualArrival: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export const transport = {
+  listRoutes: () => request<TransportRoute[]>("/api/v1/fulfilment/transport/routes", { auth: true }),
+
+  listRuns: () => request<TransportRun[]>("/api/v1/fulfilment/transport/runs?status=SCHEDULED", { auth: true }),
+};
+
+export interface ManifestParcelSummary {
+  shipmentId: string;
+  reference: string | null;
+  destinationHubId: string;
+  sizeTier: ParcelSizeTier;
+  status: string;
+  scannedOutAt: string | null;
+  scannedInAt: string | null;
+  shortShipped: boolean;
+}
+
+export interface Manifest {
+  id: string;
+  runId: string;
+  status: "OPEN" | "FINALIZED";
+  finalizedAt: string | null;
+  finalizedById: string | null;
+  createdAt: string;
+}
+
+export interface ManifestDetail extends Manifest {
+  parcels: ManifestParcelSummary[];
+}
+
+export const manifests = {
+  create: (runId: string) => request<Manifest>("/api/v1/fulfilment/manifests", { method: "POST", body: { runId }, auth: true }),
+
+  get: (id: string) => request<ManifestDetail>(`/api/v1/fulfilment/manifests/${id}`, { auth: true }),
+
+  addParcel: (manifestId: string, shipmentId: string) =>
+    request<{ manifestId: string; shipmentId: string; status: string }>(`/api/v1/fulfilment/manifests/${manifestId}/parcels`, {
+      method: "POST",
+      body: { shipmentId },
+      auth: true,
+    }),
+
+  removeParcel: (manifestId: string, shipmentId: string) =>
+    request<void>(`/api/v1/fulfilment/manifests/${manifestId}/parcels/${shipmentId}`, { method: "DELETE", auth: true }),
+
+  finalize: (id: string) => request<Manifest>(`/api/v1/fulfilment/manifests/${id}/finalize`, { method: "POST", auth: true }),
+
+  // Bypasses request<T>() since this returns plain text, not JSON.
+  getDocument: async (id: string): Promise<string> => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const res = await fetch(`${API_URL}/api/v1/fulfilment/manifests/${id}/document`, {
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new ApiError(json?.error?.code ?? "UNKNOWN_ERROR", json?.error?.message ?? "Could not generate the manifest document", res.status);
+    }
+    return res.text();
+  },
+};
+
 export { ApiError as FulfilmentApiError };
