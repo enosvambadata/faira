@@ -61,9 +61,10 @@ test("seller can confirm a delivery quote and choose who pays", async ({ page })
   await expect(page.getByText("Delivery fee")).toBeVisible();
   await expect(page.getByText(/^\$\d+(\.\d{2})?$/)).toBeVisible({ timeout: 15_000 });
 
-  await page.getByText("Buyer pays").click();
+  await page.getByRole("radio", { name: /^Buyer pays/ }).click();
   await page.getByRole("button", { name: "Confirm delivery fee" }).click();
 
-  await expect(page.getByText("Paid by")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Buyer")).toBeVisible();
+  const paidByRow = page.getByText("Paid by").locator("..");
+  await expect(paidByRow).toBeVisible({ timeout: 15_000 });
+  await expect(paidByRow.getByText("Buyer", { exact: true })).toBeVisible();
 });
