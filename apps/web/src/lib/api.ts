@@ -205,6 +205,7 @@ export interface ShipmentDetail extends ShipmentDraft {
   feePayer: "SELLER" | "BUYER" | null;
   deliveryFee: string | null;
   reference: string | null;
+  dropoffDeadline: string | null;
 }
 
 export type QuoteSource = "pricing_rule" | "fallback_default";
@@ -221,6 +222,13 @@ export interface ShipmentQuoteConfirmation {
   feePayer: "SELLER" | "BUYER";
   deliveryFee: string;
   quoteSource: QuoteSource;
+}
+
+export interface ShipmentConfirmation {
+  id: string;
+  status: string;
+  displayStatus: string;
+  dropoffDeadline: string;
 }
 
 export interface CreateShipmentPayload {
@@ -250,6 +258,9 @@ export const shipments = {
       body: { feePayer },
       auth: true,
     }),
+
+  confirm: (id: string) =>
+    request<ShipmentConfirmation>(`/api/v1/fulfilment/shipments/${id}/confirm`, { method: "POST", auth: true }),
 };
 
 export { ApiError as FulfilmentApiError };

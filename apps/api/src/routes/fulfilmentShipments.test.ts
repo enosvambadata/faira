@@ -10,10 +10,13 @@ const shipmentCreateMock = vi.fn();
 const shipmentFindUniqueMock = vi.fn();
 const shipmentDeleteMock = vi.fn();
 const shipmentUpdateMock = vi.fn();
+const shipmentUpdateManyMock = vi.fn();
+const trackingEventCreateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const routeFindUniqueMock = vi.fn();
 const pricingRuleFindUniqueMock = vi.fn();
 const quoteConfigFindUniqueMock = vi.fn();
+const transactionMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -34,11 +37,14 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => shipmentCreateMock(...args),
       findUnique: (...args: unknown[]) => shipmentFindUniqueMock(...args),
       update: (...args: unknown[]) => shipmentUpdateMock(...args),
+      updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args),
       delete: (...args: unknown[]) => shipmentDeleteMock(...args),
     },
+    trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
     transportRoute: { findUnique: (...args: unknown[]) => routeFindUniqueMock(...args) },
     pricingRule: { findUnique: (...args: unknown[]) => pricingRuleFindUniqueMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
+    $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
 
@@ -80,6 +86,14 @@ beforeEach(() => {
   routeFindUniqueMock.mockResolvedValue(null);
   pricingRuleFindUniqueMock.mockResolvedValue(null);
   quoteConfigFindUniqueMock.mockResolvedValue({ value: '15' });
+  shipmentUpdateManyMock.mockResolvedValue({ count: 1 });
+  trackingEventCreateMock.mockResolvedValue({});
+  transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+    callback({
+      shipment: { updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args) },
+      trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
+    }),
+  );
 });
 
 describe('POST /api/v1/fulfilment/shipments', () => {
@@ -367,6 +381,122 @@ describe('POST /api/v1/fulfilment/shipments/:id/quote', () => {
 
     expect(res.status).toBe(403);
     expect(shipmentUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/fulfilment/shipments/:id/confirm', () => {
+  it('transitions to AWAITING_PAYMENT when the seller pays', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      feePayer: 'SELLER',
+    });
+    quoteConfigFindUniqueMock.mockResolvedValue({ value: '48' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('AWAITING_PAYMENT');
+    expect(shipmentUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'shipment-1', status: 'DRAFT' },
+      data: { status: 'AWAITING_PAYMENT', dropoffDeadline: expect.any(Date) },
+    });
+    expect(trackingEventCreateMock).toHaveBeenCalledWith({
+      data: { shipmentId: 'shipment-1', fromStatus: 'DRAFT', toStatus: 'AWAITING_PAYMENT', actorUserId: SELLER_ID },
+    });
+  });
+
+  it('transitions straight to AWAITING_DROPOFF when the buyer pays', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      feePayer: 'BUYER',
+    });
+    quoteConfigFindUniqueMock.mockResolvedValue({ value: '48' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('AWAITING_DROPOFF');
+    expect(shipmentUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'shipment-1', status: 'DRAFT' },
+      data: { status: 'AWAITING_DROPOFF', dropoffDeadline: expect.any(Date) },
+    });
+  });
+
+  it('409s when no fee-payer has been chosen yet', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: SELLER_ID, status: 'DRAFT', feePayer: null });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DELIVERY_FEE_NOT_SET');
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the shipment is no longer a draft', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'AWAITING_DROPOFF',
+      feePayer: 'BUYER',
+    });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('403s when the shipment belongs to a different seller', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: 'someone-else', status: 'DRAFT', feePayer: 'SELLER' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it('404s for a nonexistent shipment', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('409s when two simultaneous confirms race — only one succeeds, no double TrackingEvent', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: 'shipment-1',
+      sellerId: SELLER_ID,
+      status: 'DRAFT',
+      feePayer: 'BUYER',
+    });
+    quoteConfigFindUniqueMock.mockResolvedValue({ value: '48' });
+
+    // Simulates the DB-level effect of a concurrent transition: the first
+    // caller's atomic updateMany matches the row (count: 1), the second's
+    // WHERE clause no longer matches because the status already moved
+    // (count: 0) — exactly what a real Postgres UPDATE ... WHERE would do.
+    shipmentUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    const app = createApp();
+    const [first, second] = await Promise.all([
+      request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER),
+      request(app).post('/api/v1/fulfilment/shipments/shipment-1/confirm').set(AUTH_HEADER),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(trackingEventCreateMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -6,8 +6,18 @@ import { requireFulfilmentRole, FulfilmentRequest } from '../middleware/requireF
 import { ApiError } from '../errors/ApiError';
 import { SYSTEM_CONFIG_KEYS } from '../lib/systemConfigKeys';
 import { calculateShipmentQuote } from '../services/shipmentQuote';
+import { canTransition, displayStatus } from '../lib/shipmentStateMachine';
+import { recordAuditLog } from '../services/fulfilmentAuditLog';
 
 const router = Router();
+
+const DEFAULT_DROPOFF_DEADLINE_HOURS = 48;
+
+// Sentinel thrown inside the confirm transaction when the atomic
+// updateMany's WHERE clause matched zero rows (a concurrent request
+// already transitioned this shipment) — caught outside to return 409
+// rather than leaking a generic 500.
+class ShipmentTransitionConflict extends Error {}
 
 const DEFAULT_DECLARED_VALUE_LIMIT_UNVERIFIED = 200;
 const DEFAULT_DECLARED_VALUE_LIMIT_VERIFIED = 2000;
@@ -145,6 +155,7 @@ router.get(
         feePayer: shipment.feePayer,
         deliveryFee: shipment.deliveryFee?.toString() ?? null,
         reference: shipment.reference,
+        dropoffDeadline: shipment.dropoffDeadline,
         createdAt: shipment.createdAt,
       },
     });
@@ -230,6 +241,87 @@ router.post(
         feePayer: updated.feePayer,
         deliveryFee: updated.deliveryFee?.toString() ?? null,
         quoteSource: quote.source,
+      },
+    });
+  },
+);
+
+// First real use of the shipment state machine (SCRUM-108). Only valid
+// from DRAFT, and only once the seller has chosen a fee-payer via the
+// quote step (SCRUM-133) — that choice decides the next status: seller-pays
+// stops at AWAITING_PAYMENT (a future ticket confirms payment and advances
+// it to AWAITING_DROPOFF), buyer-pays skips straight there since there's
+// nothing to collect upfront.
+router.post(
+  '/:id/confirm',
+  requireAuth,
+  requireFulfilmentRole('SELLER'),
+  async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const shipment = await prisma.shipment.findUnique({ where: { id: req.params.id } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'Shipment not found', 404));
+      return;
+    }
+    if (shipment.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your shipment', 403));
+      return;
+    }
+    if (!shipment.feePayer) {
+      next(new ApiError('DELIVERY_FEE_NOT_SET', 'Confirm a delivery fee before confirming this shipment', 409));
+      return;
+    }
+
+    const targetStatus = shipment.feePayer === 'SELLER' ? 'AWAITING_PAYMENT' : 'AWAITING_DROPOFF';
+    if (!canTransition(shipment.status, targetStatus)) {
+      next(new ApiError('INVALID_STATE', 'Only draft shipments can be confirmed', 409));
+      return;
+    }
+
+    const deadlineConfig = await prisma.systemConfiguration.findUnique({
+      where: { key: SYSTEM_CONFIG_KEYS.SHIPMENT_DROPOFF_DEADLINE_HOURS },
+    });
+    const deadlineHours = deadlineConfig ? Number(deadlineConfig.value) : DEFAULT_DROPOFF_DEADLINE_HOURS;
+    const dropoffDeadline = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
+
+    try {
+      await prisma.$transaction(async tx => {
+        const result = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: shipment.status },
+          data: { status: targetStatus, dropoffDeadline },
+        });
+        if (result.count === 0) {
+          throw new ShipmentTransitionConflict();
+        }
+
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: shipment.status,
+            toStatus: targetStatus,
+            actorUserId: req.userId!,
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof ShipmentTransitionConflict) {
+        next(new ApiError('INVALID_STATE', 'Only draft shipments can be confirmed', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_SHIPMENT_CONFIRMED', {
+      shipmentId: shipment.id,
+      fromStatus: shipment.status,
+      toStatus: targetStatus,
+    });
+
+    res.status(200).json({
+      data: {
+        id: shipment.id,
+        status: targetStatus,
+        displayStatus: displayStatus(targetStatus),
+        dropoffDeadline,
       },
     });
   },

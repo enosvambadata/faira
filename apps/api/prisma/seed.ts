@@ -464,6 +464,7 @@ async function seedSystemConfiguration(): Promise<number> {
     [SYSTEM_CONFIG_KEYS.DECLARED_VALUE_LIMIT_UNVERIFIED, '200'],
     [SYSTEM_CONFIG_KEYS.DECLARED_VALUE_LIMIT_VERIFIED, '2000'],
     [SYSTEM_CONFIG_KEYS.SHIPMENT_QUOTE_FALLBACK_FEE, '15'],
+    [SYSTEM_CONFIG_KEYS.SHIPMENT_DROPOFF_DEADLINE_HOURS, '48'],
   ];
 
   for (const [key, value] of entries) {
