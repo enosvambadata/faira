@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { orders as ordersApi, OrderDetail, ApiError } from '@/lib/api';
+import { orders as ordersApi, OrderDetail, OrderReviewsResult, ApiError } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderTracking'>;
 
@@ -31,12 +31,20 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<OrderReviewsResult | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const data = await ordersApi.get(orderId);
       setOrder(data);
+      if (data.status === 'COMPLETED') {
+        setReviews(await ordersApi.getReviews(orderId));
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load this order');
     } finally {
@@ -65,6 +73,23 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
       setConfirmError(err instanceof ApiError ? err.message : 'Could not confirm receipt right now');
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (reviewRating === 0) {
+      setReviewError('Pick a star rating first');
+      return;
+    }
+    setSubmittingReview(true);
+    setReviewError(null);
+    try {
+      await ordersApi.submitReview(orderId, { rating: reviewRating, comment: reviewComment.trim() || undefined });
+      setReviews(await ordersApi.getReviews(orderId));
+    } catch (err) {
+      setReviewError(err instanceof ApiError ? err.message : 'Could not submit your review right now');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -139,6 +164,70 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
         ))}
       </View>
 
+      {order.status === 'COMPLETED' && reviews && (
+        <View style={styles.reviewSection}>
+          <Text style={styles.sectionTitle}>Reviews</Text>
+
+          {reviews.canReview ? (
+            <View style={styles.reviewBox}>
+              <Text style={styles.reviewPrompt}>How was this order?</Text>
+              <View style={styles.starRow}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <TouchableOpacity key={star} onPress={() => setReviewRating(star)}>
+                    <Text style={styles.starIcon}>{star <= reviewRating ? '★' : '☆'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.reviewInput}
+                placeholder="Add a comment (optional)"
+                placeholderTextColor={colors.muted}
+                value={reviewComment}
+                onChangeText={setReviewComment}
+                multiline
+              />
+              {reviewError && <Text style={styles.submitError}>{reviewError}</Text>}
+              <TouchableOpacity
+                style={[styles.confirmButton, submittingReview && styles.confirmButtonDisabled]}
+                disabled={submittingReview}
+                onPress={handleSubmitReview}
+              >
+                {submittingReview ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.confirmButtonText}>Submit Review</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            reviews.yourReview && (
+              <View style={styles.reviewBox}>
+                <Text style={styles.reviewPrompt}>Your review</Text>
+                <Text style={styles.starIcon}>{'★'.repeat(reviews.yourReview.rating)}{'☆'.repeat(5 - reviews.yourReview.rating)}</Text>
+                {reviews.yourReview.comment && <Text style={styles.reviewComment}>{reviews.yourReview.comment}</Text>}
+              </View>
+            )
+          )}
+
+          {reviews.revealed && reviews.counterpartReview ? (
+            <View style={styles.reviewBox}>
+              <Text style={styles.reviewPrompt}>Their review of you</Text>
+              <Text style={styles.starIcon}>
+                {'★'.repeat(reviews.counterpartReview.rating)}
+                {'☆'.repeat(5 - reviews.counterpartReview.rating)}
+              </Text>
+              {reviews.counterpartReview.comment && <Text style={styles.reviewComment}>{reviews.counterpartReview.comment}</Text>}
+            </View>
+          ) : (
+            !reviews.canReview && (
+              <Text style={styles.reviewWaiting}>
+                Their review will be revealed once they submit theirs, or after 7 days.
+              </Text>
+            )
+          )}
+        </View>
+      )}
+
       {confirmError && <Text style={styles.submitError}>{confirmError}</Text>}
 
       {canConfirmReceipt && (
@@ -210,4 +299,21 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   messageButtonText: { ...textStyles.bodyMedium, color: colors.primary, fontSize: 17 },
+  reviewSection: { marginTop: 8 },
+  reviewBox: { backgroundColor: colors.white, borderRadius: 10, padding: 16, marginBottom: 12, gap: 10 },
+  reviewPrompt: { ...textStyles.bodyMedium, color: colors.text },
+  starRow: { flexDirection: 'row', gap: 6 },
+  starIcon: { fontSize: 24, color: colors.primary },
+  reviewInput: {
+    ...textStyles.body,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 12,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  reviewComment: { ...textStyles.body, color: colors.text },
+  reviewWaiting: { ...textStyles.body, color: colors.muted, textAlign: 'center', marginBottom: 12 },
 });

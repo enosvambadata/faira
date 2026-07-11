@@ -460,7 +460,29 @@ export const orders = {
       method: 'POST',
       auth: true,
     }),
+
+  submitReview: (id: string, payload: { rating: number; comment?: string }) =>
+    request<{ id: string; orderId: string; rating: number; comment: string | null; createdAt: string }>(
+      `/api/v1/orders/${id}/reviews`,
+      { method: 'POST', body: payload, auth: true },
+    ),
+
+  getReviews: (id: string) => request<OrderReviewsResult>(`/api/v1/orders/${id}/reviews`, { auth: true }),
 };
+
+export interface OrderReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface OrderReviewsResult {
+  canReview: boolean;
+  revealed: boolean;
+  yourReview: OrderReview | null;
+  counterpartReview: OrderReview | null;
+}
 
 export interface WishlistListing {
   id: string;

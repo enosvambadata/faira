@@ -14,7 +14,8 @@ import { confirmOrderPayment } from '../services/paymentConfirmation';
 import { releaseEscrowFunds } from '../services/escrowRelease';
 import { calculateDeliveryFee } from '../services/deliveryFee';
 import { notifyOrderStatusChange } from '../services/orderNotifications';
-import { OrderStatus } from '@prisma/client';
+import { getOrderCompletedAt, isRevealed } from '../services/orderReviews';
+import { Prisma, OrderStatus } from '@prisma/client';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
 import { signDisputeEvidenceUpload } from '../lib/cloudinary';
 
@@ -72,6 +73,11 @@ function buildOrderTimeline(order: {
 const raiseDisputeSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
   evidenceImageUrls: z.array(z.string().url()).min(1).max(6),
+});
+
+const createReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
 });
 
 const createOrderSchema = z.object({
@@ -622,6 +628,121 @@ router.post(
         reason: dispute.reason,
         evidenceImageUrls: dispute.evidenceImageUrls,
         createdAt: dispute.createdAt,
+      },
+    });
+  },
+);
+
+router.post(
+  '/:orderId/reviews',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const parsed = createReviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { listing: { select: { sellerId: true } } },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+
+    const { sellerId } = order.listing;
+    const isBuyer = order.buyerId === req.userId;
+    const isSeller = sellerId === req.userId;
+    if (!isBuyer && !isSeller) {
+      next(new ApiError('FORBIDDEN', 'Not part of this order', 403));
+      return;
+    }
+    if (order.status !== 'COMPLETED') {
+      next(new ApiError('INVALID_STATE', 'This order cannot be reviewed yet', 409));
+      return;
+    }
+
+    const revieweeId = isBuyer ? sellerId : order.buyerId;
+
+    try {
+      const review = await prisma.review.create({
+        data: {
+          orderId: order.id,
+          reviewerId: req.userId!,
+          revieweeId,
+          rating: parsed.data.rating,
+          comment: parsed.data.comment ?? null,
+        },
+      });
+
+      res.status(201).json({
+        data: {
+          id: review.id,
+          orderId: review.orderId,
+          rating: review.rating,
+          comment: review.comment,
+          createdAt: review.createdAt,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        next(new ApiError('ALREADY_REVIEWED', 'You have already reviewed this order', 409));
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+router.get(
+  '/:orderId/reviews',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: {
+        listing: { select: { sellerId: true } },
+        escrowEntries: { select: { type: true, createdAt: true } },
+        reviews: true,
+      },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.buyerId !== req.userId && order.listing.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not part of this order', 403));
+      return;
+    }
+
+    const yourReview = order.reviews.find(r => r.reviewerId === req.userId!) ?? null;
+    const counterpartReview = order.reviews.find(r => r.reviewerId !== req.userId!) ?? null;
+    const completedAt = getOrderCompletedAt(order);
+    const revealed = isRevealed(!!yourReview, completedAt);
+
+    res.status(200).json({
+      data: {
+        canReview: order.status === 'COMPLETED' && !yourReview,
+        revealed,
+        yourReview: yourReview && {
+          id: yourReview.id,
+          rating: yourReview.rating,
+          comment: yourReview.comment,
+          createdAt: yourReview.createdAt,
+        },
+        counterpartReview:
+          revealed && counterpartReview
+            ? {
+                id: counterpartReview.id,
+                rating: counterpartReview.rating,
+                comment: counterpartReview.comment,
+                createdAt: counterpartReview.createdAt,
+              }
+            : null,
       },
     });
   },
