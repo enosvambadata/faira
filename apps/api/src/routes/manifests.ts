@@ -94,9 +94,14 @@ router.post(
       return;
     }
 
-    const existingOpen = await prisma.transportManifest.findFirst({ where: { runId: run.id, status: 'OPEN' } });
-    if (existingOpen) {
-      next(new ApiError('ALREADY_EXISTS', 'This run already has an open manifest', 409, { manifestId: existingOpen.id }));
+    // Checks for a manifest in ANY status, not just OPEN -- a run should
+    // only ever have one manifest. Without this, picking an already-
+    // finalized run's manifest again (e.g. to scan parcels out) would
+    // silently create a second, empty manifest instead of returning the
+    // existing one, since the old OPEN-only check no longer matched it.
+    const existing = await prisma.transportManifest.findFirst({ where: { runId: run.id } });
+    if (existing) {
+      next(new ApiError('ALREADY_EXISTS', 'This run already has a manifest', 409, { manifestId: existing.id }));
       return;
     }
 
