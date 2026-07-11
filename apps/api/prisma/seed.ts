@@ -394,6 +394,67 @@ async function upsertNode(node: CategoryNode, parentId: string | null): Promise<
   return count;
 }
 
+// Pilot pricing (SCRUM-128) — placeholder figures for the Harare<->Bulawayo
+// pilot, tunable later via the admin pricing UI (SCRUM-152) rather than a
+// migration. Deliberately not hardcoded into any route/service code —
+// this seed is the only place these numbers live.
+const FULFILMENT_PARCEL_SIZE_FEES: Record<'SMALL' | 'MEDIUM' | 'LARGE' | 'EXTRA_LARGE', number> = {
+  SMALL: 8,
+  MEDIUM: 12,
+  LARGE: 18,
+  EXTRA_LARGE: 25,
+};
+
+async function seedFulfilmentPilot(): Promise<{ hubs: number; routes: number; pricingRules: number }> {
+  const harare = await prisma.hub.upsert({
+    where: { name: 'Faira Harare Hub' },
+    update: {},
+    create: {
+      name: 'Faira Harare Hub',
+      city: 'Harare',
+      address: 'Cnr Julius Nyerere Way & Robert Mugabe Rd, Harare CBD',
+      openingHours: 'Mon-Fri 8am-5pm, Sat 8am-1pm',
+    },
+  });
+  const bulawayo = await prisma.hub.upsert({
+    where: { name: 'Faira Bulawayo Hub' },
+    update: {},
+    create: {
+      name: 'Faira Bulawayo Hub',
+      city: 'Bulawayo',
+      address: 'Cnr Fife St & 9th Ave, Bulawayo CBD',
+      openingHours: 'Mon-Fri 8am-5pm, Sat 8am-1pm',
+    },
+  });
+
+  const routePairs: [string, string][] = [
+    [harare.id, bulawayo.id],
+    [bulawayo.id, harare.id],
+  ];
+
+  let pricingRuleCount = 0;
+  let routeCount = 0;
+  for (const [originHubId, destinationHubId] of routePairs) {
+    const route = await prisma.transportRoute.upsert({
+      where: { originHubId_destinationHubId: { originHubId, destinationHubId } },
+      update: {},
+      create: { originHubId, destinationHubId },
+    });
+    routeCount += 1;
+
+    for (const sizeTier of Object.keys(FULFILMENT_PARCEL_SIZE_FEES) as (keyof typeof FULFILMENT_PARCEL_SIZE_FEES)[]) {
+      await prisma.pricingRule.upsert({
+        where: { routeId_sizeTier: { routeId: route.id, sizeTier } },
+        update: { fee: FULFILMENT_PARCEL_SIZE_FEES[sizeTier] },
+        create: { routeId: route.id, sizeTier, fee: FULFILMENT_PARCEL_SIZE_FEES[sizeTier] },
+      });
+      pricingRuleCount += 1;
+    }
+  }
+
+  return { hubs: 2, routes: routeCount, pricingRules: pricingRuleCount };
+}
+
 async function main() {
   let total = 0;
   for (const topLevel of TAXONOMY) {
@@ -403,6 +464,11 @@ async function main() {
 
   const feeRateCount = await seedDeliveryFeeRates();
   console.log(`Seeded ${feeRateCount} delivery fee rates across ${ZIMBABWE_CITIES.length} cities.`);
+
+  const fulfilment = await seedFulfilmentPilot();
+  console.log(
+    `Seeded Faira Fulfilment pilot: ${fulfilment.hubs} hubs, ${fulfilment.routes} routes, ${fulfilment.pricingRules} pricing rules.`,
+  );
 }
 
 main()

@@ -150,6 +150,21 @@ model User {
   reviewFlagsRaised     ReviewFlag[]
   reportsRaised         Report[]
 
+  // --- Faira Fulfilment (SCRUM-128) ---
+  fulfilmentRoles              UserRole[]
+  shipmentsAsSeller             Shipment[]           @relation("ShipmentSeller")
+  trackingEventsActed           TrackingEvent[]
+  parcelEvidenceCaptured        ParcelEvidence[]
+  parcelSealsApplied            ParcelSeal[]
+  transportRunsOperated         TransportRun[]
+  manifestsFinalized            TransportManifest[]
+  sellerSettlements             SellerSettlement[]
+  collectionEventsVerified      CollectionEvent[]
+  returnRequestsRequested       ReturnRequest[]
+  returnEventsActed             ReturnEvent[]
+  fulfilmentDisputesRaised      Dispute[]
+  supportTicketsRaised          SupportTicket[]
+
   @@map("users")
 }
 
@@ -588,4 +603,631 @@ model Report {
   @@index([targetType, targetId])
   @@index([status])
   @@map("reports")
+}
+
+// =====================================================================
+// Faira Fulfilment (SCRUM-128) — parcel fulfilment between Faira hubs.
+// Shares the User/AuditLog/VerificationRequest models above rather than
+// duplicating identity, audit, or seller-verification concepts; adds
+// hub, shipment, transport, payment/settlement, and support domain
+// models. See docs/fulfilment/02-architecture-decision-record.md and
+// docs/fulfilment/03-shipment-state-machine.md for the design rationale.
+//
+// RBAC is deliberately a single UserRole row (role + optional hub scope)
+// rather than separate Role/Permission tables — 8 fixed roles at pilot
+// scale don't need a dynamic permission engine yet; see the ADR's
+// documented trade-off. Authorization is enforced in the Express API
+// layer (requireRole/requireHubAssignment middleware), not via Postgres
+// RLS — RLS is not part of this app's request path (Prisma connects to
+// Postgres directly, not through PostgREST), so it's defense-in-depth
+// at most, never the primary control.
+// =====================================================================
+
+enum FulfilmentRole {
+  SELLER
+  HUB_AGENT
+  HUB_SUPERVISOR
+  TRANSPORT_OPERATOR
+  CUSTOMER_SUPPORT
+  FINANCE_ADMIN
+  OPERATIONS_ADMIN
+  SUPER_ADMIN
+}
+
+// hubId is only meaningful for HUB_AGENT/HUB_SUPERVISOR (which hub this
+// assignment grants access to); null for every other role. A Transport
+// Operator's scope is the TransportRun.operatorUserId field instead of a
+// row here — one operator per run is the pilot's actual cardinality, so
+// a separate run-assignment table would be unused complexity for now.
+model UserRole {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  role      FulfilmentRole
+  hubId     String?        @map("hub_id") @db.Uuid
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hub  Hub? @relation(fields: [hubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role, hubId])
+  @@index([userId])
+  @@index([hubId])
+  @@map("fulfilment_user_roles")
+}
+
+model Hub {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  city         String
+  address      String
+  openingHours String   @map("opening_hours")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  staffRoles        UserRole[]
+  shipmentsAsOrigin Shipment[]       @relation("OriginHub")
+  shipmentsAsDest   Shipment[]       @relation("DestinationHub")
+  routesAsOrigin    TransportRoute[] @relation("RouteOrigin")
+  routesAsDest      TransportRoute[] @relation("RouteDestination")
+  trackingEvents    TrackingEvent[]
+
+  @@unique([name])
+  @@map("fulfilment_hubs")
+}
+
+enum ParcelSizeTier {
+  SMALL
+  MEDIUM
+  LARGE
+  EXTRA_LARGE
+}
+
+enum FeePayer {
+  SELLER
+  BUYER
+}
+
+// Full lifecycle per docs/fulfilment/03-shipment-state-machine.md.
+// Enforced by application code (services/shipmentStateMachine.ts, not
+// yet implemented — this ticket is schema-only), never set directly by
+// the frontend.
+enum ShipmentStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  AWAITING_DROPOFF
+  DROPOFF_OVERDUE
+  RECEIVED_AT_ORIGIN
+  REJECTED_AT_ORIGIN
+  INSPECTED
+  SEALED
+  AWAITING_DISPATCH
+  ASSIGNED_TO_RUN
+  DISPATCHED
+  IN_TRANSIT
+  DELAYED
+  RECEIVED_AT_DESTINATION
+  READY_FOR_COLLECTION
+  COLLECTION_OVERDUE
+  COLLECTED
+  RETURN_REQUESTED
+  RETURN_APPROVED
+  RETURNING_TO_SELLER
+  RETURNED_TO_SELLER
+  CANCELLED
+  LOST
+  DAMAGED
+  DISPUTED
+  CLOSED
+}
+
+enum ParcelCondition {
+  GOOD
+  DAMAGED
+  SUSPICIOUS
+}
+
+model Shipment {
+  id                     String           @id @default(uuid()) @db.Uuid
+  reference              String           @unique
+  sellerId               String           @map("seller_id") @db.Uuid
+  buyerName              String           @map("buyer_name")
+  // Phone/WhatsApp number — buyers have no account (pivot brief), so
+  // there is no buyerId FK; contact is how tracking links/codes reach them.
+  buyerContact           String           @map("buyer_contact")
+  originHubId            String           @map("origin_hub_id") @db.Uuid
+  destinationHubId       String           @map("destination_hub_id") @db.Uuid
+  category               String
+  description            String?
+  declaredValue          Decimal          @map("declared_value") @db.Decimal(10, 2)
+  sizeTier               ParcelSizeTier   @map("size_tier")
+  feePayer               FeePayer         @map("fee_payer")
+  deliveryFee            Decimal          @map("delivery_fee") @db.Decimal(10, 2)
+  status                 ShipmentStatus   @default(DRAFT)
+  dropoffDeadline        DateTime?        @map("dropoff_deadline")
+  collectionWindowEndsAt DateTime?        @map("collection_window_ends_at")
+  weightKg               Decimal?         @map("weight_kg") @db.Decimal(6, 2)
+  dimensions             String?
+  condition              ParcelCondition?
+  qrCodeUrl              String?          @map("qr_code_url")
+  // Future marketplace-integration point (docs/fulfilment/01-marketplace-pause-report.md):
+  // deliberately not a foreign key to Order, so Fulfilment has no
+  // compile-time dependency on marketplace tables.
+  sourceOrderId          String?          @map("source_order_id") @db.Uuid
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
+
+  seller         User @relation("ShipmentSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  originHub      Hub  @relation("OriginHub", fields: [originHubId], references: [id], onDelete: Restrict)
+  destinationHub Hub  @relation("DestinationHub", fields: [destinationHubId], references: [id], onDelete: Restrict)
+
+  trackingEvents  TrackingEvent[]
+  evidence        ParcelEvidence[]
+  seals           ParcelSeal[]
+  manifestEntry   ManifestParcel?
+  payment         FulfilmentPayment?
+  settlement      SellerSettlement?
+  collectionCode  CollectionCode?
+  collectionEvent CollectionEvent?
+  returnRequest   ReturnRequest?
+  disputes        Dispute[]
+  notifications   Notification[]
+  supportTickets  SupportTicket[]
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([originHubId])
+  @@index([destinationHubId])
+  @@map("fulfilment_shipments")
+}
+
+// Immutable by convention — no update/delete route is ever exposed for
+// this model. One row per status transition, matching the marketplace
+// order-timeline pattern but as its own durable table (chain of custody
+// requires the full history, not just reconstructible timestamps).
+model TrackingEvent {
+  id          String          @id @default(uuid()) @db.Uuid
+  shipmentId  String          @map("shipment_id") @db.Uuid
+  fromStatus  ShipmentStatus? @map("from_status")
+  toStatus    ShipmentStatus  @map("to_status")
+  actorUserId String?         @map("actor_user_id") @db.Uuid
+  hubId       String?         @map("hub_id") @db.Uuid
+  notes       String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  hub      Hub?     @relation(fields: [hubId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([toStatus])
+  @@map("fulfilment_tracking_events")
+}
+
+enum EvidenceType {
+  PARCEL_PHOTO
+  SEAL_PHOTO
+  PROOF_OF_COLLECTION
+  DAMAGE_PHOTO
+  RETURN_PHOTO
+}
+
+// Cloudinary-hosted (same signed-upload pattern as dispute/report
+// evidence, see apps/api/src/lib/cloudinary.ts) — imageUrl is never a
+// public bucket URL guessable by ID.
+model ParcelEvidence {
+  id           String       @id @default(uuid()) @db.Uuid
+  shipmentId   String       @map("shipment_id") @db.Uuid
+  type         EvidenceType
+  imageUrl     String       @map("image_url")
+  capturedById String       @map("captured_by_id") @db.Uuid
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  capturedBy User     @relation(fields: [capturedById], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@map("fulfilment_parcel_evidence")
+}
+
+model ParcelSeal {
+  id          String   @id @default(uuid()) @db.Uuid
+  shipmentId  String   @map("shipment_id") @db.Uuid
+  sealNumber  String   @map("seal_number")
+  appliedById String   @map("applied_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  shipment  Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  appliedBy User     @relation(fields: [appliedById], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@map("fulfilment_parcel_seals")
+}
+
+model TransportProvider {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  contactPhone String?  @map("contact_phone")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  routes TransportRoute[]
+  runs   TransportRun[]
+
+  @@map("fulfilment_transport_providers")
+}
+
+// Routable between any two hubs (no hardcoded city names) so more
+// cities can be added later without a schema change, per the pivot brief.
+model TransportRoute {
+  id               String   @id @default(uuid()) @db.Uuid
+  originHubId      String   @map("origin_hub_id") @db.Uuid
+  destinationHubId String   @map("destination_hub_id") @db.Uuid
+  providerId       String?  @map("provider_id") @db.Uuid
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  originHub      Hub                @relation("RouteOrigin", fields: [originHubId], references: [id], onDelete: Restrict)
+  destinationHub Hub                @relation("RouteDestination", fields: [destinationHubId], references: [id], onDelete: Restrict)
+  provider       TransportProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  runs           TransportRun[]
+  pricingRules   PricingRule[]
+
+  @@unique([originHubId, destinationHubId])
+  @@map("fulfilment_transport_routes")
+}
+
+enum TransportRunStatus {
+  SCHEDULED
+  DEPARTED
+  ARRIVED
+  DELAYED
+  CANCELLED
+}
+
+model TransportRun {
+  id                 String              @id @default(uuid()) @db.Uuid
+  routeId            String              @map("route_id") @db.Uuid
+  providerId         String?             @map("provider_id") @db.Uuid
+  operatorUserId     String?             @map("operator_user_id") @db.Uuid
+  vehicleReference   String?             @map("vehicle_reference")
+  scheduledDeparture DateTime            @map("scheduled_departure")
+  scheduledArrival   DateTime            @map("scheduled_arrival")
+  actualDeparture    DateTime?           @map("actual_departure")
+  actualArrival      DateTime?           @map("actual_arrival")
+  status             TransportRunStatus  @default(SCHEDULED)
+  createdAt          DateTime            @default(now()) @map("created_at")
+
+  route     TransportRoute      @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  provider  TransportProvider?  @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  operator  User?               @relation(fields: [operatorUserId], references: [id], onDelete: SetNull)
+  manifests TransportManifest[]
+
+  @@index([routeId])
+  @@index([status])
+  @@map("fulfilment_transport_runs")
+}
+
+enum ManifestStatus {
+  OPEN
+  FINALIZED
+  DEPARTED
+  ARRIVED
+  RECONCILED
+  CANCELLED
+}
+
+// Immutable once FINALIZED — no edit route is exposed past that point
+// (see docs/fulfilment/03-shipment-state-machine.md's dispatch-manifest
+// ticket notes).
+model TransportManifest {
+  id            String         @id @default(uuid()) @db.Uuid
+  runId         String         @map("run_id") @db.Uuid
+  status        ManifestStatus @default(OPEN)
+  finalizedAt   DateTime?      @map("finalized_at")
+  finalizedById String?        @map("finalized_by_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  run         TransportRun     @relation(fields: [runId], references: [id], onDelete: Restrict)
+  finalizedBy User?            @relation(fields: [finalizedById], references: [id], onDelete: SetNull)
+  parcels     ManifestParcel[]
+
+  @@index([runId])
+  @@map("fulfilment_transport_manifests")
+}
+
+// shipmentId is unique — a shipment can only be on one active manifest
+// at a time, which is what makes "assign to a run" a real state
+// transition rather than an unbounded many-to-many.
+model ManifestParcel {
+  id           String    @id @default(uuid()) @db.Uuid
+  manifestId   String    @map("manifest_id") @db.Uuid
+  shipmentId   String    @unique @map("shipment_id") @db.Uuid
+  scannedOutAt DateTime? @map("scanned_out_at")
+  scannedInAt  DateTime? @map("scanned_in_at")
+  shortShipped Boolean   @default(false) @map("short_shipped")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  manifest TransportManifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  shipment Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([manifestId])
+  @@map("fulfilment_manifest_parcels")
+}
+
+// Separate from the marketplace Payment model (which is Order-scoped) —
+// same shape, different owning entity. No card data is ever stored here;
+// providerReference is the payment provider's own transaction id.
+enum FulfilmentPaymentMethod {
+  ECOCASH
+  ONEMONEY
+  ZIMSWITCH
+  CASH_ON_COLLECTION
+  CARD
+}
+
+enum FulfilmentPaymentStatus {
+  PENDING
+  AUTHORISED
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model FulfilmentPayment {
+  id                String                   @id @default(uuid()) @db.Uuid
+  shipmentId        String                   @unique @map("shipment_id") @db.Uuid
+  method            FulfilmentPaymentMethod
+  status            FulfilmentPaymentStatus  @default(PENDING)
+  amount            Decimal                  @db.Decimal(10, 2)
+  providerReference String?                  @map("provider_reference")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  confirmedAt       DateTime?                @map("confirmed_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("fulfilment_payments")
+}
+
+enum SettlementStatus {
+  PENDING
+  SETTLED
+  FAILED
+  REVERSED
+}
+
+// Mirrors apps/api/src/services/escrowRelease.ts's commission-split
+// pattern — created once per COLLECTED shipment (never derived/recreated),
+// moved to SETTLED by a scheduled job once eligible.
+model SellerSettlement {
+  id          String           @id @default(uuid()) @db.Uuid
+  shipmentId  String           @unique @map("shipment_id") @db.Uuid
+  sellerId    String           @map("seller_id") @db.Uuid
+  grossAmount Decimal          @map("gross_amount") @db.Decimal(10, 2)
+  commission  Decimal          @db.Decimal(10, 2)
+  netAmount   Decimal          @map("net_amount") @db.Decimal(10, 2)
+  status      SettlementStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  settledAt   DateTime?        @map("settled_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  seller   User     @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("fulfilment_seller_settlements")
+}
+
+// Configurable per route+size (no hardcoded route prices, per the pivot
+// brief's explicit anti-pattern list). Missing combos fall back to a
+// SystemConfiguration default at quote time rather than blocking checkout.
+model PricingRule {
+  id        String         @id @default(uuid()) @db.Uuid
+  routeId   String         @map("route_id") @db.Uuid
+  sizeTier  ParcelSizeTier @map("size_tier")
+  fee       Decimal        @db.Decimal(10, 2)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  route TransportRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, sizeTier])
+  @@map("fulfilment_pricing_rules")
+}
+
+// codeHash, never the plaintext code, is stored — same principle as
+// password hashing. attempts supports rate-limiting verification tries.
+model CollectionCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  shipmentId String    @unique @map("shipment_id") @db.Uuid
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@map("fulfilment_collection_codes")
+}
+
+// The proof-of-collection record itself (SCRUM-146) — immutable once
+// created, one per COLLECTED shipment.
+model CollectionEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  shipmentId       String   @unique @map("shipment_id") @db.Uuid
+  verifiedById     String   @map("verified_by_id") @db.Uuid
+  idCheckPerformed Boolean  @default(false) @map("id_check_performed")
+  proofImageUrl    String?  @map("proof_image_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  verifiedBy User     @relation(fields: [verifiedById], references: [id], onDelete: Restrict)
+
+  @@map("fulfilment_collection_events")
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RETURNING
+  RETURNED
+  CLOSED
+}
+
+model ReturnRequest {
+  id            String       @id @default(uuid()) @db.Uuid
+  shipmentId    String       @unique @map("shipment_id") @db.Uuid
+  requestedById String       @map("requested_by_id") @db.Uuid
+  reason        String
+  status        ReturnStatus @default(REQUESTED)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  resolvedAt    DateTime?    @map("resolved_at")
+
+  shipment    Shipment      @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  requestedBy User          @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  events      ReturnEvent[]
+
+  @@map("fulfilment_return_requests")
+}
+
+model ReturnEvent {
+  id              String       @id @default(uuid()) @db.Uuid
+  returnRequestId String       @map("return_request_id") @db.Uuid
+  status          ReturnStatus
+  actorUserId     String?      @map("actor_user_id") @db.Uuid
+  notes           String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  returnRequest ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  actor         User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([returnRequestId])
+  @@map("fulfilment_return_events")
+}
+
+// Named Dispute (not PaymentDispute, which is the marketplace's existing
+// order-payment-dispute model) to avoid a naming collision while keeping
+// each product line's dispute concept distinct.
+enum FulfilmentDisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model Dispute {
+  id              String                  @id @default(uuid()) @db.Uuid
+  shipmentId      String                  @map("shipment_id") @db.Uuid
+  // Null when raised by a buyer via Customer Support (buyers have no
+  // account) rather than directly by an authenticated user.
+  raisedById      String?                 @map("raised_by_id") @db.Uuid
+  reason          String
+  status          FulfilmentDisputeStatus @default(OPEN)
+  resolutionNotes String?                 @map("resolution_notes")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  resolvedAt      DateTime?               @map("resolved_at")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  raisedBy User?    @relation(fields: [raisedById], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([status])
+  @@map("fulfilment_disputes")
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  DELIVERED
+}
+
+// event is a stable string key (e.g. "SHIPMENT_DISPATCHED") rather than
+// an enum so new lifecycle events can be added via a data migration
+// (seeding a new template row) instead of a schema migration.
+model NotificationTemplate {
+  id        String              @id @default(uuid()) @db.Uuid
+  event     String
+  channel   NotificationChannel
+  body      String
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  notifications Notification[]
+
+  @@unique([event, channel])
+  @@map("fulfilment_notification_templates")
+}
+
+// recipient is a phone number, email, or push token — not a User FK,
+// since buyer notifications have no associated account.
+model Notification {
+  id         String              @id @default(uuid()) @db.Uuid
+  shipmentId String?             @map("shipment_id") @db.Uuid
+  templateId String?             @map("template_id") @db.Uuid
+  recipient  String
+  channel    NotificationChannel
+  status     NotificationStatus  @default(PENDING)
+  attempts   Int                 @default(0)
+  lastError  String?             @map("last_error")
+  sentAt     DateTime?           @map("sent_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  shipment Shipment?             @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  template NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([status])
+  @@map("fulfilment_notifications")
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// contactInfo carries the buyer's phone/email when raisedById is null
+// (buyer support requests have no account to attribute to).
+model SupportTicket {
+  id          String              @id @default(uuid()) @db.Uuid
+  shipmentId  String?             @map("shipment_id") @db.Uuid
+  raisedById  String?             @map("raised_by_id") @db.Uuid
+  contactInfo String?             @map("contact_info")
+  subject     String
+  message     String
+  status      SupportTicketStatus @default(OPEN)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  resolvedAt  DateTime?           @map("resolved_at")
+
+  shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  raisedBy User?     @relation(fields: [raisedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("fulfilment_support_tickets")
+}
+
+// Simple key/value store for tunable operational parameters (drop-off
+// deadline hours, collection window days, declared-value limits per
+// verification tier, commission rate, ...) that will evolve faster than
+// a rigid schema should — avoids a migration for every tunable.
+model SystemConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("fulfilment_system_configuration")
 }
