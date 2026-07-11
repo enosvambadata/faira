@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { SYSTEM_CONFIG_KEYS } from '../src/lib/systemConfigKeys';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -455,6 +456,21 @@ async function seedFulfilmentPilot(): Promise<{ hubs: number; routes: number; pr
   return { hubs: 2, routes: routeCount, pricingRules: pricingRuleCount };
 }
 
+// Pilot defaults — an unverified seller can only declare low-value
+// parcels; verification (SCRUM-131) raises the ceiling. Tunable later via
+// the admin dashboard (SCRUM-152) rather than a migration.
+async function seedSystemConfiguration(): Promise<number> {
+  const entries: [string, string][] = [
+    [SYSTEM_CONFIG_KEYS.DECLARED_VALUE_LIMIT_UNVERIFIED, '200'],
+    [SYSTEM_CONFIG_KEYS.DECLARED_VALUE_LIMIT_VERIFIED, '2000'],
+  ];
+
+  for (const [key, value] of entries) {
+    await prisma.systemConfiguration.upsert({ where: { key }, update: {}, create: { key, value } });
+  }
+  return entries.length;
+}
+
 async function main() {
   let total = 0;
   for (const topLevel of TAXONOMY) {
@@ -469,6 +485,9 @@ async function main() {
   console.log(
     `Seeded Faira Fulfilment pilot: ${fulfilment.hubs} hubs, ${fulfilment.routes} routes, ${fulfilment.pricingRules} pricing rules.`,
   );
+
+  const configCount = await seedSystemConfiguration();
+  console.log(`Seeded ${configCount} system configuration values.`);
 }
 
 main()

@@ -121,10 +121,12 @@ export default function DashboardPage() {
 
       <div className="mt-6">
         {canCreateShipment ? (
-          <Button size="lg" fullWidth>
-            <Package size={18} />
-            Create a shipment
-          </Button>
+          <Link href="/shipments/new">
+            <Button size="lg" fullWidth>
+              <Package size={18} />
+              Create a shipment
+            </Button>
+          </Link>
         ) : (
           <Card className="flex items-center gap-3 bg-primary-light">
             <Clock size={20} className="shrink-0 text-primary" />
