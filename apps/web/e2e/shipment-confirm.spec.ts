@@ -70,4 +70,8 @@ test("seller can confirm a shipment and see its drop-off deadline", async ({ pag
   await expect(page.getByRole("heading", { name: "Shipment confirmed" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("AWAITING PAYMENT")).toBeVisible();
   await expect(page.getByText("Drop off by")).toBeVisible();
+
+  // Reference format: FF-{hub code}-{6-digit sequence}, e.g. FF-HRE-000123.
+  await expect(page.getByText(/^FF-[A-Z]{3}-\d{6}$/)).toBeVisible();
+  await expect(page.getByAltText(/QR code for shipment/)).toBeVisible();
 });

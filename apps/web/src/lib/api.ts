@@ -205,6 +205,7 @@ export interface ShipmentDetail extends ShipmentDraft {
   feePayer: "SELLER" | "BUYER" | null;
   deliveryFee: string | null;
   reference: string | null;
+  qrCodeUrl: string | null;
   dropoffDeadline: string | null;
 }
 
@@ -229,6 +230,8 @@ export interface ShipmentConfirmation {
   status: string;
   displayStatus: string;
   dropoffDeadline: string;
+  reference: string;
+  qrCodeUrl: string;
 }
 
 export interface CreateShipmentPayload {

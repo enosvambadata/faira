@@ -660,10 +660,19 @@ model UserRole {
 model Hub {
   id           String   @id @default(uuid()) @db.Uuid
   name         String
+  // Short human-readable code used in shipment references (FF-{code}-######),
+  // e.g. "HRE" for Harare — never guessable-sequential on its own since it's
+  // paired with a per-hub counter, not a global one.
+  code         String   @unique
   city         String
   address      String
   openingHours String   @map("opening_hours")
   isActive     Boolean  @default(true) @map("is_active")
+  // Atomically incremented (single UPDATE ... RETURNING) each time a
+  // shipment confirms with this hub as origin — the source of the
+  // sequence number in that shipment's reference. Never read-then-written
+  // separately; see services/shipmentReference.ts.
+  nextShipmentSequence Int @default(1) @map("next_shipment_sequence")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
