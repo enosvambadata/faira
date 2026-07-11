@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -47,6 +48,14 @@ export default function HubOpsManifestPage() {
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [viewingDocument, setViewingDocument] = useState(false);
+
+  const [scanReference, setScanReference] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [showShortShipForm, setShowShortShipForm] = useState(false);
+  const [shortShipReason, setShortShipReason] = useState("");
+  const [shortShipping, setShortShipping] = useState(false);
+  const [shortShipError, setShortShipError] = useState<string | null>(null);
 
   const handleSignOut = async () => {
     await createClient().auth.signOut();
@@ -149,6 +158,47 @@ export default function HubOpsManifestPage() {
     }
   };
 
+  const handleScanOut = async () => {
+    if (!manifest || !scanReference.trim()) return;
+    setScanning(true);
+    setScanError(null);
+    try {
+      const result = await manifestsApi.scanOut(manifest.id, scanReference.trim());
+      await loadExistingManifest(manifest.id);
+      setScanReference("");
+      toast({ title: `${result.reference} scanned out`, tone: "success" });
+      if (result.runDeparted) {
+        toast({ title: "All parcels accounted for — run marked as departed", tone: "success" });
+      }
+    } catch (err) {
+      setScanError(err instanceof FulfilmentApiError ? err.message : "Could not scan this parcel out right now.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleShortShip = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!manifest || !scanReference.trim() || !shortShipReason.trim()) return;
+    setShortShipping(true);
+    setShortShipError(null);
+    try {
+      const result = await manifestsApi.shortShip(manifest.id, scanReference.trim(), shortShipReason.trim());
+      await loadExistingManifest(manifest.id);
+      setScanReference("");
+      setShortShipReason("");
+      setShowShortShipForm(false);
+      toast({ title: `${result.reference} marked short-shipped`, tone: "success" });
+      if (result.runDeparted) {
+        toast({ title: "All parcels accounted for — run marked as departed", tone: "success" });
+      }
+    } catch (err) {
+      setShortShipError(err instanceof FulfilmentApiError ? err.message : "Could not record this short-shipment right now.");
+    } finally {
+      setShortShipping(false);
+    }
+  };
+
   const handleViewDocument = async () => {
     if (!manifest) return;
     setViewingDocument(true);
@@ -237,6 +287,12 @@ export default function HubOpsManifestPage() {
                         Remove
                       </Button>
                     )}
+                    {manifest.status === "FINALIZED" && (
+                      <StatusBadge
+                        label={parcel.shortShipped ? "Short-shipped" : parcel.scannedOutAt ? "Scanned out" : "Pending"}
+                        tone={parcel.shortShipped ? "warning" : parcel.scannedOutAt ? "success" : "neutral"}
+                      />
+                    )}
                   </div>
                 ))
               )}
@@ -254,6 +310,61 @@ export default function HubOpsManifestPage() {
                   Add to manifest
                 </Button>
               </form>
+            )}
+
+            {manifest.status === "FINALIZED" && (
+              <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
+                <h2 className="text-base font-semibold text-text">Scan parcels out</h2>
+                <Field label="Parcel reference">
+                  {p => (
+                    <Input {...p} value={scanReference} onChange={e => setScanReference(e.target.value)} placeholder="FF-HRE-000123" />
+                  )}
+                </Field>
+                {scanError && <Alert tone="error">{scanError}</Alert>}
+                <div className="flex gap-3">
+                  <Button size="md" onClick={handleScanOut} loading={scanning} disabled={!scanReference.trim()}>
+                    Scan out
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="md"
+                    onClick={() => setShowShortShipForm(true)}
+                    disabled={!scanReference.trim() || showShortShipForm}
+                  >
+                    Mark short-shipped
+                  </Button>
+                </div>
+
+                {showShortShipForm && (
+                  <form onSubmit={handleShortShip} className="flex flex-col gap-3 rounded-md border border-border p-3">
+                    <Field label="Reason" required>
+                      {p => (
+                        <Textarea
+                          {...p}
+                          value={shortShipReason}
+                          onChange={e => setShortShipReason(e.target.value)}
+                          placeholder="e.g. Not found at the hub during dispatch prep"
+                        />
+                      )}
+                    </Field>
+                    {shortShipError && <Alert tone="error">{shortShipError}</Alert>}
+                    <div className="flex gap-3">
+                      <Button
+                        type="submit"
+                        variant="danger"
+                        size="md"
+                        loading={shortShipping}
+                        disabled={!shortShipReason.trim()}
+                      >
+                        Confirm short-shipment
+                      </Button>
+                      <Button type="button" variant="ghost" size="md" onClick={() => setShowShortShipForm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
             )}
 
             <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4">

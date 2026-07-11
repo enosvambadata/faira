@@ -468,6 +468,18 @@ export const manifests = {
     }
     return res.text();
   },
+
+  scanOut: (manifestId: string, reference: string) =>
+    request<{ shipmentId: string; reference: string; status: string; runDeparted: boolean }>(
+      `/api/v1/fulfilment/manifests/${manifestId}/scan-out`,
+      { method: "POST", body: { reference }, auth: true },
+    ),
+
+  shortShip: (manifestId: string, reference: string, reason: string) =>
+    request<{ shipmentId: string; reference: string; shortShipped: boolean; runDeparted: boolean }>(
+      `/api/v1/fulfilment/manifests/${manifestId}/short-ship`,
+      { method: "POST", body: { reference, reason }, auth: true },
+    ),
 };
 
 export { ApiError as FulfilmentApiError };

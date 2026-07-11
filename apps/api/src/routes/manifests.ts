@@ -107,10 +107,13 @@ router.post(
   },
 );
 
+// Read access also open to Hub Agents (SCRUM-141) -- they need to see a
+// finalized manifest's parcel list and scan progress to do the dispatch
+// scan-out, not just supervisors who created/finalized it.
 router.get(
   '/:id',
   requireAuth,
-  requireFulfilmentRole('HUB_SUPERVISOR'),
+  requireFulfilmentRole('HUB_AGENT', 'HUB_SUPERVISOR'),
   async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
     const result = await loadAssignedManifest(req, req.params.id);
     if ('error' in result) {
@@ -373,6 +376,184 @@ router.get(
     await recordAuditLog(req.userId!, 'FULFILMENT_MANIFEST_DOCUMENT_GENERATED', { manifestId: manifest.id });
 
     res.status(200).type('text/plain').send(lines.join('\n'));
+  },
+);
+
+const DISPATCH_SCAN_ROLES = ['HUB_AGENT', 'HUB_SUPERVISOR'] as const;
+
+// Once every ManifestParcel on this manifest is either scanned out or
+// explicitly short-shipped, the run has fully departed. TransportRunStatus
+// has no separate "IN_TRANSIT" value (only SCHEDULED/DEPARTED/ARRIVED/
+// DELAYED/CANCELLED) -- the ticket's "run transitions to IN_TRANSIT" maps
+// to DEPARTED here, the actual enum value for "the truck has left."
+// Individual shipments still track their own IN_TRANSIT status separately
+// once DISPATCHED (a later step, not this ticket).
+async function maybeMarkRunDeparted(manifestId: string, runId: string): Promise<boolean> {
+  const unaccountedFor = await prisma.manifestParcel.count({
+    where: { manifestId, scannedOutAt: null, shortShipped: false },
+  });
+  if (unaccountedFor > 0) return false;
+
+  const result = await prisma.transportRun.updateMany({
+    where: { id: runId, status: 'SCHEDULED' },
+    data: { status: 'DEPARTED', actualDeparture: new Date() },
+  });
+  return result.count > 0;
+}
+
+const scanOutSchema = z.object({ reference: z.string().trim().min(1) });
+
+// Reuses the finalized manifest's locked parcel list as the sole
+// validation source for "is this parcel allowed on this run" -- a
+// shipment that's SEALED/ASSIGNED_TO_RUN but never made it onto this
+// specific manifest's parcel list is rejected, per the ticket's first
+// acceptance criterion.
+router.post(
+  '/:id/scan-out',
+  requireAuth,
+  requireFulfilmentRole(...DISPATCH_SCAN_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = scanOutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'A shipment reference is required', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const result = await loadAssignedManifest(req, req.params.id);
+    if ('error' in result) {
+      next(result.error);
+      return;
+    }
+    const { manifest, originHubId } = result;
+
+    if (manifest.status !== 'FINALIZED') {
+      next(new ApiError('INVALID_STATE', 'This manifest must be finalized before scanning parcels out', 409));
+      return;
+    }
+
+    const shipment = await prisma.shipment.findUnique({ where: { reference: parsed.data.reference } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'No shipment found for that reference', 404));
+      return;
+    }
+
+    const manifestParcel = await prisma.manifestParcel.findFirst({ where: { manifestId: manifest.id, shipmentId: shipment.id } });
+    if (!manifestParcel) {
+      next(new ApiError('NOT_ON_MANIFEST', 'This parcel is not on this manifest and cannot be scanned out on this run', 404));
+      return;
+    }
+    if (manifestParcel.shortShipped) {
+      next(new ApiError('INVALID_STATE', 'This parcel was marked short-shipped and cannot be scanned out', 409));
+      return;
+    }
+    if (manifestParcel.scannedOutAt) {
+      next(new ApiError('ALREADY_SCANNED', 'This parcel has already been scanned out', 409));
+      return;
+    }
+    if (!canTransition(shipment.status, 'DISPATCHED')) {
+      next(new ApiError('INVALID_STATE', 'This parcel is not ready to be scanned out', 409));
+      return;
+    }
+
+    try {
+      await prisma.$transaction(async tx => {
+        const updateResult = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: shipment.status },
+          data: { status: 'DISPATCHED' },
+        });
+        if (updateResult.count === 0) throw new ManifestTransitionConflict();
+
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: shipment.status,
+            toStatus: 'DISPATCHED',
+            actorUserId: req.userId!,
+            hubId: originHubId,
+          },
+        });
+
+        await tx.manifestParcel.update({ where: { id: manifestParcel.id }, data: { scannedOutAt: new Date() } });
+      });
+    } catch (err) {
+      if (err instanceof ManifestTransitionConflict) {
+        next(new ApiError('ALREADY_SCANNED', 'This parcel has already been scanned out', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_PARCEL_SCANNED_OUT', { manifestId: manifest.id, shipmentId: shipment.id });
+
+    const runDeparted = await maybeMarkRunDeparted(manifest.id, manifest.runId);
+
+    res.status(200).json({ data: { shipmentId: shipment.id, reference: shipment.reference, status: 'DISPATCHED', runDeparted } });
+  },
+);
+
+const shortShipSchema = z.object({
+  reference: z.string().trim().min(1),
+  reason: z.string().trim().min(1).max(500),
+});
+
+// Records a discrepancy rather than blocking the whole run -- one missing
+// parcel shouldn't hold every other already-scanned parcel hostage. The
+// shipment's own status is deliberately left unchanged (it's still
+// physically sitting at the origin hub; reconciling what actually
+// happened to it is a support/ops follow-up, not part of this scan flow).
+router.post(
+  '/:id/short-ship',
+  requireAuth,
+  requireFulfilmentRole(...DISPATCH_SCAN_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = shortShipSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'A reference and reason are required', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const result = await loadAssignedManifest(req, req.params.id);
+    if ('error' in result) {
+      next(result.error);
+      return;
+    }
+    const { manifest } = result;
+
+    if (manifest.status !== 'FINALIZED') {
+      next(new ApiError('INVALID_STATE', 'This manifest must be finalized before recording a short-shipment', 409));
+      return;
+    }
+
+    const shipment = await prisma.shipment.findUnique({ where: { reference: parsed.data.reference } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'No shipment found for that reference', 404));
+      return;
+    }
+
+    const manifestParcel = await prisma.manifestParcel.findFirst({ where: { manifestId: manifest.id, shipmentId: shipment.id } });
+    if (!manifestParcel) {
+      next(new ApiError('NOT_ON_MANIFEST', 'This parcel is not on this manifest', 404));
+      return;
+    }
+    if (manifestParcel.scannedOutAt) {
+      next(new ApiError('INVALID_STATE', 'This parcel has already been scanned out and cannot be marked short-shipped', 409));
+      return;
+    }
+    if (manifestParcel.shortShipped) {
+      next(new ApiError('ALREADY_SHORT_SHIPPED', 'This parcel is already marked short-shipped', 409));
+      return;
+    }
+
+    await prisma.manifestParcel.update({ where: { id: manifestParcel.id }, data: { shortShipped: true } });
+    await recordAuditLog(req.userId!, 'FULFILMENT_PARCEL_SHORT_SHIPPED', {
+      manifestId: manifest.id,
+      shipmentId: shipment.id,
+      reason: parsed.data.reason,
+    });
+
+    const runDeparted = await maybeMarkRunDeparted(manifest.id, manifest.runId);
+
+    res.status(200).json({ data: { shipmentId: shipment.id, reference: shipment.reference, shortShipped: true, runDeparted } });
   },
 );
 
