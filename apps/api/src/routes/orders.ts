@@ -278,11 +278,13 @@ router.get(
         paymentMethod: order.payments[0]?.method ?? null,
         // Mirrors the /mark-collected route's own eligibility check so the
         // seller's client can show that action without duplicating it
-        // incorrectly — only the seller, only for COD orders still PAID.
+        // incorrectly. Cash-on-delivery orders stay PENDING (not PAID) the
+        // whole time — payment and delivery are the same physical event —
+        // so eligibility is "can this status reach COMPLETED", not "is PAID".
         canMarkCollected:
           order.listing.sellerId === req.userId &&
-          order.status === 'PAID' &&
-          order.payments[0]?.method === 'CASH_ON_DELIVERY',
+          order.payments[0]?.method === 'CASH_ON_DELIVERY' &&
+          canTransition(order.status, 'COMPLETED'),
         // True once the seller's escrow HOLD for this order has been
         // released (SCRUM-55) — while PAID it's held, not yet payable.
         sellerPayoutEligible: order.escrowEntries.some(e => e.type === 'RELEASE'),
