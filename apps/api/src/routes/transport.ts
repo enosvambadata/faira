@@ -12,9 +12,11 @@ const router = Router();
 // Writes (create/edit providers, routes, runs) are Ops-Admin-only per the
 // ticket. Reads are also open to Transport Operators -- they legitimately
 // need to see routes/runs (including driver/vehicle info) to do their job,
-// unlike sellers/buyers who never reach this router at all.
+// unlike sellers/buyers who never reach this router at all. Hub Supervisors
+// also need read access (SCRUM-140) to pick a scheduled run when creating
+// a dispatch manifest.
 const ADMIN_ROLES = ['OPERATIONS_ADMIN', 'SUPER_ADMIN'] as const;
-const READ_ROLES = ['OPERATIONS_ADMIN', 'SUPER_ADMIN', 'TRANSPORT_OPERATOR'] as const;
+const READ_ROLES = ['OPERATIONS_ADMIN', 'SUPER_ADMIN', 'TRANSPORT_OPERATOR', 'HUB_SUPERVISOR'] as const;
 
 function providerResponse(provider: { id: string; name: string; contactPhone: string | null; isActive: boolean; createdAt: Date }) {
   return {

@@ -188,6 +188,9 @@ export default function HubOpsInspectPage() {
             <Link href="/hub-ops/dropoff" className="text-sm font-medium text-muted hover:text-text">
               Accept drop-off
             </Link>
+            <Link href="/hub-ops/manifest" className="text-sm font-medium text-muted hover:text-text">
+              Manifest
+            </Link>
             <Button variant="ghost" size="md" onClick={handleSignOut}>
               Sign out
             </Button>
