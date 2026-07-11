@@ -96,6 +96,19 @@ enum ReviewFlagStatus {
   REMOVED
 }
 
+enum ReportTargetType {
+  LISTING
+  USER
+  MESSAGE
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
 // id matches auth.users.id (Supabase-managed); no Prisma-level relation since
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
@@ -128,6 +141,7 @@ model User {
   reviewsGiven          Review[]                 @relation("ReviewsGiven")
   reviewsReceived       Review[]                 @relation("ReviewsReceived")
   reviewFlagsRaised     ReviewFlag[]
+  reportsRaised         Report[]
 
   @@map("users")
 }
@@ -540,4 +554,28 @@ model ReviewFlag {
 
   @@index([status])
   @@map("review_flags")
+}
+
+// General-purpose trust & safety report (SCRUM-70), distinct from
+// ReviewFlag (which only ever targets a Review). targetId is polymorphic
+// — it references a Listing, User, or Message row depending on
+// targetType — so there's no Prisma-level FK to the target, only to the
+// reporter. This ticket is schema-only; the report-creation endpoint(s)
+// and admin moderation queue are built in later tickets in this epic.
+model Report {
+  id                String           @id @default(uuid()) @db.Uuid
+  reporterId        String           @map("reporter_id") @db.Uuid
+  targetType        ReportTargetType @map("target_type")
+  targetId          String           @map("target_id") @db.Uuid
+  reason            String
+  evidenceImageUrls String[]         @default([]) @map("evidence_image_urls")
+  status            ReportStatus     @default(PENDING)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  resolvedAt        DateTime?        @map("resolved_at")
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, targetId])
+  @@index([status])
+  @@map("reports")
 }
