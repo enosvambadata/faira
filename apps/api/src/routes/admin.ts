@@ -553,4 +553,68 @@ router.put('/delivery-fee-rates', requireAdmin, async (req: Request, res: Respon
   res.status(200).json({ data: { id: rate.id, city: rate.city, weightTier: rate.weightTier, fee: rate.fee.toString() } });
 });
 
+// Flagged reviews (SCRUM-69) — a PENDING flag already hides the review
+// from everyone but its author (see orders.ts/sellers.ts), so this list
+// is just the moderation queue, not a visibility switch itself.
+router.get('/review-flags', requireAdmin, async (_req: Request, res: Response) => {
+  const flags = await prisma.reviewFlag.findMany({
+    where: { status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      review: { select: { id: true, rating: true, comment: true, reviewerId: true, revieweeId: true } },
+      flaggedBy: { select: { id: true, displayName: true } },
+    },
+  });
+
+  res.status(200).json({
+    data: flags.map(f => ({
+      id: f.id,
+      reason: f.reason,
+      createdAt: f.createdAt,
+      flaggedBy: f.flaggedBy,
+      review: {
+        id: f.review.id,
+        rating: f.review.rating,
+        comment: f.review.comment,
+        reviewerId: f.review.reviewerId,
+        revieweeId: f.review.revieweeId,
+      },
+    })),
+  });
+});
+
+const resolveReviewFlagSchema = z.object({
+  decision: z.enum(['DISMISS', 'REMOVE']),
+});
+
+router.post(
+  '/review-flags/:id/resolve',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = resolveReviewFlagSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const flag = await prisma.reviewFlag.findUnique({ where: { id: req.params.id } });
+    if (!flag) {
+      next(new ApiError('NOT_FOUND', 'Review flag not found', 404));
+      return;
+    }
+    if (flag.status !== 'PENDING') {
+      next(new ApiError('INVALID_STATE', 'This flag has already been resolved', 409));
+      return;
+    }
+
+    const newStatus = parsed.data.decision === 'DISMISS' ? 'DISMISSED' : 'REMOVED';
+    await prisma.reviewFlag.update({
+      where: { id: flag.id },
+      data: { status: newStatus, resolvedAt: new Date() },
+    });
+
+    res.status(200).json({ data: { id: flag.id, status: newStatus } });
+  },
+);
+
 export default router;

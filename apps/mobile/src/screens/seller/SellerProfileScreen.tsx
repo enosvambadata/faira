@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { sellers as sellersApi, SellerProfileData, SellerReview } from '@/lib/api';
+import { sellers as sellersApi, reviews as reviewsApi, SellerProfileData, SellerReview, ApiError } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SellerProfile'>;
 
@@ -26,6 +26,10 @@ export default function SellerProfileScreen({ route }: Props) {
   const [reviewsPage, setReviewsPage] = useState(1);
   const [reviewsHasMore, setReviewsHasMore] = useState(false);
   const [reviewsLoadingMore, setReviewsLoadingMore] = useState(false);
+  const [flaggingReviewId, setFlaggingReviewId] = useState<string | null>(null);
+  const [flagReason, setFlagReason] = useState('');
+  const [flagBusy, setFlagBusy] = useState(false);
+  const [flagError, setFlagError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +63,30 @@ export default function SellerProfileScreen({ route }: Props) {
       setReviewsHasMore(result.hasMore);
     } finally {
       setReviewsLoadingMore(false);
+    }
+  };
+
+  const handleStartFlagging = (reviewId: string) => {
+    setFlaggingReviewId(reviewId);
+    setFlagReason('');
+    setFlagError(null);
+  };
+
+  const handleSubmitFlag = async () => {
+    if (!flaggingReviewId || !flagReason.trim()) {
+      setFlagError('Tell us what\'s wrong with this review');
+      return;
+    }
+    setFlagBusy(true);
+    setFlagError(null);
+    try {
+      await reviewsApi.flag(flaggingReviewId, flagReason.trim());
+      setReviews(prev => prev.filter(r => r.id !== flaggingReviewId));
+      setFlaggingReviewId(null);
+    } catch (err) {
+      setFlagError(err instanceof ApiError ? err.message : 'Could not submit this report right now');
+    } finally {
+      setFlagBusy(false);
     }
   };
 
@@ -203,6 +231,36 @@ export default function SellerProfileScreen({ route }: Props) {
                   </View>
                   <Text style={styles.reviewDate}>{reviewDateLabel(review.createdAt)}</Text>
                   {review.comment && <Text style={styles.reviewComment}>{review.comment}</Text>}
+
+                  {flaggingReviewId === review.id ? (
+                    <View style={styles.flagForm}>
+                      <TextInput
+                        style={styles.flagInput}
+                        placeholder="Why are you reporting this review?"
+                        placeholderTextColor={colors.muted}
+                        value={flagReason}
+                        onChangeText={setFlagReason}
+                        multiline
+                      />
+                      {flagError && <Text style={styles.flagError}>{flagError}</Text>}
+                      <View style={styles.flagFormActions}>
+                        <TouchableOpacity onPress={() => setFlaggingReviewId(null)} disabled={flagBusy}>
+                          <Text style={styles.flagCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity testID="submit-flag-btn" onPress={handleSubmitFlag} disabled={flagBusy}>
+                          {flagBusy ? (
+                            <ActivityIndicator color={colors.red} />
+                          ) : (
+                            <Text style={styles.flagSubmitText}>Submit report</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity testID="flag-review-btn" onPress={() => handleStartFlagging(review.id)}>
+                      <Text style={styles.flagLink}>Flag</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             ))
@@ -270,4 +328,20 @@ const styles = StyleSheet.create({
   reviewComment: { ...textStyles.body, color: colors.text, marginTop: 6 },
   loadMoreButton: { alignItems: 'center', paddingVertical: 14, marginTop: 8 },
   loadMoreButtonText: { ...textStyles.bodyMedium, color: colors.primary },
+  flagLink: { ...textStyles.caption, color: colors.muted, marginTop: 8, textDecorationLine: 'underline' },
+  flagForm: { marginTop: 10, gap: 8 },
+  flagInput: {
+    ...textStyles.body,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 50,
+    textAlignVertical: 'top',
+  },
+  flagError: { ...textStyles.caption, color: colors.red },
+  flagFormActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
+  flagCancelText: { ...textStyles.bodyMedium, color: colors.muted },
+  flagSubmitText: { ...textStyles.bodyMedium, color: colors.red },
 });

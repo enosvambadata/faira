@@ -128,7 +128,11 @@ describe('GET /api/v1/sellers/:id', () => {
       ],
     });
     expect(reviewAggregateMock).toHaveBeenCalledWith({
-      where: { revieweeId: SELLER_ID, order: { listing: { sellerId: SELLER_ID } } },
+      where: {
+        revieweeId: SELLER_ID,
+        order: { listing: { sellerId: SELLER_ID } },
+        OR: [{ flag: null }, { flag: { status: 'DISMISSED' } }],
+      },
       _avg: { rating: true },
       _count: true,
     });
@@ -231,7 +235,11 @@ describe('GET /api/v1/sellers/:id/reviews', () => {
     expect(res.body.hasMore).toBe(false);
     expect(res.body.total).toBe(1);
     expect(reviewFindManyMock).toHaveBeenCalledWith({
-      where: { revieweeId: SELLER_ID, order: { listing: { sellerId: SELLER_ID } } },
+      where: {
+        revieweeId: SELLER_ID,
+        order: { listing: { sellerId: SELLER_ID } },
+        OR: [{ flag: null }, { flag: { status: 'DISMISSED' } }],
+      },
       orderBy: { createdAt: 'desc' },
       skip: 0,
       take: 11,

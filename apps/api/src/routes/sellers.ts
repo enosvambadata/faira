@@ -109,8 +109,14 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ id:
 
   // reviews-as-seller only: a review counts toward this rating when the
   // reviewee was the seller of that specific order (not every review this
-  // user has ever received — they could also be rated as a buyer).
-  const reviewsAsSellerFilter = { revieweeId: sellerId, order: { listing: { sellerId } } };
+  // user has ever received — they could also be rated as a buyer). A
+  // PENDING/REMOVED-flagged review (SCRUM-69) is excluded until an admin
+  // dismisses the flag.
+  const reviewsAsSellerFilter = {
+    revieweeId: sellerId,
+    order: { listing: { sellerId } },
+    OR: [{ flag: null }, { flag: { status: 'DISMISSED' as const } }],
+  };
 
   const [activeListings, salesCount, followerCount, isFollowing, conversationsAsSeller, conversationsWithReply, ratingAgg] =
     await Promise.all([
@@ -167,7 +173,11 @@ router.get(
       return;
     }
 
-    const where = { revieweeId: sellerId, order: { listing: { sellerId } } };
+    const where = {
+      revieweeId: sellerId,
+      order: { listing: { sellerId } },
+      OR: [{ flag: null }, { flag: { status: 'DISMISSED' as const } }],
+    };
     const { page } = parsed.data;
 
     const [reviews, total] = await Promise.all([

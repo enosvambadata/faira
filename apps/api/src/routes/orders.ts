@@ -716,7 +716,7 @@ router.get(
       include: {
         listing: { select: { sellerId: true } },
         escrowEntries: { select: { type: true, createdAt: true } },
-        reviews: true,
+        reviews: { include: { flag: { select: { status: true } } } },
       },
     });
 
@@ -733,6 +733,9 @@ router.get(
     const counterpartReview = order.reviews.find(r => r.reviewerId !== req.userId!) ?? null;
     const completedAt = getOrderCompletedAt(order);
     const revealed = isRevealed(!!yourReview, completedAt);
+    // A PENDING/REMOVED flag hides a review from everyone except its own
+    // author (SCRUM-69) — the author still sees theirs, flagged or not.
+    const counterpartHidden = counterpartReview?.flag && counterpartReview.flag.status !== 'DISMISSED';
 
     res.status(200).json({
       data: {
@@ -743,9 +746,10 @@ router.get(
           rating: yourReview.rating,
           comment: yourReview.comment,
           createdAt: yourReview.createdAt,
+          flagged: yourReview.flag?.status === 'PENDING',
         },
         counterpartReview:
-          revealed && counterpartReview
+          revealed && counterpartReview && !counterpartHidden
             ? {
                 id: counterpartReview.id,
                 rating: counterpartReview.rating,

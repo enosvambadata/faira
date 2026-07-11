@@ -27,6 +27,9 @@ const payoutRequestUpdateMock = vi.fn();
 const deliveryFeeRateFindManyMock = vi.fn();
 const deliveryFeeRateUpsertMock = vi.fn();
 const notifyOrderStatusChangeMock = vi.fn();
+const reviewFlagFindManyMock = vi.fn();
+const reviewFlagFindUniqueMock = vi.fn();
+const reviewFlagUpdateMock = vi.fn();
 
 vi.mock('../services/orderNotifications', () => ({
   notifyOrderStatusChange: (...args: unknown[]) => notifyOrderStatusChangeMock(...args),
@@ -89,6 +92,11 @@ vi.mock('../prisma', () => ({
     deliveryFeeRate: {
       findMany: (...args: unknown[]) => deliveryFeeRateFindManyMock(...args),
       upsert: (...args: unknown[]) => deliveryFeeRateUpsertMock(...args),
+    },
+    reviewFlag: {
+      findMany: (...args: unknown[]) => reviewFlagFindManyMock(...args),
+      findUnique: (...args: unknown[]) => reviewFlagFindUniqueMock(...args),
+      update: (...args: unknown[]) => reviewFlagUpdateMock(...args),
     },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -899,5 +907,129 @@ describe('PUT /api/v1/admin/delivery-fee-rates', () => {
 
     expect(res.status).toBe(400);
     expect(deliveryFeeRateUpsertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/admin/review-flags', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    reviewFlagFindManyMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('lists PENDING flags oldest first with reviewer/review context', async () => {
+    reviewFlagFindManyMock.mockResolvedValue([
+      {
+        id: 'flag-1',
+        reason: 'This is abusive',
+        createdAt: new Date('2026-07-11T00:00:00Z'),
+        flaggedBy: { id: 'user-1', displayName: 'Tino' },
+        review: { id: 'review-1', rating: 1, comment: 'Terrible', reviewerId: 'user-2', revieweeId: 'user-1' },
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/review-flags').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      {
+        id: 'flag-1',
+        reason: 'This is abusive',
+        createdAt: '2026-07-11T00:00:00.000Z',
+        flaggedBy: { id: 'user-1', displayName: 'Tino' },
+        review: { id: 'review-1', rating: 1, comment: 'Terrible', reviewerId: 'user-2', revieweeId: 'user-1' },
+      },
+    ]);
+    expect(reviewFlagFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' } }),
+    );
+  });
+
+  it('rejects a request without the admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/review-flags');
+
+    expect(res.status).toBe(401);
+    expect(reviewFlagFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/admin/review-flags/:id/resolve', () => {
+  beforeEach(() => {
+    process.env.ADMIN_TOKEN = ADMIN_TOKEN;
+    reviewFlagFindUniqueMock.mockReset();
+    reviewFlagUpdateMock.mockReset();
+  });
+  afterEach(() => {
+    delete process.env.ADMIN_TOKEN;
+  });
+
+  it('dismisses a flag, making the review visible again', async () => {
+    reviewFlagFindUniqueMock.mockResolvedValue({ id: 'flag-1', status: 'PENDING' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/review-flags/flag-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ decision: 'DISMISS' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'flag-1', status: 'DISMISSED' });
+    expect(reviewFlagUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'flag-1' },
+      data: { status: 'DISMISSED', resolvedAt: expect.any(Date) },
+    });
+  });
+
+  it('removes a flag, keeping the review permanently hidden', async () => {
+    reviewFlagFindUniqueMock.mockResolvedValue({ id: 'flag-1', status: 'PENDING' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/review-flags/flag-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ decision: 'REMOVE' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: 'flag-1', status: 'REMOVED' });
+  });
+
+  it('409s when the flag has already been resolved', async () => {
+    reviewFlagFindUniqueMock.mockResolvedValue({ id: 'flag-1', status: 'DISMISSED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/review-flags/flag-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ decision: 'REMOVE' });
+
+    expect(res.status).toBe(409);
+    expect(reviewFlagUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('404s when the flag does not exist', async () => {
+    reviewFlagFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/review-flags/nonexistent/resolve')
+      .set(ADMIN_HEADER)
+      .send({ decision: 'DISMISS' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('400s on an invalid decision', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/review-flags/flag-1/resolve')
+      .set(ADMIN_HEADER)
+      .send({ decision: 'MAYBE' });
+
+    expect(res.status).toBe(400);
+    expect(reviewFlagUpdateMock).not.toHaveBeenCalled();
   });
 });

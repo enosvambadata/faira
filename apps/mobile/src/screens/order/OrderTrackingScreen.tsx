@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
-import { orders as ordersApi, OrderDetail, OrderReviewsResult, ApiError } from '@/lib/api';
+import { orders as ordersApi, reviews as reviewsApi, OrderDetail, OrderReviewsResult, ApiError } from '@/lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderTracking'>;
 
@@ -38,6 +38,11 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [flagging, setFlagging] = useState(false);
+  const [flagReason, setFlagReason] = useState('');
+  const [flagBusy, setFlagBusy] = useState(false);
+  const [flagError, setFlagError] = useState<string | null>(null);
+  const [flagged, setFlagged] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -105,6 +110,24 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
       setReviewError(err instanceof ApiError ? err.message : 'Could not submit your review right now');
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const handleSubmitFlag = async () => {
+    if (!reviews?.counterpartReview || !flagReason.trim()) {
+      setFlagError('Tell us what\'s wrong with this review');
+      return;
+    }
+    setFlagBusy(true);
+    setFlagError(null);
+    try {
+      await reviewsApi.flag(reviews.counterpartReview.id, flagReason.trim());
+      setFlagged(true);
+      setFlagging(false);
+    } catch (err) {
+      setFlagError(err instanceof ApiError ? err.message : 'Could not submit this report right now');
+    } finally {
+      setFlagBusy(false);
     }
   };
 
@@ -220,6 +243,7 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
                 <Text style={styles.reviewPrompt}>Your review</Text>
                 <Text style={styles.starIcon}>{'★'.repeat(reviews.yourReview.rating)}{'☆'.repeat(5 - reviews.yourReview.rating)}</Text>
                 {reviews.yourReview.comment && <Text style={styles.reviewComment}>{reviews.yourReview.comment}</Text>}
+                {reviews.yourReview.flagged && <Text style={styles.reviewWaiting}>This review was flagged and is under admin review.</Text>}
               </View>
             )
           )}
@@ -232,6 +256,34 @@ export default function OrderTrackingScreen({ route, navigation }: Props) {
                 {'☆'.repeat(5 - reviews.counterpartReview.rating)}
               </Text>
               {reviews.counterpartReview.comment && <Text style={styles.reviewComment}>{reviews.counterpartReview.comment}</Text>}
+
+              {flagged ? (
+                <Text style={styles.reviewWaiting}>Reported. An admin will review this.</Text>
+              ) : flagging ? (
+                <View style={styles.flagForm}>
+                  <TextInput
+                    style={styles.flagInput}
+                    placeholder="Why are you reporting this review?"
+                    placeholderTextColor={colors.muted}
+                    value={flagReason}
+                    onChangeText={setFlagReason}
+                    multiline
+                  />
+                  {flagError && <Text style={styles.submitError}>{flagError}</Text>}
+                  <View style={styles.flagFormActions}>
+                    <TouchableOpacity onPress={() => setFlagging(false)} disabled={flagBusy}>
+                      <Text style={styles.flagCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="submit-flag-btn" onPress={handleSubmitFlag} disabled={flagBusy}>
+                      {flagBusy ? <ActivityIndicator color={colors.red} /> : <Text style={styles.flagSubmitText}>Submit report</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity testID="flag-review-btn" onPress={() => setFlagging(true)}>
+                  <Text style={styles.flagLink}>Flag</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             !reviews.canReview && (
@@ -343,4 +395,19 @@ const styles = StyleSheet.create({
   },
   reviewComment: { ...textStyles.body, color: colors.text },
   reviewWaiting: { ...textStyles.body, color: colors.muted, textAlign: 'center', marginBottom: 12 },
+  flagLink: { ...textStyles.caption, color: colors.muted, marginTop: 8, textDecorationLine: 'underline' },
+  flagForm: { marginTop: 10, gap: 8 },
+  flagInput: {
+    ...textStyles.body,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 50,
+    textAlignVertical: 'top',
+  },
+  flagFormActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16 },
+  flagCancelText: { ...textStyles.bodyMedium, color: colors.muted },
+  flagSubmitText: { ...textStyles.bodyMedium, color: colors.red },
 });
