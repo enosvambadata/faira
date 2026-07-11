@@ -164,6 +164,8 @@ model User {
   returnEventsActed             ReturnEvent[]
   fulfilmentDisputesRaised      Dispute[]
   supportTicketsRaised          SupportTicket[]
+  fulfilmentSellerProfile       FulfilmentSellerProfile?
+  fulfilmentVerificationRequests FulfilmentVerificationRequest[]
 
   @@map("users")
 }
@@ -671,6 +673,7 @@ model Hub {
   routesAsOrigin    TransportRoute[] @relation("RouteOrigin")
   routesAsDest      TransportRoute[] @relation("RouteDestination")
   trackingEvents    TrackingEvent[]
+  preferredBySellers FulfilmentSellerProfile[]
 
   @@unique([name])
   @@map("fulfilment_hubs")
@@ -1230,4 +1233,95 @@ model SystemConfiguration {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("fulfilment_system_configuration")
+}
+
+// =====================================================================
+// Seller onboarding + verification (SCRUM-130/131). Deliberately separate
+// from the marketplace's SellerProfile/VerificationRequest models rather
+// than extending them — the field shapes genuinely differ (business
+// docs, shop photo, 9-status workflow vs. marketplace's simple 3-status
+// one), and Fulfilment sellers/marketplace sellers share only the
+// underlying User identity, not a seller-profile record.
+//
+// Verification documents use private Supabase Storage with signed URLs
+// (not Cloudinary, which the rest of this app uses for images) — an
+// explicit product requirement for identity/business documents
+// specifically, the most sensitive file type in the system. This is a
+// deliberate amendment to docs/fulfilment/02-architecture-decision-record.md's
+// general "continue with Cloudinary" position, scoped to this one
+// document category.
+// =====================================================================
+
+enum SellerOnboardingStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum FulfilmentSellerType {
+  INDIVIDUAL
+  REGISTERED_BUSINESS
+}
+
+// One row per user, upserted step-by-step as the registration wizard
+// progresses (save-and-resume) — every field is optional at the model
+// level because a DRAFT can be partially filled; completeness is
+// validated at submission time by application code, not by NOT NULL
+// constraints that would block saving an in-progress draft.
+model FulfilmentSellerProfile {
+  id                String                 @id @default(uuid()) @db.Uuid
+  userId            String                 @unique @map("user_id") @db.Uuid
+  fullName          String?                @map("full_name")
+  mobileNumber      String?                @map("mobile_number")
+  sellerType        FulfilmentSellerType?  @map("seller_type")
+  businessName      String?                @map("business_name")
+  productCategories String[]               @default([]) @map("product_categories")
+  hasPhysicalShop   Boolean?               @map("has_physical_shop")
+  shopAddress       String?                @map("shop_address")
+  city              String?
+  preferredHubId    String?                @map("preferred_hub_id") @db.Uuid
+  nationalIdNumber  String?                @map("national_id_number")
+  agreedToTermsAt   DateTime?              @map("agreed_to_terms_at")
+  status            SellerOnboardingStatus @default(DRAFT)
+  submittedAt       DateTime?              @map("submitted_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredHub Hub? @relation(fields: [preferredHubId], references: [id], onDelete: SetNull)
+
+  @@map("fulfilment_seller_profiles")
+}
+
+enum FulfilmentVerificationStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  UNDER_REVIEW
+  MORE_INFO_REQUIRED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  EXPIRED
+}
+
+// idDocumentUrl/businessDocumentUrl/shopPhotoUrl store the Supabase
+// Storage object path (not a public URL) — access is always mediated
+// through a freshly generated signed URL, never a stored public link.
+model FulfilmentVerificationRequest {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  sellerId            String                       @map("seller_id") @db.Uuid
+  status              FulfilmentVerificationStatus @default(NOT_STARTED)
+  idDocumentUrl       String?                      @map("id_document_url")
+  businessDocumentUrl String?                      @map("business_document_url")
+  shopPhotoUrl        String?                      @map("shop_photo_url")
+  reviewNotes         String?                      @map("review_notes")
+  createdAt           DateTime                     @default(now()) @map("created_at")
+  updatedAt           DateTime                     @updatedAt @map("updated_at")
+  reviewedAt          DateTime?                    @map("reviewed_at")
+
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("fulfilment_verification_requests")
 }
