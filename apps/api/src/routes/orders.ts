@@ -248,7 +248,7 @@ router.get(
       include: {
         listing: { select: { id: true, title: true, imageUrls: true, sellerId: true } },
         escrowEntries: { select: { type: true, createdAt: true } },
-        payments: { select: { confirmedAt: true } },
+        payments: { orderBy: { createdAt: 'desc' }, select: { method: true, confirmedAt: true } },
         disputes: { orderBy: { createdAt: 'desc' }, select: { createdAt: true, resolvedAt: true } },
       },
     });
@@ -275,6 +275,14 @@ router.get(
         shippingMethod: order.shippingMethod,
         trackingReference: order.trackingReference,
         shippedAt: order.shippedAt,
+        paymentMethod: order.payments[0]?.method ?? null,
+        // Mirrors the /mark-collected route's own eligibility check so the
+        // seller's client can show that action without duplicating it
+        // incorrectly — only the seller, only for COD orders still PAID.
+        canMarkCollected:
+          order.listing.sellerId === req.userId &&
+          order.status === 'PAID' &&
+          order.payments[0]?.method === 'CASH_ON_DELIVERY',
         // True once the seller's escrow HOLD for this order has been
         // released (SCRUM-55) — while PAID it's held, not yet payable.
         sellerPayoutEligible: order.escrowEntries.some(e => e.type === 'RELEASE'),

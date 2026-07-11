@@ -404,6 +404,8 @@ export interface OrderDetail {
   shippingMethod: string | null;
   trackingReference: string | null;
   shippedAt: string | null;
+  paymentMethod: string | null;
+  canMarkCollected: boolean;
   sellerPayoutEligible: boolean;
   timeline: OrderTimelineEntry[];
   listing: { id: string; title: string; imageUrl: string | null };
@@ -457,6 +459,12 @@ export const orders = {
 
   confirmDelivery: (id: string) =>
     request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${id}/confirm-delivery`, {
+      method: 'POST',
+      auth: true,
+    }),
+
+  markCollected: (id: string) =>
+    request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${id}/mark-collected`, {
       method: 'POST',
       auth: true,
     }),

@@ -408,6 +408,56 @@ describe('GET /api/v1/orders/:orderId', () => {
     expect(res.body.data.sellerPayoutEligible).toBe(true);
   });
 
+  it('exposes the payment method so the seller client can offer Mark as Collected for COD orders', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: null }] }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.paymentMethod).toBe('CASH_ON_DELIVERY');
+  });
+
+  it('sets canMarkCollected true only for the seller on a still-PAID COD order', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ status: 'PAID', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: null }] }),
+    );
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.canMarkCollected).toBe(true);
+  });
+
+  it('sets canMarkCollected false for the buyer even on a COD order', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ status: 'PAID', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: null }] }),
+    );
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.canMarkCollected).toBe(false);
+  });
+
+  it('sets canMarkCollected false once the order has already moved past PAID', async () => {
+    orderFindUniqueMock.mockResolvedValue(
+      fakeOrderDetail({ status: 'COMPLETED', payments: [{ method: 'CASH_ON_DELIVERY', confirmedAt: new Date() }] }),
+    );
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.canMarkCollected).toBe(false);
+  });
+
   it('404s when the order does not exist', async () => {
     orderFindUniqueMock.mockResolvedValue(null);
 
