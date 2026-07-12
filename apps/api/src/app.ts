@@ -28,6 +28,7 @@ import trackingRouter from './routes/tracking';
 import collectUkCompaniesRouter from './routes/collectUkCompanies';
 import collectUkCompanyRolesRouter from './routes/collectUkCompanyRoles';
 import collectUkBookingsRouter from './routes/collectUkBookings';
+import collectUkSchedulingRouter from './routes/collectUkScheduling';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -76,6 +77,7 @@ export function createApp(): Express {
   app.use('/api/v1/collect-uk/companies', collectUkCompaniesRouter);
   app.use('/api/v1/admin/collect-uk/company-roles', collectUkCompanyRolesRouter);
   app.use('/api/v1/collect-uk', collectUkBookingsRouter);
+  app.use('/api/v1/admin/collect-uk', collectUkSchedulingRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
