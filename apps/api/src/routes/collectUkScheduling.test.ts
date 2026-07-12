@@ -52,7 +52,7 @@ const ROUTE_ID = '33333333-3333-4333-8333-333333333333';
 const BOOKING_ID = '44444444-4444-4444-8444-444444444444';
 
 const DRIVER = { id: DRIVER_ID, userId: USER_ID, vehicleReference: 'VAN-1', capacityParcels: 20, status: 'ACTIVE' };
-const ROUTE = { id: ROUTE_ID, driverId: DRIVER_ID, routeDate: new Date('2026-08-01'), status: 'PLANNED' };
+const ROUTE = { id: ROUTE_ID, driverId: DRIVER_ID, routeDate: new Date('2026-08-01'), status: 'PLANNED', driver: DRIVER };
 const BOOKING = { id: BOOKING_ID, status: 'REQUESTED' };
 
 beforeEach(() => {

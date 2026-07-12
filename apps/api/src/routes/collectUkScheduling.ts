@@ -166,7 +166,10 @@ router.post(
       return;
     }
 
-    const route = await prisma.collectUkCollectionRoute.findUnique({ where: { id: req.params.id } });
+    const route = await prisma.collectUkCollectionRoute.findUnique({
+      where: { id: req.params.id },
+      include: { driver: true },
+    });
     if (!route) {
       next(new ApiError('NOT_FOUND', 'Route not found', 404));
       return;
@@ -211,7 +214,7 @@ router.post(
         });
       });
 
-      await recordAuditLog(route.driverId, 'COLLECT_UK_STOP_ASSIGNED', { routeId: route.id, bookingId: booking.id });
+      await recordAuditLog(route.driver.userId, 'COLLECT_UK_STOP_ASSIGNED', { routeId: route.id, bookingId: booking.id });
       res.status(201).json({ data: stop });
     } catch (err) {
       if (err instanceof BookingTransitionConflict) {
