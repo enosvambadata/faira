@@ -15,6 +15,16 @@ const stopFindFirstMock = vi.fn();
 const stopCreateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const notifyCollectionScheduledMock = vi.fn();
+
+vi.mock('../services/collectUkNotifications', () => ({
+  notifyBookingConfirmed: vi.fn(),
+  notifyCollectionScheduled: (...args: unknown[]) => notifyCollectionScheduledMock(...args),
+  notifyParcelCollected: vi.fn(),
+  notifyUnableToCollect: vi.fn(),
+  notifyArrivedAtWarehouse: vi.fn(),
+  notifyHandedOver: vi.fn(),
+}));
 
 vi.mock('../prisma', () => ({
   prisma: {
@@ -65,6 +75,7 @@ beforeEach(() => {
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   stopFindFirstMock.mockResolvedValue(null);
   auditLogCreateMock.mockResolvedValue({});
+  notifyCollectionScheduledMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
@@ -232,6 +243,7 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/stops', () => {
     expect(stopCreateMock).toHaveBeenCalledWith({
       data: { routeId: ROUTE_ID, bookingId: BOOKING_ID, driverId: DRIVER_ID, sequenceOrder: 0 },
     });
+    expect(notifyCollectionScheduledMock).toHaveBeenCalledWith(BOOKING_ID, ROUTE.routeDate);
   });
 
   it('increments sequenceOrder from the last stop on the route when not provided', async () => {
@@ -291,6 +303,7 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/stops', () => {
 
     expect(res.status).toBe(409);
     expect(stopCreateMock).not.toHaveBeenCalled();
+    expect(notifyCollectionScheduledMock).not.toHaveBeenCalled();
   });
 
   it('409s (already assigned) on a unique-constraint race for the same booking', async () => {

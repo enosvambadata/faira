@@ -10,6 +10,18 @@ const stopFindUniqueMock = vi.fn();
 const stopUpdateManyMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
+const notifyParcelCollectedMock = vi.fn();
+const notifyUnableToCollectMock = vi.fn();
+const notifyArrivedAtWarehouseMock = vi.fn();
+
+vi.mock('../services/collectUkNotifications', () => ({
+  notifyBookingConfirmed: vi.fn(),
+  notifyCollectionScheduled: vi.fn(),
+  notifyParcelCollected: (...args: unknown[]) => notifyParcelCollectedMock(...args),
+  notifyUnableToCollect: (...args: unknown[]) => notifyUnableToCollectMock(...args),
+  notifyArrivedAtWarehouse: (...args: unknown[]) => notifyArrivedAtWarehouseMock(...args),
+  notifyHandedOver: vi.fn(),
+}));
 const bookingUpdateManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
@@ -91,6 +103,9 @@ beforeEach(() => {
   stopUpdateManyMock.mockResolvedValue({ count: 1 });
   stopCountMock.mockResolvedValue(0);
   stopFindManyMock.mockResolvedValue([]);
+  notifyParcelCollectedMock.mockResolvedValue(undefined);
+  notifyUnableToCollectMock.mockResolvedValue(undefined);
+  notifyArrivedAtWarehouseMock.mockResolvedValue(undefined);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   auditLogCreateMock.mockResolvedValue({});
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(txStub()));
@@ -196,6 +211,7 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/collect', () => {
       where: { id: BOOKING_ID, status: { in: ['DRIVER_ASSIGNED', 'EN_ROUTE'] } },
       data: { status: 'COLLECTED' },
     });
+    expect(notifyParcelCollectedMock).toHaveBeenCalledWith(BOOKING_ID);
   });
 
   it('works without a proof photo (optional)', async () => {
@@ -223,6 +239,7 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/collect', () => {
 
     expect(res.status).toBe(409);
     expect(stopUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyParcelCollectedMock).not.toHaveBeenCalled();
   });
 
   it('409s when two simultaneous collect attempts race -- only one succeeds', async () => {
@@ -279,6 +296,8 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/collect', () => {
       where: { id: otherBookingId, status: 'COLLECTED' },
       data: { status: 'AT_WAREHOUSE' },
     });
+    expect(notifyArrivedAtWarehouseMock).toHaveBeenCalledWith(BOOKING_ID);
+    expect(notifyArrivedAtWarehouseMock).toHaveBeenCalledWith(otherBookingId);
   });
 
   it('does not bulk-transition bookings when the route does not complete', async () => {
@@ -288,6 +307,7 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/collect', () => {
     await request(app).post(`/api/v1/collect-uk/driver/stops/${STOP_ID}/collect`).set(AUTH_HEADER).send({});
 
     expect(stopFindManyMock).not.toHaveBeenCalled();
+    expect(notifyArrivedAtWarehouseMock).not.toHaveBeenCalled();
   });
 });
 
@@ -305,6 +325,7 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/unable-to-collect', () => {
       where: { id: BOOKING_ID, status: { in: ['DRIVER_ASSIGNED', 'EN_ROUTE'] } },
       data: { status: 'UNABLE_TO_COLLECT' },
     });
+    expect(notifyUnableToCollectMock).toHaveBeenCalledWith(BOOKING_ID, 'No answer at the door');
   });
 
   it('400s without a reason', async () => {

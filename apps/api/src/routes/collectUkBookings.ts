@@ -6,6 +6,7 @@ import { ApiError } from '../errors/ApiError';
 import { generateBookingReference } from '../services/collectUkBookingReference';
 import { generateBookingTrackingToken, verifyBookingTrackingToken } from '../lib/collectUkBookingToken';
 import { collectUkBuyerStatus } from '../lib/collectUkBookingStatus';
+import { notifyBookingConfirmed } from '../services/collectUkNotifications';
 
 const router = Router();
 
@@ -94,6 +95,8 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
       },
     });
   });
+
+  await notifyBookingConfirmed(booking.id);
 
   const token = generateBookingTrackingToken(booking.id);
   const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3100';

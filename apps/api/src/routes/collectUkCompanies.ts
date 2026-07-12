@@ -6,6 +6,7 @@ import { requireCompanyRole, CompanyRequest } from '../middleware/requireCompany
 import { isAssignedToCompany } from '../lib/companyAssignment';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { notifyHandedOver } from '../services/collectUkNotifications';
 
 const router = Router();
 
@@ -356,6 +357,7 @@ router.post(
     }
 
     await recordAuditLog(req.userId!, 'COLLECT_UK_HANDOVER_CONFIRMED', { companyId: req.params.id, bookingId: booking.id });
+    await notifyHandedOver(booking.id);
 
     res.status(200).json({ data: { id: booking.id, status: 'HANDED_OVER' } });
   },
