@@ -222,6 +222,9 @@ export default function HubOpsManifestPage() {
             <Link href="/hub-ops/inspect" className="text-sm font-medium text-muted hover:text-text">
               Inspect &amp; seal
             </Link>
+            <Link href="/hub-ops/arrival" className="text-sm font-medium text-muted hover:text-text">
+              Arrival scan
+            </Link>
             <Button variant="ghost" size="md" onClick={handleSignOut}>
               Sign out
             </Button>

@@ -7,6 +7,9 @@ import { isAssignedToHub } from '../lib/hubAssignment';
 import { canTransition } from '../lib/shipmentStateMachine';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { generateCollectionCode } from '../services/collectionCode';
+import { notifyBuyerReadyForCollection } from '../services/fulfilmentNotifications';
+import { SYSTEM_CONFIG_KEYS } from '../lib/systemConfigKeys';
 
 const router = Router();
 
@@ -403,7 +406,29 @@ async function maybeMarkRunDeparted(manifestId: string, runId: string): Promise<
     where: { id: runId, status: 'SCHEDULED' },
     data: { status: 'DEPARTED', actualDeparture: new Date() },
   });
-  return result.count > 0;
+  if (result.count === 0) return false;
+
+  // The run departing is the real-world moment every dispatched parcel on
+  // it becomes "between hubs" -- system-triggered (actorUserId: null, per
+  // the state machine doc's "System (automatic)" framing), not attributed
+  // to whichever agent happened to scan the last parcel out.
+  const dispatchedParcels = await prisma.manifestParcel.findMany({
+    where: { manifestId, scannedOutAt: { not: null } },
+    select: { shipmentId: true },
+  });
+  for (const { shipmentId } of dispatchedParcels) {
+    const updateResult = await prisma.shipment.updateMany({
+      where: { id: shipmentId, status: 'DISPATCHED' },
+      data: { status: 'IN_TRANSIT' },
+    });
+    if (updateResult.count > 0) {
+      await prisma.trackingEvent.create({
+        data: { shipmentId, fromStatus: 'DISPATCHED', toStatus: 'IN_TRANSIT', actorUserId: null, hubId: null },
+      });
+    }
+  }
+
+  return true;
 }
 
 const scanOutSchema = z.object({ reference: z.string().trim().min(1) });
@@ -559,6 +584,202 @@ router.post(
     const runDeparted = await maybeMarkRunDeparted(manifest.id, manifest.runId);
 
     res.status(200).json({ data: { shipmentId: shipment.id, reference: shipment.reference, shortShipped: true, runDeparted } });
+  },
+);
+
+const scanInSchema = z.object({ reference: z.string().trim().min(1) });
+
+// Deliberately not keyed by manifest id in the URL -- a destination-hub
+// agent scanning an arriving parcel only has its reference, not the
+// manifest it happens to be on. ManifestParcel.shipmentId is unique, so
+// the manifest (and therefore the destination hub to check) is derived
+// entirely from the shipment. Reuses the finalized manifest's locked
+// parcel list as the sole validation source, same as scan-out -- a
+// parcel not expected on this run is rejected. Cascades IN_TRANSIT ->
+// RECEIVED_AT_DESTINATION -> READY_FOR_COLLECTION in one scan (both hops
+// individually canTransition-checked and race-guarded, own TrackingEvents
+// each), generating a collection code and notifying the buyer as part of
+// the same action -- these all happen at the instant of the arrival scan,
+// there's no separate manual "generate code" step.
+router.post(
+  '/scan-in',
+  requireAuth,
+  requireFulfilmentRole(...DISPATCH_SCAN_ROLES),
+  async (req: FulfilmentRequest, res: Response, next: NextFunction) => {
+    const parsed = scanInSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'A shipment reference is required', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const shipment = await prisma.shipment.findUnique({ where: { reference: parsed.data.reference } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'No shipment found for that reference', 404));
+      return;
+    }
+
+    const manifestParcel = await prisma.manifestParcel.findUnique({
+      where: { shipmentId: shipment.id },
+      include: { manifest: { include: { run: { include: { route: true } } } } },
+    });
+    if (!manifestParcel) {
+      next(new ApiError('NOT_ON_MANIFEST', 'This parcel was never assigned to a manifest', 404));
+      return;
+    }
+
+    const manifest = manifestParcel.manifest;
+    const destinationHubId = manifest.run.route.destinationHubId;
+    if (!isAssignedToHub(req, destinationHubId)) {
+      await recordAuditLog(req.userId!, 'FULFILMENT_HUB_ASSIGNMENT_DENIED', { targetHubId: destinationHubId, manifestId: manifest.id });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this hub', 403));
+      return;
+    }
+    if (manifest.status !== 'FINALIZED') {
+      next(new ApiError('INVALID_STATE', 'This manifest must be finalized before scanning parcels in', 409));
+      return;
+    }
+    if (manifestParcel.shortShipped || !manifestParcel.scannedOutAt) {
+      next(new ApiError('INVALID_STATE', 'This parcel was never dispatched on this run', 409));
+      return;
+    }
+    if (manifestParcel.scannedInAt) {
+      next(new ApiError('ALREADY_SCANNED', 'This parcel has already been scanned in', 409));
+      return;
+    }
+    if (!canTransition(shipment.status, 'RECEIVED_AT_DESTINATION')) {
+      next(new ApiError('INVALID_STATE', 'This parcel is not ready to be scanned in', 409));
+      return;
+    }
+
+    let plaintextCode = '';
+
+    try {
+      await prisma.$transaction(async tx => {
+        const firstHop = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: shipment.status },
+          data: { status: 'RECEIVED_AT_DESTINATION' },
+        });
+        if (firstHop.count === 0) throw new ManifestTransitionConflict();
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: shipment.status,
+            toStatus: 'RECEIVED_AT_DESTINATION',
+            actorUserId: req.userId!,
+            hubId: destinationHubId,
+          },
+        });
+
+        const secondHop = await tx.shipment.updateMany({
+          where: { id: shipment.id, status: 'RECEIVED_AT_DESTINATION' },
+          data: { status: 'READY_FOR_COLLECTION' },
+        });
+        if (secondHop.count === 0) throw new ManifestTransitionConflict();
+        await tx.trackingEvent.create({
+          data: {
+            shipmentId: shipment.id,
+            fromStatus: 'RECEIVED_AT_DESTINATION',
+            toStatus: 'READY_FOR_COLLECTION',
+            actorUserId: req.userId!,
+            hubId: destinationHubId,
+          },
+        });
+
+        await tx.manifestParcel.update({ where: { id: manifestParcel.id }, data: { scannedInAt: new Date() } });
+
+        plaintextCode = await generateCollectionCode(tx, shipment.id);
+      });
+    } catch (err) {
+      if (err instanceof ManifestTransitionConflict) {
+        next(new ApiError('ALREADY_SCANNED', 'This parcel has already been scanned in', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'FULFILMENT_PARCEL_SCANNED_IN', { manifestId: manifest.id, shipmentId: shipment.id });
+
+    await notifyBuyerReadyForCollection(shipment.id, plaintextCode);
+
+    res.status(200).json({
+      data: { shipmentId: shipment.id, reference: shipment.reference, status: 'READY_FOR_COLLECTION' },
+    });
+  },
+);
+
+const RECONCILIATION_ROLES = ['OPERATIONS_ADMIN', 'SUPER_ADMIN', 'HUB_SUPERVISOR'] as const;
+const DEFAULT_RECONCILIATION_THRESHOLD_HOURS = 24;
+
+// Expected (everything actually dispatched on this manifest) vs. actual
+// (what's been scanned in) -- missing parcels are surfaced explicitly,
+// never silently dropped, per the ticket's acceptance criterion. A
+// dispatched-but-not-yet-arrived parcel isn't "missing" until it's been
+// overdue past scheduledArrival by the configured threshold; before that
+// it's just still in transit.
+router.get(
+  '/:id/reconciliation',
+  requireAuth,
+  requireFulfilmentRole(...RECONCILIATION_ROLES),
+  async (req: FulfilmentRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const manifest = await prisma.transportManifest.findUnique({
+      where: { id: req.params.id },
+      include: { run: { include: { route: true } } },
+    });
+    if (!manifest) {
+      next(new ApiError('NOT_FOUND', 'Manifest not found', 404));
+      return;
+    }
+
+    const isAdmin = (req.fulfilmentRoles ?? []).some(r => r.role === 'OPERATIONS_ADMIN' || r.role === 'SUPER_ADMIN');
+    if (!isAdmin && !isAssignedToHub(req, manifest.run.route.destinationHubId)) {
+      await recordAuditLog(req.userId!, 'FULFILMENT_HUB_ASSIGNMENT_DENIED', {
+        targetHubId: manifest.run.route.destinationHubId,
+        manifestId: manifest.id,
+      });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this hub', 403));
+      return;
+    }
+
+    const config = await prisma.systemConfiguration.findUnique({
+      where: { key: SYSTEM_CONFIG_KEYS.MANIFEST_RECONCILIATION_THRESHOLD_HOURS },
+    });
+    const thresholdHours = config ? Number(config.value) : DEFAULT_RECONCILIATION_THRESHOLD_HOURS;
+    const overdueAt = new Date(manifest.run.scheduledArrival.getTime() + thresholdHours * 60 * 60 * 1000);
+    const isOverdue = new Date() > overdueAt;
+
+    const parcels = await prisma.manifestParcel.findMany({
+      where: { manifestId: manifest.id },
+      include: { shipment: { select: { reference: true, sizeTier: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const dispatched = parcels.filter(p => p.scannedOutAt && !p.shortShipped);
+    const arrived = dispatched.filter(p => p.scannedInAt);
+    const missing = dispatched.filter(p => !p.scannedInAt && isOverdue);
+    const inTransit = dispatched.filter(p => !p.scannedInAt && !isOverdue);
+    const shortShipped = parcels.filter(p => p.shortShipped);
+
+    const toSummary = (p: (typeof parcels)[number]) => ({
+      shipmentId: p.shipmentId,
+      reference: p.shipment.reference,
+      sizeTier: p.shipment.sizeTier,
+      scannedOutAt: p.scannedOutAt,
+      scannedInAt: p.scannedInAt,
+    });
+
+    res.status(200).json({
+      data: {
+        manifestId: manifest.id,
+        runId: manifest.runId,
+        expectedCount: dispatched.length,
+        arrivedCount: arrived.length,
+        missingCount: missing.length,
+        arrived: arrived.map(toSummary),
+        inTransit: inTransit.map(toSummary),
+        missing: missing.map(toSummary),
+        shortShipped: shortShipped.map(toSummary),
+      },
+    });
   },
 );
 

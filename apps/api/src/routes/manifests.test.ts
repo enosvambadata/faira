@@ -24,6 +24,9 @@ const manifestParcelDeleteMock = vi.fn();
 const manifestParcelUpdateMock = vi.fn();
 const manifestParcelCountMock = vi.fn();
 const runUpdateManyMock = vi.fn();
+const systemConfigFindUniqueMock = vi.fn();
+const generateCollectionCodeMock = vi.fn();
+const notifyBuyerReadyForCollectionMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -59,8 +62,17 @@ vi.mock('../prisma', () => ({
       update: (...args: unknown[]) => manifestParcelUpdateMock(...args),
       count: (...args: unknown[]) => manifestParcelCountMock(...args),
     },
+    systemConfiguration: { findUnique: (...args: unknown[]) => systemConfigFindUniqueMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
+}));
+
+vi.mock('../services/collectionCode', () => ({
+  generateCollectionCode: (...args: unknown[]) => generateCollectionCodeMock(...args),
+}));
+
+vi.mock('../services/fulfilmentNotifications', () => ({
+  notifyBuyerReadyForCollection: (...args: unknown[]) => notifyBuyerReadyForCollectionMock(...args),
 }));
 
 const { createApp } = await import('../app');
@@ -89,7 +101,11 @@ beforeEach(() => {
   manifestParcelDeleteMock.mockResolvedValue({});
   manifestParcelUpdateMock.mockResolvedValue({});
   manifestParcelCountMock.mockResolvedValue(0);
+  manifestParcelFindManyMock.mockResolvedValue([]);
   runUpdateManyMock.mockResolvedValue({ count: 1 });
+  systemConfigFindUniqueMock.mockResolvedValue(null);
+  generateCollectionCodeMock.mockResolvedValue('123456');
+  notifyBuyerReadyForCollectionMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       shipment: { updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args) },
@@ -688,5 +704,258 @@ describe('POST /api/v1/fulfilment/manifests/:id/short-ship', () => {
 
     expect(res.status).toBe(403);
     expect(manifestParcelUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+const IN_TRANSIT_SHIPMENT = { id: SHIPMENT_ID, reference: 'FF-HRE-000001', status: 'IN_TRANSIT', destinationHubId: BULAWAYO_ID };
+
+function manifestParcelWithManifest(overrides: Partial<{ scannedOutAt: Date | null; scannedInAt: Date | null; shortShipped: boolean; manifestStatus: string }> = {}) {
+  return {
+    id: 'mp-1',
+    manifestId: 'manifest-1',
+    shipmentId: SHIPMENT_ID,
+    scannedOutAt: overrides.scannedOutAt !== undefined ? overrides.scannedOutAt : new Date('2026-08-01T09:00:00Z'),
+    scannedInAt: overrides.scannedInAt ?? null,
+    shortShipped: overrides.shortShipped ?? false,
+    manifest: { ...(overrides.manifestStatus === 'OPEN' ? OPEN_MANIFEST : FINALIZED_MANIFEST), status: overrides.manifestStatus ?? 'FINALIZED', run: RUN },
+  };
+}
+
+describe('POST /api/v1/fulfilment/manifests/scan-in', () => {
+  beforeEach(() => {
+    // Destination-hub scoped -- the run's route destination is Bulawayo.
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: BULAWAYO_ID }]);
+  });
+
+  it('scans in a dispatched parcel, cascading IN_TRANSIT -> RECEIVED_AT_DESTINATION -> READY_FOR_COLLECTION', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest());
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('READY_FOR_COLLECTION');
+    expect(trackingEventCreateMock).toHaveBeenCalledTimes(2);
+    expect(trackingEventCreateMock).toHaveBeenNthCalledWith(1, {
+      data: {
+        shipmentId: SHIPMENT_ID,
+        fromStatus: 'IN_TRANSIT',
+        toStatus: 'RECEIVED_AT_DESTINATION',
+        actorUserId: SUPERVISOR_ID,
+        hubId: BULAWAYO_ID,
+      },
+    });
+    expect(trackingEventCreateMock).toHaveBeenNthCalledWith(2, {
+      data: {
+        shipmentId: SHIPMENT_ID,
+        fromStatus: 'RECEIVED_AT_DESTINATION',
+        toStatus: 'READY_FOR_COLLECTION',
+        actorUserId: SUPERVISOR_ID,
+        hubId: BULAWAYO_ID,
+      },
+    });
+    expect(manifestParcelUpdateMock).toHaveBeenCalledWith({ where: { id: 'mp-1' }, data: { scannedInAt: expect.any(Date) } });
+    expect(generateCollectionCodeMock).toHaveBeenCalledWith(expect.anything(), SHIPMENT_ID);
+    expect(notifyBuyerReadyForCollectionMock).toHaveBeenCalledWith(SHIPMENT_ID, '123456');
+  });
+
+  it('404s (not-on-manifest) when the parcel was never assigned to a manifest', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_ON_MANIFEST');
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the parcel was never dispatched on this run (short-shipped)', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest({ scannedOutAt: null, shortShipped: true }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(409);
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s (already-scanned) when the parcel was already scanned in', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest({ scannedInAt: new Date() }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ALREADY_SCANNED');
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when the manifest is not finalized yet', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest({ manifestStatus: 'OPEN' }));
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(409);
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('404s when the reference does not match any shipment', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-999999' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('403s (wrong-hub) when the agent is assigned to the origin hub, not the destination', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: HARARE_ID }]);
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest());
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' });
+
+    expect(res.status).toBe(403);
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when two simultaneous scans race -- only one succeeds', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(IN_TRANSIT_SHIPMENT);
+    manifestParcelFindUniqueMock.mockResolvedValue(manifestParcelWithManifest());
+    shipmentUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    const app = createApp();
+    const [first, second] = await Promise.all([
+      request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' }),
+      request(app).post('/api/v1/fulfilment/manifests/scan-in').set(AUTH_HEADER).send({ reference: 'FF-HRE-000001' }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+  });
+});
+
+describe('GET /api/v1/fulfilment/manifests/:id/reconciliation', () => {
+  const manifestWithRun = {
+    ...FINALIZED_MANIFEST,
+    run: { ...RUN, scheduledArrival: new Date('2026-08-01T14:00:00Z') },
+  };
+
+  it('returns arrived, in-transit, and short-shipped parcels for a supervisor at the destination hub', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_SUPERVISOR', hubId: BULAWAYO_ID }]);
+    manifestFindUniqueMock.mockResolvedValue(manifestWithRun);
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '24' });
+    manifestParcelFindManyMock.mockResolvedValue([
+      {
+        shipmentId: 'shipment-arrived',
+        shipment: { reference: 'FF-HRE-000001', sizeTier: 'SMALL' },
+        scannedOutAt: new Date('2026-08-01T09:00:00Z'),
+        scannedInAt: new Date('2026-08-01T15:00:00Z'),
+        shortShipped: false,
+      },
+      {
+        shipmentId: 'shipment-in-transit',
+        shipment: { reference: 'FF-HRE-000002', sizeTier: 'MEDIUM' },
+        scannedOutAt: new Date('2026-08-01T09:00:00Z'),
+        scannedInAt: null,
+        shortShipped: false,
+      },
+      {
+        shipmentId: 'shipment-short',
+        shipment: { reference: 'FF-HRE-000003', sizeTier: 'LARGE' },
+        scannedOutAt: null,
+        scannedInAt: null,
+        shortShipped: true,
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.expectedCount).toBe(2);
+    expect(res.body.data.arrivedCount).toBe(1);
+    expect(res.body.data.missingCount).toBe(0);
+    expect(res.body.data.arrived).toHaveLength(1);
+    expect(res.body.data.arrived[0].shipmentId).toBe('shipment-arrived');
+    expect(res.body.data.inTransit).toHaveLength(1);
+    expect(res.body.data.inTransit[0].shipmentId).toBe('shipment-in-transit');
+    expect(res.body.data.shortShipped).toHaveLength(1);
+    expect(res.body.data.missing).toHaveLength(0);
+  });
+
+  it('flags a dispatched-but-unscanned parcel as missing once past the reconciliation threshold', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_SUPERVISOR', hubId: BULAWAYO_ID }]);
+    // scheduledArrival far enough in the past that a 24h threshold has elapsed.
+    manifestFindUniqueMock.mockResolvedValue({
+      ...FINALIZED_MANIFEST,
+      run: { ...RUN, scheduledArrival: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+    });
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '24' });
+    manifestParcelFindManyMock.mockResolvedValue([
+      {
+        shipmentId: 'shipment-missing',
+        shipment: { reference: 'FF-HRE-000004', sizeTier: 'SMALL' },
+        scannedOutAt: new Date(Date.now() - 47 * 60 * 60 * 1000),
+        scannedInAt: null,
+        shortShipped: false,
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.missingCount).toBe(1);
+    expect(res.body.data.missing[0].shipmentId).toBe('shipment-missing');
+    expect(res.body.data.inTransit).toHaveLength(0);
+  });
+
+  it('allows an Operations Admin regardless of hub assignment', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'OPERATIONS_ADMIN', hubId: null }]);
+    manifestFindUniqueMock.mockResolvedValue(manifestWithRun);
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '24' });
+    manifestParcelFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('403s (wrong-hub) for a Hub Supervisor not assigned to the destination hub', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_SUPERVISOR', hubId: HARARE_ID }]);
+    manifestFindUniqueMock.mockResolvedValue(manifestWithRun);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('403s for a Hub Agent (not an allowed role for this report)', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: BULAWAYO_ID }]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('404s for a nonexistent manifest', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'OPERATIONS_ADMIN', hubId: null }]);
+    manifestFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/manifests/manifest-1/reconciliation').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
   });
 });
