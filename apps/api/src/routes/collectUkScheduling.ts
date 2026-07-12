@@ -92,6 +92,28 @@ router.post('/routes', requireAdmin, async (req: Request, res: Response, next: N
   res.status(201).json({ data: route });
 });
 
+// Newest routes first -- the dispatch UI's route board.
+router.get('/routes', requireAdmin, async (_req: Request, res: Response) => {
+  const routes = await prisma.collectUkCollectionRoute.findMany({
+    include: { driver: true, stops: { select: { status: true } } },
+    orderBy: [{ routeDate: 'desc' }, { createdAt: 'desc' }],
+    take: 100,
+  });
+
+  res.status(200).json({
+    data: routes.map(r => ({
+      id: r.id,
+      routeDate: r.routeDate,
+      status: r.status,
+      totalDistanceMiles: r.totalDistanceMiles,
+      driverId: r.driverId,
+      driverVehicleReference: r.driver.vehicleReference,
+      stopCount: r.stops.length,
+      pendingStopCount: r.stops.filter(s => s.status === 'PENDING').length,
+    })),
+  });
+});
+
 router.get('/routes/:id', requireAdmin, async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
   const route = await prisma.collectUkCollectionRoute.findUnique({
     where: { id: req.params.id },
@@ -274,6 +296,10 @@ router.get('/bookings/unscheduled', requireAdmin, async (_req: Request, res: Res
       collectionPostcode: b.collectionPostcode,
       preferredDate: b.preferredDate,
       parcelSizeTier: b.parcelSizeTier,
+      numberOfParcels: b.numberOfParcels,
+      itemTypes: b.itemTypes,
+      itemTypeOther: b.itemTypeOther,
+      vehicleType: b.vehicleType,
     })),
   });
 });

@@ -20,6 +20,9 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   auth?: boolean;
+  // Faira-internal admin surfaces (Collect UK dispatch) authenticate with
+  // the shared ADMIN_TOKEN header instead of a Supabase session.
+  adminToken?: string;
 }
 
 // Mirrors apps/mobile/src/lib/api.ts's request<T>() shape so both clients
@@ -36,6 +39,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (session) {
       headers.Authorization = `Bearer ${session.access_token}`;
     }
+  }
+
+  if (options.adminToken) {
+    headers["x-admin-token"] = options.adminToken;
   }
 
   let body: BodyInit | undefined;
@@ -742,6 +749,96 @@ export const collectUkDriverPortal = {
       method: "POST",
       body: { failureReason },
       auth: true,
+    }),
+};
+
+export interface CollectUkUnscheduledBooking {
+  id: string;
+  reference: string | null;
+  companyName: string;
+  customerName: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  preferredDate: string;
+  parcelSizeTier: ParcelSizeTier;
+  numberOfParcels: number;
+  itemTypes: CollectUkItemType[];
+  itemTypeOther: string | null;
+  vehicleType: CollectUkVehicleType | null;
+}
+
+export interface CollectUkAdminDriver {
+  id: string;
+  userId: string;
+  vehicleReference: string | null;
+  capacityParcels: number;
+  status: "ACTIVE" | "INACTIVE";
+}
+
+export interface CollectUkAdminRouteSummary {
+  id: string;
+  routeDate: string;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  totalDistanceMiles: number | null;
+  driverId: string;
+  driverVehicleReference: string | null;
+  stopCount: number;
+  pendingStopCount: number;
+}
+
+export interface CollectUkAdminRouteStop {
+  id: string;
+  sequenceOrder: number;
+  status: "PENDING" | "COLLECTED" | "UNABLE_TO_COLLECT";
+  bookingId: string;
+  bookingReference: string | null;
+  companyName: string;
+  customerName: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  distanceFromPreviousMiles: number | null;
+}
+
+export interface CollectUkAdminRouteDetail {
+  id: string;
+  driverId: string;
+  routeDate: string;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  totalDistanceMiles: number | null;
+  stops: CollectUkAdminRouteStop[];
+}
+
+// Faira-internal dispatch tooling, authenticated with the shared
+// ADMIN_TOKEN (entered on the dispatch page) rather than a user session.
+export const collectUkDispatch = {
+  listUnscheduled: (adminToken: string) =>
+    request<CollectUkUnscheduledBooking[]>("/api/v1/admin/collect-uk/bookings/unscheduled", { adminToken }),
+
+  listDrivers: (adminToken: string) => request<CollectUkAdminDriver[]>("/api/v1/admin/collect-uk/drivers", { adminToken }),
+
+  createDriver: (adminToken: string, payload: { userId: string; vehicleReference?: string; capacityParcels?: number }) =>
+    request<CollectUkAdminDriver>("/api/v1/admin/collect-uk/drivers", { method: "POST", body: payload, adminToken }),
+
+  listRoutes: (adminToken: string) => request<CollectUkAdminRouteSummary[]>("/api/v1/admin/collect-uk/routes", { adminToken }),
+
+  createRoute: (adminToken: string, payload: { driverId: string; routeDate: string }) =>
+    request<{ id: string }>("/api/v1/admin/collect-uk/routes", { method: "POST", body: payload, adminToken }),
+
+  getRoute: (adminToken: string, id: string) =>
+    request<CollectUkAdminRouteDetail>(`/api/v1/admin/collect-uk/routes/${id}`, { adminToken }),
+
+  assignStop: (adminToken: string, routeId: string, bookingId: string) =>
+    request<{ id: string }>(`/api/v1/admin/collect-uk/routes/${routeId}/stops`, {
+      method: "POST",
+      body: { bookingId },
+      adminToken,
+    }),
+
+  optimiseRoute: (adminToken: string, routeId: string, startPostcode?: string) =>
+    request<CollectUkAdminRouteDetail>(`/api/v1/admin/collect-uk/routes/${routeId}/optimise`, {
+      method: "POST",
+      body: startPostcode ? { startPostcode } : {},
+      adminToken,
     }),
 };
 
