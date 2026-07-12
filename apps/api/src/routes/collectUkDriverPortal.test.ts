@@ -17,6 +17,8 @@ const notifyArrivedAtWarehouseMock = vi.fn();
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: vi.fn(),
   notifyCollectionScheduled: vi.fn(),
+  notifyBookingCancelled: vi.fn(),
+  notifyCollectionWillBeRescheduled: vi.fn(),
   notifyParcelCollected: (...args: unknown[]) => notifyParcelCollectedMock(...args),
   notifyUnableToCollect: (...args: unknown[]) => notifyUnableToCollectMock(...args),
   notifyArrivedAtWarehouse: (...args: unknown[]) => notifyArrivedAtWarehouseMock(...args),

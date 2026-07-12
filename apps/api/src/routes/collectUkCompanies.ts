@@ -6,7 +6,8 @@ import { requireCompanyRole, CompanyRequest } from '../middleware/requireCompany
 import { isAssignedToCompany } from '../lib/companyAssignment';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
-import { notifyHandedOver } from '../services/collectUkNotifications';
+import { notifyHandedOver, notifyBookingCancelled, notifyArrivedAtWarehouse } from '../services/collectUkNotifications';
+import { advanceRouteProgress } from '../services/collectUkRouteProgress';
 
 const router = Router();
 
@@ -366,5 +367,72 @@ router.post(
     res.status(200).json({ data: { id: booking.id, status: 'HANDED_OVER' } });
   },
 );
+
+// A company can cancel up until the parcel is physically collected.
+// Cancelling a DRIVER_ASSIGNED booking also releases its pending stop
+// from the driver's route -- and if that was the route's last pending
+// stop, the route completes (arriving any already-collected bookings).
+router.post(
+  '/:id/bookings/:bookingId/cancel',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string; bookingId: string } }, res: Response, next: NextFunction) => {
+    if (!isAssignedToCompany(req, req.params.id)) {
+      await recordAuditLog(req.userId!, 'COLLECT_UK_COMPANY_ASSIGNMENT_DENIED', {
+        targetCompanyId: req.params.id,
+        actualCompanyAssignments: (req.companyRoles ?? []).map(r => r.companyId),
+      });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const booking = await prisma.collectUkCollectionBooking.findUnique({
+      where: { id: req.params.bookingId },
+      include: { stop: true },
+    });
+    if (!booking || booking.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'Booking not found', 404));
+      return;
+    }
+    const cancellable = booking.status === 'REQUESTED' || booking.status === 'DRIVER_ASSIGNED' || booking.status === 'EN_ROUTE';
+    if (!cancellable) {
+      next(new ApiError('INVALID_STATE', 'This booking can no longer be cancelled', 409));
+      return;
+    }
+
+    let arrivedBookingIds: string[] = [];
+    try {
+      arrivedBookingIds = await prisma.$transaction(async tx => {
+        const updated = await tx.collectUkCollectionBooking.updateMany({
+          where: { id: booking.id, status: { in: ['REQUESTED', 'DRIVER_ASSIGNED', 'EN_ROUTE'] } },
+          data: { status: 'CANCELLED' },
+        });
+        if (updated.count === 0) throw new BookingCancelConflict();
+
+        if (booking.stop && booking.stop.status === 'PENDING') {
+          await tx.collectUkCollectionStop.delete({ where: { id: booking.stop.id } });
+          return advanceRouteProgress(tx, booking.stop.routeId);
+        }
+        return [];
+      });
+    } catch (err) {
+      if (err instanceof BookingCancelConflict) {
+        next(new ApiError('INVALID_STATE', 'This booking can no longer be cancelled', 409));
+        return;
+      }
+      throw err;
+    }
+
+    await recordAuditLog(req.userId!, 'COLLECT_UK_BOOKING_CANCELLED', { companyId: req.params.id, bookingId: booking.id });
+    await notifyBookingCancelled(booking.id);
+    for (const arrivedId of arrivedBookingIds) {
+      await notifyArrivedAtWarehouse(arrivedId);
+    }
+
+    res.status(200).json({ data: { id: booking.id, status: 'CANCELLED' } });
+  },
+);
+
+class BookingCancelConflict extends Error {}
 
 export default router;

@@ -6,8 +6,9 @@ import { ApiError } from '../errors/ApiError';
 import { generateBookingReference } from '../services/collectUkBookingReference';
 import { generateBookingTrackingToken, verifyBookingTrackingToken } from '../lib/collectUkBookingToken';
 import { collectUkBuyerStatus } from '../lib/collectUkBookingStatus';
-import { notifyBookingConfirmed } from '../services/collectUkNotifications';
+import { notifyBookingConfirmed, notifyBookingCancelled } from '../services/collectUkNotifications';
 import { geocodePostcode } from '../lib/collectUkGeo';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -16,7 +17,10 @@ const router = Router();
 // this isn't a login form, just lookup/creation, so a generous-but-bounded
 // limit is enough to blunt automated spam/scraping without blocking a
 // real customer.
-const publicRateLimiter = rateLimit({
+// Exported so tests can reset the shared per-process window between
+// cases -- the limiter is module-level state that would otherwise leak
+// request counts across every createApp() instance in a test file.
+export const publicRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
@@ -158,6 +162,50 @@ router.get('/tracking/:token', publicRateLimiter, async (req: Request<{ token: s
       preferredDate: booking.preferredDate,
     },
   });
+});
+
+// Guest self-service cancellation via the signed tracking token -- only
+// while the booking is still REQUESTED. Once a driver is assigned the
+// round is planned around it, so later cancellations go through the
+// company (which releases the stop properly).
+router.post('/tracking/:token/cancel', publicRateLimiter, async (req: Request<{ token: string }>, res: Response, next: NextFunction) => {
+  const verified = verifyBookingTrackingToken(req.params.token);
+  if (!verified) {
+    next(new ApiError('INVALID_TOKEN', 'This tracking link is invalid or has expired', 404));
+    return;
+  }
+
+  const booking = await prisma.collectUkCollectionBooking.findUnique({ where: { id: verified.bookingId } });
+  if (!booking) {
+    next(new ApiError('INVALID_TOKEN', 'This tracking link is invalid or has expired', 404));
+    return;
+  }
+  if (booking.status !== 'REQUESTED') {
+    next(
+      new ApiError(
+        'INVALID_STATE',
+        'This booking is already being processed -- please contact your shipping company to cancel',
+        409,
+      ),
+    );
+    return;
+  }
+
+  const updated = await prisma.collectUkCollectionBooking.updateMany({
+    where: { id: booking.id, status: 'REQUESTED' },
+    data: { status: 'CANCELLED' },
+  });
+  if (updated.count === 0) {
+    next(new ApiError('INVALID_STATE', 'This booking is already being processed', 409));
+    return;
+  }
+
+  // Guests have no User row, so this can't go through recordAuditLog
+  // (AuditLog.userId is a users FK) -- structured log instead.
+  logger.info({ bookingId: booking.id }, 'collect uk booking cancelled by customer');
+  await notifyBookingCancelled(booking.id);
+
+  res.status(200).json({ data: { reference: booking.reference, status: collectUkBuyerStatus('CANCELLED') } });
 });
 
 export default router;

@@ -74,6 +74,17 @@ export async function notifyArrivedAtWarehouse(bookingId: string): Promise<void>
   await notify(bookingId, b => `${b.company.name}: your parcel ${b.reference} has arrived at our warehouse.`);
 }
 
+export async function notifyBookingCancelled(bookingId: string): Promise<void> {
+  await notify(bookingId, b => `${b.company.name}: your collection ${b.reference} has been cancelled.`);
+}
+
+export async function notifyCollectionWillBeRescheduled(bookingId: string): Promise<void> {
+  await notify(
+    bookingId,
+    b => `${b.company.name}: we're rescheduling the collection of your parcel ${b.reference} -- we'll text you the new date.`,
+  );
+}
+
 export async function notifyHandedOver(bookingId: string): Promise<void> {
   await notify(
     bookingId,

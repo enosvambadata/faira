@@ -8,6 +8,8 @@ const bookingCreateMock = vi.fn();
 const bookingFindUniqueMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyBookingConfirmedMock = vi.fn();
+const notifyBookingCancelledMock = vi.fn();
+const bookingUpdateManyMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
 
 vi.mock('../lib/collectUkGeo', async importOriginal => ({
@@ -17,6 +19,8 @@ vi.mock('../lib/collectUkGeo', async importOriginal => ({
 
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: (...args: unknown[]) => notifyBookingConfirmedMock(...args),
+  notifyBookingCancelled: (...args: unknown[]) => notifyBookingCancelledMock(...args),
+  notifyCollectionWillBeRescheduled: vi.fn(),
   notifyCollectionScheduled: vi.fn(),
   notifyParcelCollected: vi.fn(),
   notifyUnableToCollect: vi.fn(),
@@ -34,12 +38,14 @@ vi.mock('../prisma', () => ({
     collectUkCollectionBooking: {
       create: (...args: unknown[]) => bookingCreateMock(...args),
       findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args),
+      updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
     },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
 
 const { createApp } = await import('../app');
+const { publicRateLimiter } = await import('./collectUkBookings');
 const { generateBookingTrackingToken } = await import('../lib/collectUkBookingToken');
 
 const COMPANY = {
@@ -66,11 +72,18 @@ const VALID_BOOKING_BODY = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The limiter is module-level shared state; without a reset, request
+  // counts leak across tests and unrelated cases start seeing 429s.
+  for (const key of ['::ffff:127.0.0.1', '127.0.0.1', '::1']) {
+    publicRateLimiter.resetKey(key);
+  }
   process.env.COLLECT_UK_TRACKING_TOKEN_SECRET = 'test-collect-uk-tracking-secret';
   companyFindUniqueMock.mockResolvedValue(COMPANY);
   warehouseFindFirstMock.mockResolvedValue(WAREHOUSE);
   notifyBookingConfirmedMock.mockResolvedValue(undefined);
   geocodePostcodeMock.mockResolvedValue({ latitude: 51.5074, longitude: -0.1278 });
+  notifyBookingCancelledMock.mockResolvedValue(undefined);
+  bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   companyUpdateMock.mockResolvedValue({ ...COMPANY, nextBookingSequence: 6 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
@@ -324,6 +337,67 @@ describe('GET /api/v1/collect-uk/tracking/:token', () => {
     expect(res.status).toBe(404);
   });
 
+});
+
+describe('POST /api/v1/collect-uk/tracking/:token/cancel', () => {
+  const CANCELLABLE = {
+    id: 'booking-1',
+    reference: 'FC-abc-logistics-000005',
+    status: 'REQUESTED',
+  };
+
+  it('cancels a booking that is still awaiting scheduling', async () => {
+    bookingFindUniqueMock.mockResolvedValue(CANCELLABLE);
+    const token = generateBookingTrackingToken('booking-1');
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/collect-uk/tracking/${token}/cancel`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('Cancelled');
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'REQUESTED' },
+      data: { status: 'CANCELLED' },
+    });
+    expect(notifyBookingCancelledMock).toHaveBeenCalledWith('booking-1');
+  });
+
+  it('409s once a driver has been assigned (cancellation goes through the company)', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...CANCELLABLE, status: 'DRIVER_ASSIGNED' });
+    const token = generateBookingTrackingToken('booking-1');
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/collect-uk/tracking/${token}/cancel`);
+
+    expect(res.status).toBe(409);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyBookingCancelledMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when two simultaneous cancels race -- only one succeeds', async () => {
+    bookingFindUniqueMock.mockResolvedValue(CANCELLABLE);
+    bookingUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    const token = generateBookingTrackingToken('booking-1');
+
+    const app = createApp();
+    const first = await request(app).post(`/api/v1/collect-uk/tracking/${token}/cancel`);
+    const second = await request(app).post(`/api/v1/collect-uk/tracking/${token}/cancel`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+  });
+
+  it('404s for a garbage token', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/tracking/not-a-real-token/cancel');
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// Must stay LAST: exhausts the module-level shared rate limiter,
+// poisoning every public-endpoint test that would run after it.
+describe('public rate limiting', () => {
   it('rate-limits repeated requests from the same client', async () => {
     bookingFindUniqueMock.mockResolvedValue({
       id: 'booking-1',
