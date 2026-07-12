@@ -167,6 +167,16 @@ model User {
   fulfilmentSellerProfile       FulfilmentSellerProfile?
   fulfilmentVerificationRequests FulfilmentVerificationRequest[]
 
+  // --- Faira Collect UK (SCRUM-177) ---
+  // Separate from fulfilmentRoles (UserRole, hub-scoped) on purpose --
+  // company-tenant scoping and hub scoping are different dimensions, and
+  // reusing one table for both risks exactly the kind of role-check
+  // mistake the Fulfilment ADR flagged when explaining why Marketplace
+  // and Fulfilment auth were kept apart. See docs/collect-uk/01-architecture-decision-record.md.
+  companyRoles              CollectUkCompanyRole[]
+  driverProfile             CollectUkDriver?
+  collectionBookingsAsCustomer CollectUkCollectionBooking[]
+
   @@map("users")
 }
 
@@ -1344,4 +1354,234 @@ model FulfilmentVerificationRequest {
   @@index([sellerId])
   @@index([status])
   @@map("fulfilment_verification_requests")
+}
+
+// --- Faira Collect UK (SCRUM-177) ---
+// Schema only at this stage -- no routes/business logic yet (see Sprint 0
+// in Jira, epic SCRUM-174). Every model is prefixed CollectUk (table names
+// collect_uk_*) so it's unambiguous which product a model belongs to in a
+// schema now spanning three product lines -- see
+// docs/collect-uk/01-architecture-decision-record.md for the reasoning.
+
+// The tenant. One Company per subscribing shipping company; customers
+// choose a Company when booking, never see Faira's internal operations.
+model CollectUkCompany {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String   @unique
+  countriesServed String[] @map("countries_served")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  warehouses   CollectUkCompanyWarehouse[]
+  roles        CollectUkCompanyRole[]
+  bookings     CollectUkCollectionBooking[]
+  subscription CollectUkSubscription?
+
+  @@map("collect_uk_companies")
+}
+
+// A company's own warehouse -- Faira does not operate this location,
+// unlike Fulfilment's Hub (which Faira owns end to end). Deliberately a
+// separate model rather than reusing Hub; see the reuse assessment.
+model CollectUkCompanyWarehouse {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  name         String
+  address      String
+  city         String
+  postcode     String
+  openingHours String   @map("opening_hours")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company  CollectUkCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bookings CollectUkCollectionBooking[]
+
+  @@index([companyId])
+  @@map("collect_uk_company_warehouses")
+}
+
+enum CollectUkCompanyRoleType {
+  COMPANY_ADMIN
+  DISPATCHER
+}
+
+// Tenant-scoped RBAC -- deliberately a table parallel to Fulfilment's
+// UserRole (hub-scoped) rather than reusing it, per the reuse assessment's
+// recommendation: hub scoping and company-tenant scoping are different
+// dimensions, and one table serving both risks a role-check mistake
+// leaking one tenant's data to another.
+model CollectUkCompanyRole {
+  id        String                    @id @default(uuid()) @db.Uuid
+  userId    String                    @map("user_id") @db.Uuid
+  companyId String                    @map("company_id") @db.Uuid
+  role      CollectUkCompanyRoleType
+  createdAt DateTime                  @default(now()) @map("created_at")
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId, role])
+  @@index([userId])
+  @@index([companyId])
+  @@map("collect_uk_company_roles")
+}
+
+enum CollectUkDriverStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Drivers belong to Faira, not to any Company (steering doc, explicit) --
+// hence no companyId here at all; a driver's assignment to a given
+// collection is via CollectUkCollectionStop, not a fixed company relation.
+model CollectUkDriver {
+  id               String                @id @default(uuid()) @db.Uuid
+  userId           String                @unique @map("user_id") @db.Uuid
+  vehicleReference String?               @map("vehicle_reference")
+  capacityParcels  Int                   @default(20) @map("capacity_parcels")
+  status           CollectUkDriverStatus @default(ACTIVE)
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  user   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routes CollectUkCollectionRoute[]
+  stops  CollectUkCollectionStop[]
+
+  @@map("collect_uk_drivers")
+}
+
+enum CollectUkParcelSizeTier {
+  SMALL
+  MEDIUM
+  LARGE
+  EXTRA_LARGE
+}
+
+// Full lifecycle documented in docs/collect-uk/01-architecture-decision-record.md,
+// mirroring shipmentStateMachine.ts's canTransition/displayStatus pattern
+// once implementation starts -- not yet enforced anywhere (schema only).
+enum CollectUkBookingStatus {
+  REQUESTED
+  SCHEDULED
+  DRIVER_ASSIGNED
+  EN_ROUTE
+  COLLECTED
+  UNABLE_TO_COLLECT
+  AT_WAREHOUSE
+  HANDED_OVER
+  CANCELLED
+  CLOSED
+}
+
+// The core object -- analogous to Fulfilment's Shipment, but
+// customer-initiated and address-based (collectionAddress/Postcode)
+// rather than seller-initiated and hub-based. customerUserId is nullable
+// since guest bookings (no Faira account) are an explicit user type in
+// the steering doc.
+model CollectUkCollectionBooking {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  reference           String?                  @unique
+  companyId           String                   @map("company_id") @db.Uuid
+  warehouseId         String                   @map("warehouse_id") @db.Uuid
+  customerUserId      String?                  @map("customer_user_id") @db.Uuid
+  customerName        String                   @map("customer_name")
+  customerContact     String                   @map("customer_contact")
+  collectionAddress   String                   @map("collection_address")
+  collectionPostcode  String                   @map("collection_postcode")
+  preferredDate       DateTime                 @map("preferred_date")
+  parcelSizeTier      CollectUkParcelSizeTier  @map("parcel_size_tier")
+  parcelWeightKg      Decimal?                 @map("parcel_weight_kg") @db.Decimal(6, 2)
+  specialInstructions String?                  @map("special_instructions")
+  status              CollectUkBookingStatus   @default(REQUESTED)
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  company   CollectUkCompany          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouse CollectUkCompanyWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  customer  User?                     @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
+  stop      CollectUkCollectionStop?
+
+  @@index([companyId])
+  @@index([status])
+  @@map("collect_uk_collection_bookings")
+}
+
+enum CollectUkRouteStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// A driver's sequenced stops for a shift -- genuinely new domain concept,
+// not a reuse of Fulfilment's TransportRun (fixed two-hub freight runs).
+// See the reuse assessment for why these aren't the same shape.
+model CollectUkCollectionRoute {
+  id        String                @id @default(uuid()) @db.Uuid
+  driverId  String                @map("driver_id") @db.Uuid
+  routeDate DateTime              @map("route_date") @db.Date
+  status    CollectUkRouteStatus  @default(PLANNED)
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  driver CollectUkDriver           @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  stops  CollectUkCollectionStop[]
+
+  @@index([driverId])
+  @@map("collect_uk_collection_routes")
+}
+
+enum CollectUkStopStatus {
+  PENDING
+  COLLECTED
+  UNABLE_TO_COLLECT
+}
+
+// bookingId is unique -- a booking has at most one stop, ever (a
+// cancelled/failed stop is corrected by creating a new route assignment
+// pointing at the same booking only after the old stop is resolved, not
+// by allowing two simultaneous stops for one booking).
+model CollectUkCollectionStop {
+  id            String               @id @default(uuid()) @db.Uuid
+  routeId       String               @map("route_id") @db.Uuid
+  bookingId     String               @unique @map("booking_id") @db.Uuid
+  driverId      String               @map("driver_id") @db.Uuid
+  sequenceOrder Int                  @map("sequence_order")
+  status        CollectUkStopStatus  @default(PENDING)
+  proofPhotoUrl String?              @map("proof_photo_url")
+  signatureUrl  String?              @map("signature_url")
+  failureReason String?              @map("failure_reason")
+  completedAt   DateTime?            @map("completed_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+
+  route   CollectUkCollectionRoute   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  booking CollectUkCollectionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driver  CollectUkDriver            @relation(fields: [driverId], references: [id], onDelete: Restrict)
+
+  @@index([routeId])
+  @@map("collect_uk_collection_stops")
+}
+
+enum CollectUkSubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+// providerReference holds the future Stripe subscription id once the
+// Payments epic (SCRUM-168) picks a provider -- see the reuse assessment.
+model CollectUkSubscription {
+  id                String                       @id @default(uuid()) @db.Uuid
+  companyId         String                       @unique @map("company_id") @db.Uuid
+  status            CollectUkSubscriptionStatus  @default(TRIALING)
+  planName          String                       @map("plan_name")
+  providerReference String?                      @map("provider_reference")
+  currentPeriodEnd  DateTime?                    @map("current_period_end")
+  createdAt         DateTime                     @default(now()) @map("created_at")
+  updatedAt         DateTime                     @updatedAt @map("updated_at")
+
+  company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("collect_uk_subscriptions")
 }
