@@ -480,6 +480,13 @@ export const manifests = {
       `/api/v1/fulfilment/manifests/${manifestId}/short-ship`,
       { method: "POST", body: { reference, reason }, auth: true },
     ),
+
+  scanIn: (reference: string) =>
+    request<{ shipmentId: string; reference: string; status: string }>("/api/v1/fulfilment/manifests/scan-in", {
+      method: "POST",
+      body: { reference },
+      auth: true,
+    }),
 };
 
 export { ApiError as FulfilmentApiError };
