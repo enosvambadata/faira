@@ -40,6 +40,15 @@ export interface RequestWithRawBody extends Request {
 export function createApp(): Express {
   const app = express();
 
+  // Railway terminates TLS at its proxy, so client IPs arrive via
+  // X-Forwarded-For. Without this, express-rate-limit keys every request
+  // off the proxy's own IP -- ONE shared bucket for all clients, meaning a
+  // single busy customer exhausts the public booking/tracking limits for
+  // everyone (surfaced as ERR_ERL_UNEXPECTED_X_FORWARDED_FOR in staging
+  // logs). Exactly one trusted hop; a client-forged X-Forwarded-For can't
+  // spoof past the proxy's own appended entry.
+  app.set('trust proxy', 1);
+
   app.use(pinoHttp({ logger }));
   // Auth is Bearer-token based (no cookies), so a permissive CORS policy
   // doesn't expose ambient credentials the way it would for cookie auth —
