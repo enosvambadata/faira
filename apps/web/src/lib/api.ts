@@ -624,6 +624,7 @@ export interface CreateBookingPayload {
   collectionPostcode: string;
   preferredDate: string;
   parcelSizeTier: ParcelSizeTier;
+  numberOfParcels?: number;
   parcelWeightKg?: number;
   specialInstructions?: string;
 }
@@ -644,6 +645,7 @@ export interface CollectUkBookingSummary {
   collectionPostcode: string;
   preferredDate: string;
   parcelSizeTier: ParcelSizeTier;
+  numberOfParcels: number;
   createdAt: string;
 }
 
@@ -697,6 +699,7 @@ export interface CollectUkDriverStop {
   collectionPostcode: string;
   destinationCountry: string;
   parcelSizeTier: ParcelSizeTier;
+  numberOfParcels: number;
   specialInstructions: string | null;
 }
 

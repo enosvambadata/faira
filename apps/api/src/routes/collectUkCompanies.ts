@@ -314,6 +314,7 @@ router.get(
         collectionPostcode: b.collectionPostcode,
         preferredDate: b.preferredDate,
         parcelSizeTier: b.parcelSizeTier,
+        numberOfParcels: b.numberOfParcels,
         createdAt: b.createdAt,
       })),
     });

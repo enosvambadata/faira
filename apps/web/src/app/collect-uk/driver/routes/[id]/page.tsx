@@ -230,6 +230,14 @@ export default function DriverRouteDetailPage() {
                 <span className="font-semibold text-text">{route.totalDistanceMiles} miles</span> total
               </p>
             )}
+            {route.stops.length > 0 && (
+              <Link
+                href={`/collect-uk/driver/routes/${route.id}/labels`}
+                className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-white px-4 py-2 text-sm font-semibold text-text transition-colors duration-200 hover:border-primary hover:text-primary"
+              >
+                Print parcel labels
+              </Link>
+            )}
 
             {route.stops.length === 0 && (
               <Card className="mt-4">

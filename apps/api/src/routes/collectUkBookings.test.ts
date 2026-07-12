@@ -133,6 +133,38 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
     expect(notifyBookingConfirmedMock).toHaveBeenCalledWith('booking-1');
   });
 
+  it('stores the requested number of parcels', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, numberOfParcels: 4 });
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({ numberOfParcels: 4 }) });
+  });
+
+  it('defaults to one parcel when numberOfParcels is omitted', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/book/abc-logistics').send(VALID_BOOKING_BODY);
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({ numberOfParcels: 1 }) });
+  });
+
+  it('400s on a parcel count outside 1-50', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, numberOfParcels: 0 });
+
+    expect(res.status).toBe(400);
+    expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
   it('still creates the booking when geocoding fails (best-effort)', async () => {
     geocodePostcodeMock.mockResolvedValue(null);
     bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });

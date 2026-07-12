@@ -41,6 +41,7 @@ export default function BookCollectionPage() {
   const [collectionPostcode, setCollectionPostcode] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
   const [parcelSizeTier, setParcelSizeTier] = useState<ParcelSizeTier | undefined>(undefined);
+  const [numberOfParcels, setNumberOfParcels] = useState("1");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -57,6 +58,9 @@ export default function BookCollectionPage() {
     })();
   }, [slug]);
 
+  const parsedParcelCount = Number.parseInt(numberOfParcels, 10);
+  const parcelCountValid = Number.isInteger(parsedParcelCount) && parsedParcelCount >= 1 && parsedParcelCount <= 50;
+
   const canSubmit =
     customerName.trim() &&
     customerContact.trim() &&
@@ -64,7 +68,8 @@ export default function BookCollectionPage() {
     collectionAddress.trim() &&
     collectionPostcode.trim() &&
     preferredDate &&
-    parcelSizeTier;
+    parcelSizeTier &&
+    parcelCountValid;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -81,6 +86,7 @@ export default function BookCollectionPage() {
         collectionPostcode: collectionPostcode.trim(),
         preferredDate,
         parcelSizeTier,
+        numberOfParcels: parsedParcelCount,
         specialInstructions: specialInstructions.trim() || undefined,
       });
       setConfirmation(result);
@@ -171,6 +177,19 @@ export default function BookCollectionPage() {
                       onValueChange={value => setParcelSizeTier(value as ParcelSizeTier)}
                       options={SIZE_OPTIONS}
                       placeholder="Select a size"
+                    />
+                  )}
+                </Field>
+
+                <Field label="Number of parcels" hint="How many boxes we should collect (each gets its own label)" required>
+                  {p => (
+                    <Input
+                      {...p}
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={numberOfParcels}
+                      onChange={e => setNumberOfParcels(e.target.value)}
                     />
                   )}
                 </Field>

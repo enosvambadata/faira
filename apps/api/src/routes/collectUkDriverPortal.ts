@@ -43,6 +43,7 @@ function stopResponse(s: {
     collectionPostcode: string;
     destinationCountry: string;
     parcelSizeTier: string;
+    numberOfParcels: number;
     specialInstructions: string | null;
     company: { name: string };
   };
@@ -61,6 +62,7 @@ function stopResponse(s: {
     collectionPostcode: s.booking.collectionPostcode,
     destinationCountry: s.booking.destinationCountry,
     parcelSizeTier: s.booking.parcelSizeTier,
+    numberOfParcels: s.booking.numberOfParcels,
     specialInstructions: s.booking.specialInstructions,
   };
 }
