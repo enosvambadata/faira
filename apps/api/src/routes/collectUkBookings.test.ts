@@ -61,6 +61,7 @@ const VALID_BOOKING_BODY = {
   collectionPostcode: 'E1 6AN',
   preferredDate: '2026-08-01',
   parcelSizeTier: 'MEDIUM',
+  itemTypes: ['DRUM'],
 };
 
 beforeEach(() => {
@@ -163,6 +164,68 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
 
     expect(res.status).toBe(400);
     expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('stores item types, including vehicle detail and an "other" description', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, itemTypes: ['DRUM', 'VEHICLE', 'OTHER'], vehicleType: 'SUV', itemTypeOther: 'Kitchen unit' });
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        itemTypes: ['DRUM', 'VEHICLE', 'OTHER'],
+        vehicleType: 'SUV',
+        itemTypeOther: 'Kitchen unit',
+      }),
+    });
+  });
+
+  it('400s when no item type is selected', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, itemTypes: [] });
+
+    expect(res.status).toBe(400);
+    expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when OTHER is ticked without a description', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, itemTypes: ['OTHER'] });
+
+    expect(res.status).toBe(400);
+    expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when VEHICLE is ticked without a vehicle type', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, itemTypes: ['VEHICLE'] });
+
+    expect(res.status).toBe(400);
+    expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores stray vehicleType/itemTypeOther when their item types are not ticked', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, itemTypes: ['DRUM'], vehicleType: 'SUV', itemTypeOther: 'stray' });
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ vehicleType: undefined, itemTypeOther: undefined }),
+    });
   });
 
   it('still creates the booking when geocoding fails (best-effort)', async () => {

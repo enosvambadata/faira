@@ -12,6 +12,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
+import { describeItems } from "@/lib/collectUkItemLabels";
 import {
   collectUkCompanies,
   CollectUkCompany,
@@ -280,6 +281,12 @@ export default function CompanyDashboardPage() {
                       <p className="text-muted">
                         {b.collectionAddress}, {b.collectionPostcode} — collect by {formatDate(b.preferredDate)}
                       </p>
+                      {b.itemTypes.length > 0 && (
+                        <p className="text-muted">
+                          {b.numberOfParcels} parcel{b.numberOfParcels === 1 ? "" : "s"}:{" "}
+                          {describeItems(b.itemTypes, b.itemTypeOther, b.vehicleType)}
+                        </p>
+                      )}
                       {b.status === "AT_WAREHOUSE" && (
                         <Button
                           type="button"

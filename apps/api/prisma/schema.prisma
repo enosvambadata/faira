@@ -1480,6 +1480,25 @@ enum CollectUkBookingStatus {
   CLOSED
 }
 
+// What customers actually ship home -- drums, suitcases, white goods,
+// palletised loads, and whole vehicles. VEHICLE and OTHER carry extra
+// detail (vehicleType / itemTypeOther).
+enum CollectUkItemType {
+  DRUM
+  SUITCASE
+  FRIDGE
+  STOVE
+  PALLET
+  VEHICLE
+  OTHER
+}
+
+enum CollectUkVehicleType {
+  SEDAN
+  SUV
+  TRUCK
+}
+
 // The core object -- analogous to Fulfilment's Shipment, but
 // customer-initiated and address-based (collectionAddress/Postcode)
 // rather than seller-initiated and hub-based. customerUserId is nullable
@@ -1501,6 +1520,12 @@ model CollectUkCollectionBooking {
   // One booking can be several physical boxes -- each gets a printed
   // "i of N" label so none go missing between doorstep and warehouse.
   numberOfParcels     Int                      @default(1) @map("number_of_parcels")
+  // What's being sent (customer ticks at booking); empty for bookings
+  // that predate item types. OTHER requires itemTypeOther, VEHICLE
+  // requires vehicleType -- enforced at the API layer.
+  itemTypes           CollectUkItemType[]      @default([]) @map("item_types")
+  itemTypeOther       String?                  @map("item_type_other")
+  vehicleType         CollectUkVehicleType?    @map("vehicle_type")
   parcelWeightKg      Decimal?                 @map("parcel_weight_kg") @db.Decimal(6, 2)
   specialInstructions String?                  @map("special_instructions")
   // Geocoded from collectionPostcode at booking time (postcodes.io),

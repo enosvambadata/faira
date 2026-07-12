@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { FileUpload, UploadState } from "@/components/ui/FileUpload";
 import { useToast } from "@/components/ui/Toast";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
+import { describeItems } from "@/lib/collectUkItemLabels";
 import {
   collectUkDriverPortal,
   CollectUkDriverRouteDetail,
@@ -116,6 +117,16 @@ function StopCard({ stop, onResolved }: { stop: CollectUkDriverStop; onResolved:
         <div className="flex justify-between gap-4">
           <dt className="text-muted">Size</dt>
           <dd className="text-right text-text">{stop.parcelSizeTier.replaceAll("_", " ")}</dd>
+        </div>
+        {stop.itemTypes.length > 0 && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted">Items</dt>
+            <dd className="text-right text-text">{describeItems(stop.itemTypes, stop.itemTypeOther, stop.vehicleType)}</dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-4">
+          <dt className="text-muted">Parcels</dt>
+          <dd className="text-right text-text">{stop.numberOfParcels}</dd>
         </div>
         {stop.specialInstructions && (
           <div className="flex justify-between gap-4">

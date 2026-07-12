@@ -38,18 +38,30 @@ router.get('/book/:companySlug', publicRateLimiter, async (req: Request<{ compan
   });
 });
 
-const createBookingSchema = z.object({
-  customerName: z.string().trim().min(1).max(200),
-  customerContact: z.string().trim().min(1).max(50),
-  destinationCountry: z.string().trim().min(1).max(100),
-  collectionAddress: z.string().trim().min(1).max(300),
-  collectionPostcode: z.string().trim().min(1).max(20),
-  preferredDate: z.coerce.date(),
-  parcelSizeTier: z.enum(['SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE']),
-  numberOfParcels: z.number().int().min(1).max(50).default(1),
-  parcelWeightKg: z.number().positive().optional(),
-  specialInstructions: z.string().trim().max(1000).optional(),
-});
+const createBookingSchema = z
+  .object({
+    customerName: z.string().trim().min(1).max(200),
+    customerContact: z.string().trim().min(1).max(50),
+    destinationCountry: z.string().trim().min(1).max(100),
+    collectionAddress: z.string().trim().min(1).max(300),
+    collectionPostcode: z.string().trim().min(1).max(20),
+    preferredDate: z.coerce.date(),
+    parcelSizeTier: z.enum(['SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE']),
+    numberOfParcels: z.number().int().min(1).max(50).default(1),
+    itemTypes: z.array(z.enum(['DRUM', 'SUITCASE', 'FRIDGE', 'STOVE', 'PALLET', 'VEHICLE', 'OTHER'])).min(1),
+    itemTypeOther: z.string().trim().min(1).max(200).optional(),
+    vehicleType: z.enum(['SEDAN', 'SUV', 'TRUCK']).optional(),
+    parcelWeightKg: z.number().positive().optional(),
+    specialInstructions: z.string().trim().max(1000).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.itemTypes.includes('OTHER') && !data.itemTypeOther) {
+      ctx.addIssue({ code: 'custom', path: ['itemTypeOther'], message: 'Please describe the other item' });
+    }
+    if (data.itemTypes.includes('VEHICLE') && !data.vehicleType) {
+      ctx.addIssue({ code: 'custom', path: ['vehicleType'], message: 'Please choose the vehicle type' });
+    }
+  });
 
 router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ companySlug: string }>, res: Response, next: NextFunction) => {
   const parsed = createBookingSchema.safeParse(req.body);
@@ -98,6 +110,9 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
         preferredDate: parsed.data.preferredDate,
         parcelSizeTier: parsed.data.parcelSizeTier,
         numberOfParcels: parsed.data.numberOfParcels,
+        itemTypes: Array.from(new Set(parsed.data.itemTypes)),
+        itemTypeOther: parsed.data.itemTypes.includes('OTHER') ? parsed.data.itemTypeOther : undefined,
+        vehicleType: parsed.data.itemTypes.includes('VEHICLE') ? parsed.data.vehicleType : undefined,
         parcelWeightKg: parsed.data.parcelWeightKg,
         specialInstructions: parsed.data.specialInstructions,
         collectionLatitude: geo?.latitude,

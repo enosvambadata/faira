@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { collectUkDriverPortal, CollectUkDriverRouteDetail, FulfilmentApiError } from "@/lib/api";
+import { describeItems } from "@/lib/collectUkItemLabels";
 
 // Printable parcel labels for a route -- one label per physical parcel
 // per stop ("Parcel i of N"), printed by the driver before departure so
@@ -113,6 +114,14 @@ export default function RouteLabelsPage() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Destination</p>
                       <p className="font-semibold text-dark">{label.stop.destinationCountry}</p>
                     </div>
+                    {label.stop.itemTypes.length > 0 && (
+                      <div className="col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Contents</p>
+                        <p className="font-semibold text-dark">
+                          {describeItems(label.stop.itemTypes, label.stop.itemTypeOther, label.stop.vehicleType)}
+                        </p>
+                      </div>
+                    )}
                     <div className="col-span-2">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Collected from</p>
                       <p className="text-dark">

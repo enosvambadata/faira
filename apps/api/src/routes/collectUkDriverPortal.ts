@@ -44,6 +44,9 @@ function stopResponse(s: {
     destinationCountry: string;
     parcelSizeTier: string;
     numberOfParcels: number;
+    itemTypes: string[];
+    itemTypeOther: string | null;
+    vehicleType: string | null;
     specialInstructions: string | null;
     company: { name: string };
   };
@@ -63,6 +66,9 @@ function stopResponse(s: {
     destinationCountry: s.booking.destinationCountry,
     parcelSizeTier: s.booking.parcelSizeTier,
     numberOfParcels: s.booking.numberOfParcels,
+    itemTypes: s.booking.itemTypes,
+    itemTypeOther: s.booking.itemTypeOther,
+    vehicleType: s.booking.vehicleType,
     specialInstructions: s.booking.specialInstructions,
   };
 }

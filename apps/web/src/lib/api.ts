@@ -625,9 +625,15 @@ export interface CreateBookingPayload {
   preferredDate: string;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels?: number;
+  itemTypes: CollectUkItemType[];
+  itemTypeOther?: string;
+  vehicleType?: CollectUkVehicleType;
   parcelWeightKg?: number;
   specialInstructions?: string;
 }
+
+export type CollectUkItemType = "DRUM" | "SUITCASE" | "FRIDGE" | "STOVE" | "PALLET" | "VEHICLE" | "OTHER";
+export type CollectUkVehicleType = "SEDAN" | "SUV" | "TRUCK";
 
 export interface BookingConfirmation {
   reference: string;
@@ -646,6 +652,9 @@ export interface CollectUkBookingSummary {
   preferredDate: string;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels: number;
+  itemTypes: CollectUkItemType[];
+  itemTypeOther: string | null;
+  vehicleType: CollectUkVehicleType | null;
   createdAt: string;
 }
 
@@ -700,6 +709,9 @@ export interface CollectUkDriverStop {
   destinationCountry: string;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels: number;
+  itemTypes: CollectUkItemType[];
+  itemTypeOther: string | null;
+  vehicleType: CollectUkVehicleType | null;
   specialInstructions: string | null;
 }
 
