@@ -14,8 +14,13 @@ function hashCode(code: string): string {
 // principle as password hashing, per the schema's own comment. The
 // plaintext returned here exists in memory just long enough to be sent to
 // the buyer over SMS (see fulfilmentNotifications.notifyBuyerReadyForCollection)
-// and is never logged or stored anywhere else.
-export async function generateCollectionCode(tx: TxClient, shipmentId: string): Promise<string> {
+// and is never logged or stored anywhere else. expiresAt is also handed back
+// so the caller can mirror it onto Shipment.collectionWindowEndsAt -- the
+// buyer-facing "collect by" date is the same deadline as the code itself.
+export async function generateCollectionCode(
+  tx: TxClient,
+  shipmentId: string,
+): Promise<{ code: string; expiresAt: Date }> {
   const config = await tx.systemConfiguration.findUnique({
     where: { key: SYSTEM_CONFIG_KEYS.COLLECTION_CODE_EXPIRY_DAYS },
   });
@@ -28,5 +33,5 @@ export async function generateCollectionCode(tx: TxClient, shipmentId: string): 
     data: { shipmentId, codeHash: hashCode(code), expiresAt },
   });
 
-  return code;
+  return { code, expiresAt };
 }

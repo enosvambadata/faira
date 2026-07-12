@@ -20,7 +20,7 @@ describe('generateCollectionCode', () => {
   it('returns a 6-digit numeric plaintext code', async () => {
     systemConfigFindUniqueMock.mockResolvedValue({ value: '30' });
 
-    const code = await generateCollectionCode(fakeTx(), 'shipment-1');
+    const { code } = await generateCollectionCode(fakeTx(), 'shipment-1');
 
     expect(code).toMatch(/^\d{6}$/);
   });
@@ -28,7 +28,7 @@ describe('generateCollectionCode', () => {
   it('never persists the plaintext -- only a SHA-256 hash of it', async () => {
     systemConfigFindUniqueMock.mockResolvedValue({ value: '30' });
 
-    const code = await generateCollectionCode(fakeTx(), 'shipment-1');
+    const { code } = await generateCollectionCode(fakeTx(), 'shipment-1');
 
     expect(collectionCodeCreateMock).toHaveBeenCalledTimes(1);
     const createArgs = collectionCodeCreateMock.mock.calls[0][0];
@@ -41,11 +41,12 @@ describe('generateCollectionCode', () => {
     systemConfigFindUniqueMock.mockResolvedValue(null);
     const before = Date.now();
 
-    await generateCollectionCode(fakeTx(), 'shipment-1');
+    const { expiresAt } = await generateCollectionCode(fakeTx(), 'shipment-1');
 
     const createArgs = collectionCodeCreateMock.mock.calls[0][0];
-    const expiresAt: Date = createArgs.data.expiresAt;
+    const persistedExpiresAt: Date = createArgs.data.expiresAt;
     const expectedMs = before + 30 * 24 * 60 * 60 * 1000;
-    expect(Math.abs(expiresAt.getTime() - expectedMs)).toBeLessThan(5000);
+    expect(Math.abs(persistedExpiresAt.getTime() - expectedMs)).toBeLessThan(5000);
+    expect(expiresAt.getTime()).toBe(persistedExpiresAt.getTime());
   });
 });
