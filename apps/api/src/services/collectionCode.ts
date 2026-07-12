@@ -6,7 +6,10 @@ type TxClient = Prisma.TransactionClient;
 
 const DEFAULT_COLLECTION_CODE_EXPIRY_DAYS = 30;
 
-function hashCode(code: string): string {
+// Exported for reuse by the collection-verification endpoint (SCRUM-145),
+// which needs to hash a buyer-provided code the exact same way to compare
+// against the stored hash.
+export function hashCollectionCode(code: string): string {
   return createHash('sha256').update(code).digest('hex');
 }
 
@@ -30,7 +33,7 @@ export async function generateCollectionCode(
   const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
 
   await tx.collectionCode.create({
-    data: { shipmentId, codeHash: hashCode(code), expiresAt },
+    data: { shipmentId, codeHash: hashCollectionCode(code), expiresAt },
   });
 
   return { code, expiresAt };

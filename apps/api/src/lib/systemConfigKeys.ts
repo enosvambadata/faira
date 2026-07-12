@@ -8,4 +8,6 @@ export const SYSTEM_CONFIG_KEYS = {
   SHIPMENT_DROPOFF_DEADLINE_HOURS: 'shipment_dropoff_deadline_hours',
   COLLECTION_CODE_EXPIRY_DAYS: 'collection_code_expiry_days',
   MANIFEST_RECONCILIATION_THRESHOLD_HOURS: 'manifest_reconciliation_threshold_hours',
+  COLLECTION_CODE_MAX_ATTEMPTS: 'collection_code_max_attempts',
+  COLLECTION_ID_CHECK_VALUE_THRESHOLD: 'collection_id_check_value_threshold',
 } as const;

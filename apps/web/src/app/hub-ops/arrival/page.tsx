@@ -64,6 +64,9 @@ export default function HubOpsArrivalPage() {
             <Link href="/hub-ops/manifest" className="text-sm font-medium text-muted hover:text-text">
               Manifest
             </Link>
+            <Link href="/hub-ops/collect" className="text-sm font-medium text-muted hover:text-text">
+              Collect
+            </Link>
             <Button variant="ghost" size="md" onClick={handleSignOut}>
               Sign out
             </Button>

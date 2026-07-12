@@ -14,6 +14,11 @@ const parcelEvidenceCountMock = vi.fn();
 const parcelSealCreateMock = vi.fn();
 const signParcelEvidenceUploadMock = vi.fn();
 const hubFindUniqueMock = vi.fn();
+const collectionCodeFindUniqueMock = vi.fn();
+const collectionCodeUpdateMock = vi.fn();
+const collectionEventCreateMock = vi.fn();
+const systemConfigFindUniqueMock = vi.fn();
+const hashCollectionCodeMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -36,6 +41,12 @@ vi.mock('../prisma', () => ({
     },
     parcelSeal: { create: (...args: unknown[]) => parcelSealCreateMock(...args) },
     hub: { findUnique: (...args: unknown[]) => hubFindUniqueMock(...args) },
+    collectionCode: {
+      findUnique: (...args: unknown[]) => collectionCodeFindUniqueMock(...args),
+      update: (...args: unknown[]) => collectionCodeUpdateMock(...args),
+    },
+    collectionEvent: { create: (...args: unknown[]) => collectionEventCreateMock(...args) },
+    systemConfiguration: { findUnique: (...args: unknown[]) => systemConfigFindUniqueMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -46,6 +57,11 @@ vi.mock('../services/fulfilmentNotifications', () => ({
 
 vi.mock('../lib/cloudinary', () => ({
   signParcelEvidenceUpload: (...args: unknown[]) => signParcelEvidenceUploadMock(...args),
+  getParcelEvidenceViewUrl: (publicId: string) => `https://signed.example/${publicId}`,
+}));
+
+vi.mock('../services/collectionCode', () => ({
+  hashCollectionCode: (...args: unknown[]) => hashCollectionCodeMock(...args),
 }));
 
 const { createApp } = await import('../app');
@@ -64,6 +80,10 @@ beforeEach(() => {
   parcelEvidenceCreateManyMock.mockResolvedValue({ count: 1 });
   parcelEvidenceCountMock.mockResolvedValue(1);
   parcelSealCreateMock.mockResolvedValue({});
+  collectionCodeUpdateMock.mockResolvedValue({});
+  collectionEventCreateMock.mockResolvedValue({});
+  systemConfigFindUniqueMock.mockResolvedValue(null);
+  hashCollectionCodeMock.mockImplementation((code: string) => `hash(${code})`);
   signParcelEvidenceUploadMock.mockReturnValue({
     signature: 'sig',
     timestamp: 123,
@@ -88,6 +108,8 @@ beforeEach(() => {
       trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
       parcelEvidence: { createMany: (...args: unknown[]) => parcelEvidenceCreateManyMock(...args) },
       parcelSeal: { create: (...args: unknown[]) => parcelSealCreateMock(...args) },
+      collectionCode: { update: (...args: unknown[]) => collectionCodeUpdateMock(...args) },
+      collectionEvent: { create: (...args: unknown[]) => collectionEventCreateMock(...args) },
     }),
   );
 });
@@ -648,5 +670,323 @@ describe('GET /api/v1/fulfilment/hub-ops/shipments/:id/label', () => {
     const res = await request(app).get('/api/v1/fulfilment/hub-ops/shipments/shipment-1/label').set(AUTH_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+const READY_SHIPMENT = {
+  id: 'shipment-1',
+  reference: 'FF-HRE-000001',
+  status: 'READY_FOR_COLLECTION',
+  buyerName: 'Tendai Moyo',
+  buyerContact: '+263771234567',
+  declaredValue: { toString: () => '100' },
+  originHubId: HARARE_ID,
+  destinationHubId: BULAWAYO_ID,
+};
+
+const VALID_COLLECTION_CODE = {
+  id: 'code-1',
+  shipmentId: 'shipment-1',
+  codeHash: 'hash(123456)',
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  usedAt: null,
+  attempts: 0,
+};
+
+describe('GET /api/v1/fulfilment/hub-ops/shipments/search-at-destination', () => {
+  beforeEach(() => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: BULAWAYO_ID }]);
+  });
+
+  it('returns the shipment (with a requiresIdCheck flag) when assigned to its destination hub', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(READY_SHIPMENT);
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/fulfilment/hub-ops/shipments/search-at-destination')
+      .query({ reference: 'FF-HRE-000001' })
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.reference).toBe('FF-HRE-000001');
+    expect(res.body.data.requiresIdCheck).toBe(false);
+  });
+
+  it('flags requiresIdCheck true above the configured declared-value threshold', async () => {
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '500' });
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/fulfilment/hub-ops/shipments/search-at-destination')
+      .query({ reference: 'FF-HRE-000001' })
+      .set(AUTH_HEADER);
+
+    expect(res.body.data.requiresIdCheck).toBe(true);
+  });
+
+  it('403s when the agent is assigned to a different hub than the destination', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, destinationHubId: 'someone-elses-hub' });
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/v1/fulfilment/hub-ops/shipments/search-at-destination')
+      .query({ reference: 'FF-HRE-000001' })
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/v1/fulfilment/hub-ops/shipments/:id/collect', () => {
+  beforeEach(() => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: BULAWAYO_ID }]);
+    shipmentFindUniqueMock.mockResolvedValue(READY_SHIPMENT);
+    collectionCodeFindUniqueMock.mockResolvedValue(VALID_COLLECTION_CODE);
+  });
+
+  it('verifies the code and transitions READY_FOR_COLLECTION -> COLLECTED, creating a CollectionEvent', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('COLLECTED');
+    expect(shipmentUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'shipment-1', status: 'READY_FOR_COLLECTION' },
+      data: { status: 'COLLECTED' },
+    });
+    expect(collectionCodeUpdateMock).toHaveBeenCalledWith({ where: { id: 'code-1' }, data: { usedAt: expect.any(Date) } });
+    expect(collectionEventCreateMock).toHaveBeenCalledWith({
+      data: {
+        shipmentId: 'shipment-1',
+        verifiedById: AGENT_ID,
+        idCheckPerformed: false,
+        idCheckOverrideReason: null,
+        proofImageUrl: null,
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'FULFILMENT_PARCEL_COLLECTED' }) }),
+    );
+  });
+
+  it('passes an uploaded proofImageUrl through to the CollectionEvent', async () => {
+    const app = createApp();
+    await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: true, proofImageUrl: 'parcel-evidence/abc123' });
+
+    expect(collectionEventCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ proofImageUrl: 'parcel-evidence/abc123' }) }),
+    );
+  });
+
+  it('also allows collection from COLLECTION_OVERDUE', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, status: 'COLLECTION_OVERDUE' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('400s on a malformed code', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: 'abc', idCheckPerformed: false });
+
+    expect(res.status).toBe(400);
+    expect(collectionCodeFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('409s (not ready) when the shipment is not in a collectible status', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, status: 'IN_TRANSIT' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('403s when the agent is not assigned to the destination hub', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, destinationHubId: 'someone-elses-hub' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('404s when no collection code exists for this parcel', async () => {
+    collectionCodeFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('409s (reuse rejected) when the code has already been used', async () => {
+    collectionCodeFindUniqueMock.mockResolvedValue({ ...VALID_COLLECTION_CODE, usedAt: new Date() });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ALREADY_COLLECTED');
+  });
+
+  it('409s (expiry rejected) when the code has expired', async () => {
+    collectionCodeFindUniqueMock.mockResolvedValue({ ...VALID_COLLECTION_CODE, expiresAt: new Date(Date.now() - 1000) });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CODE_EXPIRED');
+  });
+
+  it('401s and increments attempts on an incorrect code', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '999999', idCheckPerformed: false });
+
+    expect(res.status).toBe(401);
+    expect(collectionCodeUpdateMock).toHaveBeenCalledWith({ where: { id: 'code-1' }, data: { attempts: { increment: 1 } } });
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('429s (brute-force limit) once attempts reach the configured maximum', async () => {
+    systemConfigFindUniqueMock.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'collection_code_max_attempts' ? { value: '3' } : null),
+    );
+    collectionCodeFindUniqueMock.mockResolvedValue({ ...VALID_COLLECTION_CODE, attempts: 3 });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(429);
+  });
+
+  it('400s (ID check required) for a high-value parcel with no ID check and no override', async () => {
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '500' });
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ID_CHECK_REQUIRED');
+    expect(shipmentUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('succeeds for a high-value parcel when the ID check was actually performed', async () => {
+    systemConfigFindUniqueMock.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'collection_id_check_value_threshold' ? { value: '500' } : null),
+    );
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: true });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a supervisor override with no reason for a high-value parcel', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_SUPERVISOR', hubId: BULAWAYO_ID }]);
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '500' });
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ID_CHECK_REQUIRED');
+  });
+
+  it('rejects an override reason from a plain HUB_AGENT (not a supervisor)', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_AGENT', hubId: BULAWAYO_ID }]);
+    systemConfigFindUniqueMock.mockResolvedValue({ value: '500' });
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false, idCheckOverrideReason: 'Buyer left ID at home, verified by phone' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ID_CHECK_REQUIRED');
+  });
+
+  it('allows a HUB_SUPERVISOR override with a recorded reason for a high-value parcel', async () => {
+    userRoleFindManyMock.mockResolvedValue([{ role: 'HUB_SUPERVISOR', hubId: BULAWAYO_ID }]);
+    systemConfigFindUniqueMock.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'collection_id_check_value_threshold' ? { value: '500' } : null),
+    );
+    shipmentFindUniqueMock.mockResolvedValue({ ...READY_SHIPMENT, declaredValue: { toString: () => '600' } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect')
+      .set(AUTH_HEADER)
+      .send({ code: '123456', idCheckPerformed: false, idCheckOverrideReason: 'Buyer left ID at home, verified by phone' });
+
+    expect(res.status).toBe(200);
+    expect(collectionEventCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ idCheckPerformed: false, idCheckOverrideReason: 'Buyer left ID at home, verified by phone' }),
+      }),
+    );
+  });
+
+  it('409s when two simultaneous collection attempts race -- only one succeeds', async () => {
+    shipmentUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    const app = createApp();
+    const [first, second] = await Promise.all([
+      request(app).post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect').set(AUTH_HEADER).send({ code: '123456', idCheckPerformed: false }),
+      request(app).post('/api/v1/fulfilment/hub-ops/shipments/shipment-1/collect').set(AUTH_HEADER).send({ code: '123456', idCheckPerformed: false }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
   });
 });
