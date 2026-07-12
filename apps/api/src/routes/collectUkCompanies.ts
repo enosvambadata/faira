@@ -319,4 +319,46 @@ router.get(
   },
 );
 
+// Operational, not a settings change -- COMPANY_ADMIN and DISPATCHER can
+// both confirm handover (unlike editing the company profile, which is
+// COMPANY_ADMIN only), since this is routine day-to-day warehouse work.
+router.post(
+  '/:id/bookings/:bookingId/confirm-handover',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string; bookingId: string } }, res: Response, next: NextFunction) => {
+    if (!isAssignedToCompany(req, req.params.id)) {
+      await recordAuditLog(req.userId!, 'COLLECT_UK_COMPANY_ASSIGNMENT_DENIED', {
+        targetCompanyId: req.params.id,
+        actualCompanyAssignments: (req.companyRoles ?? []).map(r => r.companyId),
+      });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const booking = await prisma.collectUkCollectionBooking.findUnique({ where: { id: req.params.bookingId } });
+    if (!booking || booking.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'Booking not found', 404));
+      return;
+    }
+    if (booking.status !== 'AT_WAREHOUSE') {
+      next(new ApiError('INVALID_STATE', 'This booking has not arrived at the warehouse yet', 409));
+      return;
+    }
+
+    const updateResult = await prisma.collectUkCollectionBooking.updateMany({
+      where: { id: booking.id, status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER' },
+    });
+    if (updateResult.count === 0) {
+      next(new ApiError('INVALID_STATE', 'This booking has not arrived at the warehouse yet', 409));
+      return;
+    }
+
+    await recordAuditLog(req.userId!, 'COLLECT_UK_HANDOVER_CONFIRMED', { companyId: req.params.id, bookingId: booking.id });
+
+    res.status(200).json({ data: { id: booking.id, status: 'HANDED_OVER' } });
+  },
+);
+
 export default router;

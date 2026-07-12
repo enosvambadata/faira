@@ -12,6 +12,8 @@ const warehouseFindUniqueMock = vi.fn();
 const warehouseCreateMock = vi.fn();
 const warehouseUpdateMock = vi.fn();
 const bookingFindManyMock = vi.fn();
+const bookingFindUniqueMock = vi.fn();
+const bookingUpdateManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 
@@ -38,7 +40,11 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => warehouseCreateMock(...args),
       update: (...args: unknown[]) => warehouseUpdateMock(...args),
     },
-    collectUkCollectionBooking: { findMany: (...args: unknown[]) => bookingFindManyMock(...args) },
+    collectUkCollectionBooking: {
+      findMany: (...args: unknown[]) => bookingFindManyMock(...args),
+      findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args),
+      updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
+    },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -71,6 +77,8 @@ beforeEach(() => {
   warehouseCreateMock.mockResolvedValue({});
   warehouseUpdateMock.mockResolvedValue({});
   bookingFindManyMock.mockResolvedValue([]);
+  bookingFindUniqueMock.mockResolvedValue(null);
+  bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCompany: { create: (...args: unknown[]) => companyCreateMock(...args) },
@@ -354,5 +362,99 @@ describe('GET /api/v1/collect-uk/companies/:id/bookings', () => {
     const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings`).set(AUTH_HEADER);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-handover', () => {
+  const BOOKING_ID = 'booking-1';
+  const AT_WAREHOUSE_BOOKING = { id: BOOKING_ID, companyId: COMPANY_A, status: 'AT_WAREHOUSE' };
+
+  it('confirms handover for a booking that has arrived at the warehouse', async () => {
+    bookingFindUniqueMock.mockResolvedValue(AT_WAREHOUSE_BOOKING);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: BOOKING_ID, status: 'HANDED_OVER' });
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID, status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER' },
+    });
+  });
+
+  it('allows a DISPATCHER (not just COMPANY_ADMIN) to confirm handover', async () => {
+    companyRoleFindManyMock.mockResolvedValue([{ role: 'DISPATCHER', companyId: COMPANY_A }]);
+    bookingFindUniqueMock.mockResolvedValue(AT_WAREHOUSE_BOOKING);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("403s (tenant isolation) confirming handover for another company's booking", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_B}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(bookingFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('404s when the booking does not belong to the company in the URL', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ id: BOOKING_ID, companyId: COMPANY_B, status: 'AT_WAREHOUSE' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('404s for a nonexistent booking', async () => {
+    bookingFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/nonexistent/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('409s when the booking has not yet arrived at the warehouse', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ id: BOOKING_ID, companyId: COMPANY_A, status: 'DRIVER_ASSIGNED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('409s when two simultaneous confirm attempts race -- only one succeeds', async () => {
+    bookingFindUniqueMock.mockResolvedValue(AT_WAREHOUSE_BOOKING);
+    bookingUpdateManyMock.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    const app = createApp();
+    const first = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+    const second = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
   });
 });
