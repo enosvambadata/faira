@@ -57,6 +57,7 @@ test.describe("Faira Collect UK guest booking", () => {
     await page.getByLabel("Preferred collection date").fill("2026-09-01");
     await page.getByLabel("Parcel size").click();
     await page.getByRole("option", { name: "Medium (microwave)" }).click();
+    await page.getByRole("checkbox", { name: "Drum(s)" }).click();
     await page.getByRole("button", { name: "Book collection" }).click();
 
     await expect(page.getByRole("heading", { name: "Booking confirmed" })).toBeVisible({ timeout: 15_000 });

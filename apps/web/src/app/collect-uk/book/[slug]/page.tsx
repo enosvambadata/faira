@@ -10,14 +10,18 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Package, CheckCircle, MessageSquare, Truck } from "@/components/ui/icons";
 import {
   collectUkBookings,
   CollectUkBookingCompany,
   BookingConfirmation,
   ParcelSizeTier,
+  CollectUkItemType,
+  CollectUkVehicleType,
   FulfilmentApiError,
 } from "@/lib/api";
+import { ITEM_TYPE_LABELS, VEHICLE_TYPE_LABELS } from "@/lib/collectUkItemLabels";
 
 const SIZE_OPTIONS: { value: ParcelSizeTier; label: string }[] = [
   { value: "SMALL", label: "Small (shoebox)" },
@@ -25,6 +29,12 @@ const SIZE_OPTIONS: { value: ParcelSizeTier; label: string }[] = [
   { value: "LARGE", label: "Large (suitcase)" },
   { value: "EXTRA_LARGE", label: "Extra large" },
 ];
+
+const ITEM_TYPE_ORDER: CollectUkItemType[] = ["DRUM", "SUITCASE", "FRIDGE", "STOVE", "PALLET", "VEHICLE", "OTHER"];
+
+const VEHICLE_OPTIONS: { value: CollectUkVehicleType; label: string }[] = (
+  ["SEDAN", "SUV", "TRUCK"] as CollectUkVehicleType[]
+).map(value => ({ value, label: VEHICLE_TYPE_LABELS[value] }));
 
 export default function BookCollectionPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -42,7 +52,14 @@ export default function BookCollectionPage() {
   const [preferredDate, setPreferredDate] = useState("");
   const [parcelSizeTier, setParcelSizeTier] = useState<ParcelSizeTier | undefined>(undefined);
   const [numberOfParcels, setNumberOfParcels] = useState("1");
+  const [itemTypes, setItemTypes] = useState<CollectUkItemType[]>([]);
+  const [itemTypeOther, setItemTypeOther] = useState("");
+  const [vehicleType, setVehicleType] = useState<CollectUkVehicleType | undefined>(undefined);
   const [specialInstructions, setSpecialInstructions] = useState("");
+
+  const toggleItemType = (type: CollectUkItemType, checked: boolean) => {
+    setItemTypes(prev => (checked ? [...prev, type] : prev.filter(t => t !== type)));
+  };
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -61,6 +78,11 @@ export default function BookCollectionPage() {
   const parsedParcelCount = Number.parseInt(numberOfParcels, 10);
   const parcelCountValid = Number.isInteger(parsedParcelCount) && parsedParcelCount >= 1 && parsedParcelCount <= 50;
 
+  const itemTypesValid =
+    itemTypes.length > 0 &&
+    (!itemTypes.includes("OTHER") || itemTypeOther.trim().length > 0) &&
+    (!itemTypes.includes("VEHICLE") || vehicleType);
+
   const canSubmit =
     customerName.trim() &&
     customerContact.trim() &&
@@ -69,7 +91,8 @@ export default function BookCollectionPage() {
     collectionPostcode.trim() &&
     preferredDate &&
     parcelSizeTier &&
-    parcelCountValid;
+    parcelCountValid &&
+    itemTypesValid;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -87,6 +110,9 @@ export default function BookCollectionPage() {
         preferredDate,
         parcelSizeTier,
         numberOfParcels: parsedParcelCount,
+        itemTypes,
+        itemTypeOther: itemTypes.includes("OTHER") ? itemTypeOther.trim() : undefined,
+        vehicleType: itemTypes.includes("VEHICLE") ? vehicleType : undefined,
         specialInstructions: specialInstructions.trim() || undefined,
       });
       setConfirmation(result);
@@ -180,6 +206,43 @@ export default function BookCollectionPage() {
                     />
                   )}
                 </Field>
+
+                <fieldset>
+                  <legend className="text-sm font-medium text-text">
+                    What are you sending? <span className="text-red">*</span>
+                  </legend>
+                  <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {ITEM_TYPE_ORDER.map(type => (
+                      <Checkbox
+                        key={type}
+                        id={`item-type-${type.toLowerCase()}`}
+                        checked={itemTypes.includes(type)}
+                        onCheckedChange={checked => toggleItemType(type, checked)}
+                        label={ITEM_TYPE_LABELS[type]}
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+
+                {itemTypes.includes("OTHER") && (
+                  <Field label="What is it?" hint="Describe the other item(s)" required>
+                    {p => <Input {...p} value={itemTypeOther} onChange={e => setItemTypeOther(e.target.value)} />}
+                  </Field>
+                )}
+
+                {itemTypes.includes("VEHICLE") && (
+                  <Field label="Vehicle type" required>
+                    {p => (
+                      <Select
+                        {...p}
+                        value={vehicleType}
+                        onValueChange={value => setVehicleType(value as CollectUkVehicleType)}
+                        options={VEHICLE_OPTIONS}
+                        placeholder="Select vehicle type"
+                      />
+                    )}
+                  </Field>
+                )}
 
                 <Field label="Number of parcels" hint="How many boxes we should collect (each gets its own label)" required>
                   {p => (

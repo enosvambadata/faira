@@ -315,6 +315,9 @@ router.get(
         preferredDate: b.preferredDate,
         parcelSizeTier: b.parcelSizeTier,
         numberOfParcels: b.numberOfParcels,
+        itemTypes: b.itemTypes,
+        itemTypeOther: b.itemTypeOther,
+        vehicleType: b.vehicleType,
         createdAt: b.createdAt,
       })),
     });
