@@ -8,6 +8,7 @@ const driverFindManyMock = vi.fn();
 const driverFindUniqueMock = vi.fn();
 const routeCreateMock = vi.fn();
 const routeFindUniqueMock = vi.fn();
+const routeFindManyMock = vi.fn();
 const bookingFindUniqueMock = vi.fn();
 const bookingFindManyMock = vi.fn();
 const bookingUpdateManyMock = vi.fn();
@@ -49,6 +50,7 @@ vi.mock('../prisma', () => ({
     collectUkCollectionRoute: {
       create: (...args: unknown[]) => routeCreateMock(...args),
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
+      findMany: (...args: unknown[]) => routeFindManyMock(...args),
       update: (...args: unknown[]) => routeUpdateMock(...args),
     },
     collectUkCollectionBooking: {
@@ -92,6 +94,7 @@ beforeEach(() => {
   auditLogCreateMock.mockResolvedValue({});
   notifyCollectionScheduledMock.mockResolvedValue(undefined);
   bookingUpdateMock.mockResolvedValue({});
+  routeFindManyMock.mockResolvedValue([]);
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
   geocodePostcodeMock.mockResolvedValue(null);
@@ -353,6 +356,44 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/stops', () => {
     ]);
 
     expect([first.status, second.status].sort()).toEqual([201, 409]);
+  });
+});
+
+describe('GET /api/v1/admin/collect-uk/routes', () => {
+  it('lists routes newest-first with driver and stop progress', async () => {
+    routeFindManyMock.mockResolvedValue([
+      {
+        id: ROUTE_ID,
+        routeDate: new Date('2026-08-01'),
+        status: 'IN_PROGRESS',
+        totalDistanceMiles: 7.1,
+        driverId: DRIVER_ID,
+        driver: { ...DRIVER, vehicleReference: 'VAN-1' },
+        stops: [{ status: 'COLLECTED' }, { status: 'PENDING' }],
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/routes').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({
+      id: ROUTE_ID,
+      status: 'IN_PROGRESS',
+      totalDistanceMiles: 7.1,
+      driverVehicleReference: 'VAN-1',
+      stopCount: 2,
+      pendingStopCount: 1,
+    });
+  });
+
+  it('fails closed without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/routes');
+
+    expect(res.status).toBe(401);
+    expect(routeFindManyMock).not.toHaveBeenCalled();
   });
 });
 
