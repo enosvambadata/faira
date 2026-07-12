@@ -7,9 +7,13 @@ type TxClient = Prisma.TransactionClient;
 // sitting at PLANNED forever -- mirrors Fulfilment's maybeMarkRunDeparted
 // pattern: the route implicitly starts on its first resolved stop, and
 // implicitly completes once every stop has an outcome.
-export async function advanceRouteProgress(tx: TxClient, routeId: string): Promise<void> {
+//
+// Returns the ids of bookings transitioned to AT_WAREHOUSE, so the caller
+// can send arrival notifications AFTER its transaction commits -- an SMS
+// must never fire for a transition that ends up rolled back.
+export async function advanceRouteProgress(tx: TxClient, routeId: string): Promise<string[]> {
   const route = await tx.collectUkCollectionRoute.findUnique({ where: { id: routeId } });
-  if (!route) return;
+  if (!route) return [];
 
   if (route.status === 'PLANNED') {
     await tx.collectUkCollectionRoute.updateMany({
@@ -36,12 +40,16 @@ export async function advanceRouteProgress(tx: TxClient, routeId: string): Promi
         where: { routeId, status: 'COLLECTED' },
         select: { bookingId: true },
       });
+      const arrivedBookingIds: string[] = [];
       for (const { bookingId } of collectedStops) {
-        await tx.collectUkCollectionBooking.updateMany({
+        const arrived = await tx.collectUkCollectionBooking.updateMany({
           where: { id: bookingId, status: 'COLLECTED' },
           data: { status: 'AT_WAREHOUSE' },
         });
+        if (arrived.count > 0) arrivedBookingIds.push(bookingId);
       }
+      return arrivedBookingIds;
     }
   }
+  return [];
 }

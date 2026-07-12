@@ -5,6 +5,7 @@ import { prisma } from '../prisma';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { notifyCollectionScheduled } from '../services/collectUkNotifications';
 
 const router = Router();
 
@@ -215,6 +216,7 @@ router.post(
       });
 
       await recordAuditLog(route.driver.userId, 'COLLECT_UK_STOP_ASSIGNED', { routeId: route.id, bookingId: booking.id });
+      await notifyCollectionScheduled(booking.id, route.routeDate);
       res.status(201).json({ data: stop });
     } catch (err) {
       if (err instanceof BookingTransitionConflict) {

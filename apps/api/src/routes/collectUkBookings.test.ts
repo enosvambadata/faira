@@ -7,6 +7,16 @@ const warehouseFindFirstMock = vi.fn();
 const bookingCreateMock = vi.fn();
 const bookingFindUniqueMock = vi.fn();
 const transactionMock = vi.fn();
+const notifyBookingConfirmedMock = vi.fn();
+
+vi.mock('../services/collectUkNotifications', () => ({
+  notifyBookingConfirmed: (...args: unknown[]) => notifyBookingConfirmedMock(...args),
+  notifyCollectionScheduled: vi.fn(),
+  notifyParcelCollected: vi.fn(),
+  notifyUnableToCollect: vi.fn(),
+  notifyArrivedAtWarehouse: vi.fn(),
+  notifyHandedOver: vi.fn(),
+}));
 
 vi.mock('../prisma', () => ({
   prisma: {
@@ -52,6 +62,7 @@ beforeEach(() => {
   process.env.COLLECT_UK_TRACKING_TOKEN_SECRET = 'test-collect-uk-tracking-secret';
   companyFindUniqueMock.mockResolvedValue(COMPANY);
   warehouseFindFirstMock.mockResolvedValue(WAREHOUSE);
+  notifyBookingConfirmedMock.mockResolvedValue(undefined);
   companyUpdateMock.mockResolvedValue({ ...COMPANY, nextBookingSequence: 6 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
@@ -110,6 +121,7 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
         destinationCountry: 'Zimbabwe',
       }),
     });
+    expect(notifyBookingConfirmedMock).toHaveBeenCalledWith('booking-1');
   });
 
   it('400s on an invalid body', async () => {
@@ -120,6 +132,7 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
 
     expect(res.status).toBe(400);
     expect(bookingCreateMock).not.toHaveBeenCalled();
+    expect(notifyBookingConfirmedMock).not.toHaveBeenCalled();
   });
 
   it('404s for a nonexistent company', async () => {

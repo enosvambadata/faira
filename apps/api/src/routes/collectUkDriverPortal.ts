@@ -7,6 +7,7 @@ import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { advanceRouteProgress } from '../services/collectUkRouteProgress';
 import { signCollectUkProofUpload } from '../lib/cloudinary';
+import { notifyParcelCollected, notifyUnableToCollect, notifyArrivedAtWarehouse } from '../services/collectUkNotifications';
 
 const router = Router();
 
@@ -128,8 +129,9 @@ router.post(
       return;
     }
 
+    let arrivedBookingIds: string[];
     try {
-      await prisma.$transaction(async tx => {
+      arrivedBookingIds = await prisma.$transaction(async tx => {
         const stopUpdate = await tx.collectUkCollectionStop.updateMany({
           where: { id: stop.id, status: 'PENDING' },
           data: {
@@ -147,7 +149,7 @@ router.post(
         });
         if (bookingUpdate.count === 0) throw new StopTransitionConflict();
 
-        await advanceRouteProgress(tx, stop.routeId);
+        return advanceRouteProgress(tx, stop.routeId);
       });
     } catch (err) {
       if (err instanceof StopTransitionConflict) {
@@ -158,6 +160,10 @@ router.post(
     }
 
     await recordAuditLog(req.userId!, 'COLLECT_UK_STOP_COLLECTED', { stopId: stop.id, bookingId: stop.bookingId });
+    await notifyParcelCollected(stop.bookingId);
+    for (const bookingId of arrivedBookingIds) {
+      await notifyArrivedAtWarehouse(bookingId);
+    }
     res.status(200).json({ data: { id: stop.id, status: 'COLLECTED' } });
   },
 );
@@ -189,8 +195,9 @@ router.post(
       return;
     }
 
+    let arrivedBookingIds: string[];
     try {
-      await prisma.$transaction(async tx => {
+      arrivedBookingIds = await prisma.$transaction(async tx => {
         const stopUpdate = await tx.collectUkCollectionStop.updateMany({
           where: { id: stop.id, status: 'PENDING' },
           data: { status: 'UNABLE_TO_COLLECT', failureReason: parsed.data.failureReason, completedAt: new Date() },
@@ -203,7 +210,7 @@ router.post(
         });
         if (bookingUpdate.count === 0) throw new StopTransitionConflict();
 
-        await advanceRouteProgress(tx, stop.routeId);
+        return advanceRouteProgress(tx, stop.routeId);
       });
     } catch (err) {
       if (err instanceof StopTransitionConflict) {
@@ -218,6 +225,12 @@ router.post(
       bookingId: stop.bookingId,
       reason: parsed.data.failureReason,
     });
+    await notifyUnableToCollect(stop.bookingId, parsed.data.failureReason);
+    // A failed stop can still be the route's last unresolved one -- the
+    // OTHER bookings collected earlier on the route arrive regardless.
+    for (const bookingId of arrivedBookingIds) {
+      await notifyArrivedAtWarehouse(bookingId);
+    }
     res.status(200).json({ data: { id: stop.id, status: 'UNABLE_TO_COLLECT' } });
   },
 );

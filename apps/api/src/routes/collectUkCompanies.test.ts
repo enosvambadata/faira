@@ -16,6 +16,16 @@ const bookingFindUniqueMock = vi.fn();
 const bookingUpdateManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
+const notifyHandedOverMock = vi.fn();
+
+vi.mock('../services/collectUkNotifications', () => ({
+  notifyBookingConfirmed: vi.fn(),
+  notifyCollectionScheduled: vi.fn(),
+  notifyParcelCollected: vi.fn(),
+  notifyUnableToCollect: vi.fn(),
+  notifyArrivedAtWarehouse: vi.fn(),
+  notifyHandedOver: (...args: unknown[]) => notifyHandedOverMock(...args),
+}));
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: { auth: { getUser: (...args: unknown[]) => getUserMock(...args) } },
@@ -79,6 +89,7 @@ beforeEach(() => {
   bookingFindManyMock.mockResolvedValue([]);
   bookingFindUniqueMock.mockResolvedValue(null);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
+  notifyHandedOverMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCompany: { create: (...args: unknown[]) => companyCreateMock(...args) },
@@ -383,6 +394,7 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-hand
       where: { id: BOOKING_ID, status: 'AT_WAREHOUSE' },
       data: { status: 'HANDED_OVER' },
     });
+    expect(notifyHandedOverMock).toHaveBeenCalledWith(BOOKING_ID);
   });
 
   it('allows a DISPATCHER (not just COMPANY_ADMIN) to confirm handover', async () => {
@@ -440,6 +452,7 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-hand
 
     expect(res.status).toBe(409);
     expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyHandedOverMock).not.toHaveBeenCalled();
   });
 
   it('409s when two simultaneous confirm attempts race -- only one succeeds', async () => {
