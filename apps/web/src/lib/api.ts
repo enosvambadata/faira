@@ -382,6 +382,9 @@ export const shipments = {
 
   confirm: (id: string) =>
     request<ShipmentConfirmation>(`/api/v1/fulfilment/shipments/${id}/confirm`, { method: "POST", auth: true }),
+
+  getTrackingLink: (id: string) =>
+    request<{ token: string; url: string }>(`/api/v1/fulfilment/shipments/${id}/tracking-link`, { auth: true }),
 };
 
 export interface TransportRoute {
@@ -487,6 +490,20 @@ export const manifests = {
       body: { reference },
       auth: true,
     }),
+};
+
+export interface BuyerTrackingInfo {
+  status: string;
+  originHub: { name: string; city: string };
+  destinationHub: { name: string; city: string; address: string; openingHours: string };
+  estimatedCollectionDate: string | null;
+  paymentComplete: boolean;
+}
+
+// Public and unauthenticated -- no Supabase session involved, since buyers
+// have no account. Uses request<T>() with auth omitted (defaults to false).
+export const tracking = {
+  get: (token: string) => request<BuyerTrackingInfo>(`/api/v1/fulfilment/tracking/${encodeURIComponent(token)}`),
 };
 
 export { ApiError as FulfilmentApiError };

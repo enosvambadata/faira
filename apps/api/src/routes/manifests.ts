@@ -687,7 +687,12 @@ router.post(
 
         await tx.manifestParcel.update({ where: { id: manifestParcel.id }, data: { scannedInAt: new Date() } });
 
-        plaintextCode = await generateCollectionCode(tx, shipment.id);
+        const collectionCode = await generateCollectionCode(tx, shipment.id);
+        plaintextCode = collectionCode.code;
+        await tx.shipment.update({
+          where: { id: shipment.id },
+          data: { collectionWindowEndsAt: collectionCode.expiresAt },
+        });
       });
     } catch (err) {
       if (err instanceof ManifestTransitionConflict) {

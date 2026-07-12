@@ -259,6 +259,42 @@ describe('GET /api/v1/fulfilment/shipments/:id', () => {
   });
 });
 
+describe('GET /api/v1/fulfilment/shipments/:id/tracking-link', () => {
+  beforeEach(() => {
+    process.env.TRACKING_TOKEN_SECRET = 'test-tracking-secret';
+  });
+
+  it('returns a tracking token and URL for the owning seller', async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: SELLER_ID });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/tracking-link').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.data.token).toBe('string');
+    expect(res.body.data.url).toContain(res.body.data.token);
+    expect(res.body.data.url).toMatch(/\/track\//);
+  });
+
+  it("403s when the shipment belongs to a different seller", async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: 'shipment-1', sellerId: 'someone-else' });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/shipment-1/tracking-link').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('404s for a nonexistent shipment', async () => {
+    shipmentFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/fulfilment/shipments/nonexistent/tracking-link').set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('GET /api/v1/fulfilment/shipments/:id/quote', () => {
   it('returns the exact-match pricing rule fee for a draft shipment', async () => {
     shipmentFindUniqueMock.mockResolvedValue({

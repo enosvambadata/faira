@@ -24,6 +24,7 @@ const manifestParcelDeleteMock = vi.fn();
 const manifestParcelUpdateMock = vi.fn();
 const manifestParcelCountMock = vi.fn();
 const runUpdateManyMock = vi.fn();
+const shipmentUpdateMock = vi.fn();
 const systemConfigFindUniqueMock = vi.fn();
 const generateCollectionCodeMock = vi.fn();
 const notifyBuyerReadyForCollectionMock = vi.fn();
@@ -51,6 +52,7 @@ vi.mock('../prisma', () => ({
     shipment: {
       findUnique: (...args: unknown[]) => shipmentFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args),
+      update: (...args: unknown[]) => shipmentUpdateMock(...args),
     },
     trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
     manifestParcel: {
@@ -103,12 +105,16 @@ beforeEach(() => {
   manifestParcelCountMock.mockResolvedValue(0);
   manifestParcelFindManyMock.mockResolvedValue([]);
   runUpdateManyMock.mockResolvedValue({ count: 1 });
+  shipmentUpdateMock.mockResolvedValue({});
   systemConfigFindUniqueMock.mockResolvedValue(null);
-  generateCollectionCodeMock.mockResolvedValue('123456');
+  generateCollectionCodeMock.mockResolvedValue({ code: '123456', expiresAt: new Date('2026-09-01T00:00:00Z') });
   notifyBuyerReadyForCollectionMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
-      shipment: { updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args) },
+      shipment: {
+        updateMany: (...args: unknown[]) => shipmentUpdateManyMock(...args),
+        update: (...args: unknown[]) => shipmentUpdateMock(...args),
+      },
       trackingEvent: { create: (...args: unknown[]) => trackingEventCreateMock(...args) },
       manifestParcel: {
         create: (...args: unknown[]) => manifestParcelCreateMock(...args),
@@ -757,6 +763,10 @@ describe('POST /api/v1/fulfilment/manifests/scan-in', () => {
     });
     expect(manifestParcelUpdateMock).toHaveBeenCalledWith({ where: { id: 'mp-1' }, data: { scannedInAt: expect.any(Date) } });
     expect(generateCollectionCodeMock).toHaveBeenCalledWith(expect.anything(), SHIPMENT_ID);
+    expect(shipmentUpdateMock).toHaveBeenCalledWith({
+      where: { id: SHIPMENT_ID },
+      data: { collectionWindowEndsAt: new Date('2026-09-01T00:00:00Z') },
+    });
     expect(notifyBuyerReadyForCollectionMock).toHaveBeenCalledWith(SHIPMENT_ID, '123456');
   });
 

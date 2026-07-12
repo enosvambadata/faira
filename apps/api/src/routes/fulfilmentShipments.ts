@@ -9,6 +9,7 @@ import { calculateShipmentQuote } from '../services/shipmentQuote';
 import { canTransition, displayStatus } from '../lib/shipmentStateMachine';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { generateShipmentReference } from '../services/shipmentReference';
+import { generateTrackingToken } from '../lib/trackingToken';
 
 const router = Router();
 
@@ -160,6 +161,33 @@ router.get(
         dropoffDeadline: shipment.dropoffDeadline,
         createdAt: shipment.createdAt,
       },
+    });
+  },
+);
+
+// Lets a seller fetch (and re-fetch) the buyer's tracking link without
+// needing to intercept the SMS the buyer was actually sent -- useful for
+// support/testing, and for a seller who wants to resend it themselves.
+router.get(
+  '/:id/tracking-link',
+  requireAuth,
+  requireFulfilmentRole('SELLER'),
+  async (req: AuthenticatedRequest & Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const shipment = await prisma.shipment.findUnique({ where: { id: req.params.id } });
+    if (!shipment) {
+      next(new ApiError('NOT_FOUND', 'Shipment not found', 404));
+      return;
+    }
+    if (shipment.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Not your shipment', 403));
+      return;
+    }
+
+    const token = generateTrackingToken(shipment.id);
+    const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3100';
+
+    res.status(200).json({
+      data: { token, url: `${webAppUrl}/track/${token}` },
     });
   },
 );
