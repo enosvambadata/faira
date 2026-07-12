@@ -25,6 +25,8 @@ import hubOpsRouter from './routes/hubOps';
 import transportRouter from './routes/transport';
 import manifestsRouter from './routes/manifests';
 import trackingRouter from './routes/tracking';
+import collectUkCompaniesRouter from './routes/collectUkCompanies';
+import collectUkCompanyRolesRouter from './routes/collectUkCompanyRoles';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -70,6 +72,8 @@ export function createApp(): Express {
   app.use('/api/v1/fulfilment/transport', transportRouter);
   app.use('/api/v1/fulfilment/manifests', manifestsRouter);
   app.use('/api/v1/fulfilment/tracking', trackingRouter);
+  app.use('/api/v1/collect-uk/companies', collectUkCompaniesRouter);
+  app.use('/api/v1/admin/collect-uk/company-roles', collectUkCompanyRolesRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
