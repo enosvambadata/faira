@@ -10,6 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createClient } from "@/lib/supabase";
 import { collectUkDriverPortal, CollectUkDriverRoute, FulfilmentApiError } from "@/lib/api";
+import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 const ROUTE_STATUS_TONE: Record<CollectUkDriverRoute["status"], "neutral" | "info" | "success"> = {
   PLANNED: "neutral",
@@ -48,7 +49,7 @@ export default function DriverRoutesPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
-          <span className="text-lg font-semibold text-primary">Faira Collect — Driver</span>
+          <CollectBrand suffix="Driver" />
           <Button variant="ghost" size="md" onClick={handleSignOut}>
             Sign out
           </Button>

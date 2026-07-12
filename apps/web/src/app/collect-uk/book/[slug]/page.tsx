@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Package, CheckCircle, MessageSquare, Truck } from "@/components/ui/icons";
 import {
   collectUkBookings,
   CollectUkBookingCompany,
@@ -93,8 +94,11 @@ export default function BookCollectionPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
-        <div className="mx-auto max-w-2xl px-6 py-3">
-          <span className="text-lg font-semibold text-primary">Faira Collect</span>
+        <div className="mx-auto flex max-w-2xl items-center gap-2.5 px-6 py-3.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-dark text-white">
+            <Package size={17} />
+          </span>
+          <span className="text-lg font-semibold text-text">Faira Collect</span>
         </div>
       </header>
 
@@ -112,6 +116,18 @@ export default function BookCollectionPage() {
           <>
             <h1 className="text-xl font-semibold text-text">Book a collection with {company.name}</h1>
             <p className="mt-1 text-sm text-muted">A Faira driver will collect your parcel and deliver it to {company.name}.</p>
+
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <MessageSquare size={15} className="text-primary" /> SMS updates at every step
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Truck size={15} className="text-primary" /> Doorstep collection
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle size={15} className="text-primary" /> No account needed
+              </span>
+            </div>
 
             <Card className="mt-6">
               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -174,16 +190,31 @@ export default function BookCollectionPage() {
         )}
 
         {confirmation && (
-          <Card className="mt-6 flex flex-col gap-3">
+          <Card className="mt-6 flex flex-col items-center gap-3 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-green/10 text-green">
+              <CheckCircle size={30} />
+            </span>
             <h1 className="text-xl font-semibold text-text">Booking confirmed</h1>
-            <p className="text-sm text-muted">Your reference is:</p>
-            <p className="font-mono text-lg font-semibold text-text">{confirmation.reference}</p>
-            <Alert tone="success">
-              Save your tracking link:{" "}
-              <a href={confirmation.trackingUrl} className="font-medium underline">
-                {confirmation.trackingUrl}
-              </a>
-            </Alert>
+            <p className="text-sm text-muted">Your reference is</p>
+            <p className="rounded-md bg-light px-4 py-2 font-mono text-lg font-semibold tracking-wide text-text">
+              {confirmation.reference}
+            </p>
+            <div className="w-full text-left">
+              <Alert tone="success">
+                Save your tracking link:{" "}
+                <a href={confirmation.trackingUrl} className="cursor-pointer font-medium underline break-all">
+                  {confirmation.trackingUrl}
+                </a>
+              </Alert>
+            </div>
+            <div className="mt-1 w-full rounded-md border border-border bg-bg p-4 text-left">
+              <p className="text-sm font-semibold text-text">What happens next</p>
+              <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 text-sm leading-relaxed text-muted">
+                <li>We&rsquo;ll text you when your collection is scheduled.</li>
+                <li>A Faira driver collects your parcel from your doorstep.</li>
+                <li>You&rsquo;re notified the moment it reaches the warehouse.</li>
+              </ol>
+            </div>
           </Card>
         )}
       </main>
