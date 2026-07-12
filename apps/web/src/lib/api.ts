@@ -599,6 +599,68 @@ export const collectUkCompanies = {
       body: payload,
       auth: true,
     }),
+
+  listBookings: (id: string) =>
+    request<CollectUkBookingSummary[]>(`/api/v1/collect-uk/companies/${id}/bookings`, { auth: true }),
+};
+
+export interface CollectUkBookingCompany {
+  id: string;
+  name: string;
+  countriesServed: string[];
+}
+
+export interface CreateBookingPayload {
+  customerName: string;
+  customerContact: string;
+  destinationCountry: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  preferredDate: string;
+  parcelSizeTier: ParcelSizeTier;
+  parcelWeightKg?: number;
+  specialInstructions?: string;
+}
+
+export interface BookingConfirmation {
+  reference: string;
+  trackingUrl: string;
+}
+
+export interface CollectUkBookingSummary {
+  id: string;
+  reference: string | null;
+  status: string;
+  customerName: string;
+  customerContact: string;
+  destinationCountry: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  preferredDate: string;
+  parcelSizeTier: ParcelSizeTier;
+  createdAt: string;
+}
+
+export interface CollectUkBookingTrackingInfo {
+  reference: string;
+  status: string;
+  companyName: string;
+  destinationCountry: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  preferredDate: string;
+}
+
+// Public and unauthenticated -- no Faira account for guest customers, per
+// the Collect UK ADR/reuse assessment's "guest booking" decision.
+export const collectUkBookings = {
+  getCompany: (slug: string) => request<CollectUkBookingCompany>(`/api/v1/collect-uk/book/${encodeURIComponent(slug)}`),
+
+  create: (slug: string, payload: CreateBookingPayload) =>
+    request<BookingConfirmation>(`/api/v1/collect-uk/book/${encodeURIComponent(slug)}`, { method: "POST", body: payload }),
+
+  track: (token: string) =>
+    request<CollectUkBookingTrackingInfo>(`/api/v1/collect-uk/tracking/${encodeURIComponent(token)}`),
 };
 
 export { ApiError as FulfilmentApiError };

@@ -1371,6 +1371,11 @@ model CollectUkCompany {
   slug            String   @unique
   countriesServed String[] @map("countries_served")
   isActive        Boolean  @default(true) @map("is_active")
+  // Atomically incremented each time a booking is created for this
+  // company -- mirrors Hub.nextShipmentSequence's pattern, giving each
+  // booking reference a short, human-readable, per-company sequence
+  // rather than a raw UUID.
+  nextBookingSequence Int  @default(1) @map("next_booking_sequence")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -1488,6 +1493,7 @@ model CollectUkCollectionBooking {
   customerUserId      String?                  @map("customer_user_id") @db.Uuid
   customerName        String                   @map("customer_name")
   customerContact     String                   @map("customer_contact")
+  destinationCountry  String                   @map("destination_country")
   collectionAddress   String                   @map("collection_address")
   collectionPostcode  String                   @map("collection_postcode")
   preferredDate       DateTime                 @map("preferred_date")
