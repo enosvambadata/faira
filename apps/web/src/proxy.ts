@@ -51,8 +51,16 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isPublicOnly && user) {
+    // Honour the redirect/next param an already-authenticated visitor
+    // arrived with (e.g. the Collect UK welcome page's "Register your
+    // company" button sends them through /signup?redirect=... even if
+    // they're still logged in from an earlier session) -- falling back
+    // to /dashboard only when neither is present, matching this proxy's
+    // original single-product behaviour.
+    const destination = request.nextUrl.searchParams.get("redirect") || request.nextUrl.searchParams.get("next") || "/dashboard";
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = destination;
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
