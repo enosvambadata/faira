@@ -190,7 +190,7 @@ test.describe("buyer tracking page", () => {
     // --- Buyer (no account, no auth) views the public tracking page ---
     await page.goto(`/track/${token}`);
 
-    await expect(page.getByText("Ready for collection")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Ready for collection").first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(harare.city, { exact: false }).first()).toBeVisible();
     await expect(page.getByText(bulawayo.city, { exact: false }).first()).toBeVisible();
     await expect(page.getByText("ready for collection. Bring your collection code")).toBeVisible();
