@@ -22,9 +22,26 @@ export async function advanceRouteProgress(tx: TxClient, routeId: string): Promi
     where: { routeId, status: 'PENDING' },
   });
   if (pendingCount === 0) {
-    await tx.collectUkCollectionRoute.updateMany({
+    const completedResult = await tx.collectUkCollectionRoute.updateMany({
       where: { id: routeId, status: 'IN_PROGRESS' },
       data: { status: 'COMPLETED' },
     });
+
+    // The real-world moment every parcel collected on this route has
+    // physically reached the destination -- driven by route completion,
+    // not a separate manual step, mirroring Fulfilment's
+    // maybeMarkRunDeparted retrofit for the IN_TRANSIT transition.
+    if (completedResult.count > 0) {
+      const collectedStops = await tx.collectUkCollectionStop.findMany({
+        where: { routeId, status: 'COLLECTED' },
+        select: { bookingId: true },
+      });
+      for (const { bookingId } of collectedStops) {
+        await tx.collectUkCollectionBooking.updateMany({
+          where: { id: bookingId, status: 'COLLECTED' },
+          data: { status: 'AT_WAREHOUSE' },
+        });
+      }
+    }
   }
 }

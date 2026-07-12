@@ -47,6 +47,7 @@ export default function CompanyDashboardPage() {
   const [whHours, setWhHours] = useState("");
   const [addingWarehouse, setAddingWarehouse] = useState(false);
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
+  const [confirmingHandoverId, setConfirmingHandoverId] = useState<string | null>(null);
 
   const isAdmin = myRole === "COMPANY_ADMIN";
 
@@ -116,6 +117,20 @@ export default function CompanyDashboardPage() {
       setWarehouseError(err instanceof FulfilmentApiError ? err.message : "Could not add this warehouse right now.");
     } finally {
       setAddingWarehouse(false);
+    }
+  };
+
+  const handleConfirmHandover = async (bookingId: string) => {
+    if (!company) return;
+    setConfirmingHandoverId(bookingId);
+    try {
+      await collectUkCompanies.confirmHandover(company.id, bookingId);
+      setBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, status: "HANDED_OVER" } : b)));
+      toast({ title: "Handover confirmed", tone: "success" });
+    } catch (err) {
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not confirm handover right now.", tone: "error" });
+    } finally {
+      setConfirmingHandoverId(null);
     }
   };
 
@@ -264,6 +279,17 @@ export default function CompanyDashboardPage() {
                       <p className="text-muted">
                         {b.collectionAddress}, {b.collectionPostcode} — collect by {formatDate(b.preferredDate)}
                       </p>
+                      {b.status === "AT_WAREHOUSE" && (
+                        <Button
+                          type="button"
+                          size="md"
+                          className="mt-2"
+                          loading={confirmingHandoverId === b.id}
+                          onClick={() => handleConfirmHandover(b.id)}
+                        >
+                          Confirm handover
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>

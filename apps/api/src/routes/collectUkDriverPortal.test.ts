@@ -9,6 +9,7 @@ const routeUpdateManyMock = vi.fn();
 const stopFindUniqueMock = vi.fn();
 const stopUpdateManyMock = vi.fn();
 const stopCountMock = vi.fn();
+const stopFindManyMock = vi.fn();
 const bookingUpdateManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
@@ -31,6 +32,7 @@ vi.mock('../prisma', () => ({
       findUnique: (...args: unknown[]) => stopFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => stopUpdateManyMock(...args),
       count: (...args: unknown[]) => stopCountMock(...args),
+      findMany: (...args: unknown[]) => stopFindManyMock(...args),
     },
     collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
@@ -68,6 +70,7 @@ function txStub() {
     collectUkCollectionStop: {
       updateMany: (...args: unknown[]) => stopUpdateManyMock(...args),
       count: (...args: unknown[]) => stopCountMock(...args),
+      findMany: (...args: unknown[]) => stopFindManyMock(...args),
     },
     collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
     collectUkCollectionRoute: {
@@ -87,6 +90,7 @@ beforeEach(() => {
   stopFindUniqueMock.mockResolvedValue(STOP);
   stopUpdateManyMock.mockResolvedValue({ count: 1 });
   stopCountMock.mockResolvedValue(0);
+  stopFindManyMock.mockResolvedValue([]);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   auditLogCreateMock.mockResolvedValue({});
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(txStub()));
@@ -251,6 +255,39 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/collect', () => {
     await request(app).post(`/api/v1/collect-uk/driver/stops/${STOP_ID}/collect`).set(AUTH_HEADER).send({});
 
     expect(routeUpdateManyMock).toHaveBeenCalledWith({ where: { id: ROUTE_ID, status: 'IN_PROGRESS' }, data: { status: 'COMPLETED' } });
+  });
+
+  it('bulk-transitions every COLLECTED booking on the route to AT_WAREHOUSE once the route completes', async () => {
+    routeFindUniqueMock.mockResolvedValue({ ...ROUTE, status: 'IN_PROGRESS' });
+    stopCountMock.mockResolvedValue(0); // no more pending stops
+    routeUpdateManyMock.mockResolvedValue({ count: 1 }); // COMPLETED transition actually matched
+    const otherBookingId = '55555555-5555-4555-8555-555555555555';
+    stopFindManyMock.mockResolvedValue([{ bookingId: BOOKING_ID }, { bookingId: otherBookingId }]);
+
+    const app = createApp();
+    await request(app).post(`/api/v1/collect-uk/driver/stops/${STOP_ID}/collect`).set(AUTH_HEADER).send({});
+
+    expect(stopFindManyMock).toHaveBeenCalledWith({
+      where: { routeId: ROUTE_ID, status: 'COLLECTED' },
+      select: { bookingId: true },
+    });
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID, status: 'COLLECTED' },
+      data: { status: 'AT_WAREHOUSE' },
+    });
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: otherBookingId, status: 'COLLECTED' },
+      data: { status: 'AT_WAREHOUSE' },
+    });
+  });
+
+  it('does not bulk-transition bookings when the route does not complete', async () => {
+    stopCountMock.mockResolvedValue(1); // still a pending stop -- route stays IN_PROGRESS
+
+    const app = createApp();
+    await request(app).post(`/api/v1/collect-uk/driver/stops/${STOP_ID}/collect`).set(AUTH_HEADER).send({});
+
+    expect(stopFindManyMock).not.toHaveBeenCalled();
   });
 });
 

@@ -602,6 +602,12 @@ export const collectUkCompanies = {
 
   listBookings: (id: string) =>
     request<CollectUkBookingSummary[]>(`/api/v1/collect-uk/companies/${id}/bookings`, { auth: true }),
+
+  confirmHandover: (id: string, bookingId: string) =>
+    request<{ id: string; status: string }>(`/api/v1/collect-uk/companies/${id}/bookings/${bookingId}/confirm-handover`, {
+      method: "POST",
+      auth: true,
+    }),
 };
 
 export interface CollectUkBookingCompany {
