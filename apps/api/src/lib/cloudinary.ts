@@ -89,3 +89,20 @@ export function getParcelEvidenceViewUrl(publicId: string): string {
     secure: true,
   });
 }
+
+// A separate folder from Fulfilment's parcel-evidence, not a shared one --
+// same reasoning as keeping Collect UK's tracking-token secret and RBAC
+// tables independent from Fulfilment's. Proof-of-collection photos can
+// reveal a customer's address/parcel contents, so authenticated delivery
+// applies here too.
+export function signCollectUkProofUpload() {
+  return signUpload('collect-uk-proof', 'w_1600,h_1600,c_limit', { type: 'authenticated' });
+}
+
+export function getCollectUkProofViewUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    type: 'authenticated',
+    sign_url: true,
+    secure: true,
+  });
+}

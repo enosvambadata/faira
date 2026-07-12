@@ -11,8 +11,17 @@ const PROTECTED_PREFIXES = [
   "/support",
   "/shipments",
   "/hub-ops",
+  "/collect-uk/register",
+  "/collect-uk/companies",
+  "/collect-uk/driver",
 ];
 const PUBLIC_ONLY_PREFIXES = ["/login", "/signup"];
+
+// The Collect UK "my companies" list needs auth too, but a bare "/collect-uk"
+// prefix would also match the public /collect-uk/book/:slug and
+// /collect-uk/track/:token pages (guest booking/tracking, no account) --
+// so this one is checked as an exact path instead of a prefix.
+const EXACT_PROTECTED_PATHS = ["/collect-uk"];
 
 // This is an optimistic check only (redirect unauthenticated visitors away
 // from app pages so they don't briefly flash protected UI) — it is not the
@@ -40,7 +49,7 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isProtected = PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix));
+  const isProtected = PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix)) || EXACT_PROTECTED_PATHS.includes(path);
   const isPublicOnly = PUBLIC_ONLY_PREFIXES.some(prefix => path.startsWith(prefix));
 
   if (isProtected && !user) {
@@ -51,8 +60,16 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isPublicOnly && user) {
+    // Honour the redirect/next param an already-authenticated visitor
+    // arrived with (e.g. the Collect UK welcome page's "Register your
+    // company" button sends them through /signup?redirect=... even if
+    // they're still logged in from an earlier session) -- falling back
+    // to /dashboard only when neither is present, matching this proxy's
+    // original single-product behaviour.
+    const destination = request.nextUrl.searchParams.get("redirect") || request.nextUrl.searchParams.get("next") || "/dashboard";
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = destination;
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

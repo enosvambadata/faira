@@ -663,4 +663,63 @@ export const collectUkBookings = {
     request<CollectUkBookingTrackingInfo>(`/api/v1/collect-uk/tracking/${encodeURIComponent(token)}`),
 };
 
+export interface CollectUkDriverProfile {
+  id: string;
+  userId: string;
+  vehicleReference: string | null;
+  capacityParcels: number;
+  status: "ACTIVE" | "INACTIVE";
+}
+
+export interface CollectUkDriverRoute {
+  id: string;
+  routeDate: string;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+}
+
+export interface CollectUkDriverStop {
+  id: string;
+  sequenceOrder: number;
+  status: "PENDING" | "COLLECTED" | "UNABLE_TO_COLLECT";
+  bookingId: string;
+  bookingReference: string | null;
+  companyName: string;
+  customerName: string;
+  customerContact: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  destinationCountry: string;
+  parcelSizeTier: ParcelSizeTier;
+  specialInstructions: string | null;
+}
+
+export interface CollectUkDriverRouteDetail extends CollectUkDriverRoute {
+  stops: CollectUkDriverStop[];
+}
+
+export const collectUkDriverPortal = {
+  me: () => request<CollectUkDriverProfile>("/api/v1/collect-uk/driver/me", { auth: true }),
+
+  listRoutes: () => request<CollectUkDriverRoute[]>("/api/v1/collect-uk/driver/routes", { auth: true }),
+
+  getRoute: (id: string) => request<CollectUkDriverRouteDetail>(`/api/v1/collect-uk/driver/routes/${id}`, { auth: true }),
+
+  getEvidenceUploadParams: () =>
+    request<CloudinarySignedUpload>("/api/v1/collect-uk/driver/evidence-upload-params", { auth: true }),
+
+  collectStop: (stopId: string, payload: { proofPhotoUrl?: string; signatureUrl?: string }) =>
+    request<{ id: string; status: string }>(`/api/v1/collect-uk/driver/stops/${stopId}/collect`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  unableToCollectStop: (stopId: string, failureReason: string) =>
+    request<{ id: string; status: string }>(`/api/v1/collect-uk/driver/stops/${stopId}/unable-to-collect`, {
+      method: "POST",
+      body: { failureReason },
+      auth: true,
+    }),
+};
+
 export { ApiError as FulfilmentApiError };
