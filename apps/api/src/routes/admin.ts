@@ -8,6 +8,7 @@ import { sendPushNotification } from '../lib/push';
 import { releaseEscrowFunds, splitCommission } from '../services/escrowRelease';
 import { notifyOrderStatusChange } from '../services/orderNotifications';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { getParcelEvidenceViewUrl } from '../lib/cloudinary';
 
 const router = Router();
 
@@ -678,5 +679,32 @@ router.post(
     res.status(200).json({ data: { id: verification.id, status: newStatus } });
   },
 );
+
+// Immutable by design (SCRUM-146) -- read-only, no update/delete route
+// exists for CollectionEvent anywhere in the app. Queryable here for
+// dispute investigation, per that ticket's acceptance criterion.
+router.get('/fulfilment/collection-events/:shipmentId', requireAdmin, async (req: Request<{ shipmentId: string }>, res: Response, next: NextFunction) => {
+  const event = await prisma.collectionEvent.findUnique({
+    where: { shipmentId: req.params.shipmentId },
+    include: { shipment: { select: { reference: true } }, verifiedBy: { select: { id: true, displayName: true } } },
+  });
+  if (!event) {
+    next(new ApiError('NOT_FOUND', 'No collection event found for this shipment', 404));
+    return;
+  }
+
+  res.status(200).json({
+    data: {
+      id: event.id,
+      shipmentId: event.shipmentId,
+      shipmentReference: event.shipment.reference,
+      verifiedBy: event.verifiedBy,
+      idCheckPerformed: event.idCheckPerformed,
+      idCheckOverrideReason: event.idCheckOverrideReason,
+      proofImageUrl: event.proofImageUrl ? getParcelEvidenceViewUrl(event.proofImageUrl) : null,
+      createdAt: event.createdAt,
+    },
+  });
+});
 
 export default router;

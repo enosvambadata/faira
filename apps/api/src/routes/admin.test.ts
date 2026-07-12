@@ -33,6 +33,7 @@ const reviewFlagUpdateMock = vi.fn();
 const fulfilmentVerificationFindManyMock = vi.fn();
 const fulfilmentVerificationFindUniqueMock = vi.fn();
 const fulfilmentVerificationUpdateMock = vi.fn();
+const collectionEventFindUniqueMock = vi.fn();
 
 vi.mock('../services/orderNotifications', () => ({
   notifyOrderStatusChange: (...args: unknown[]) => notifyOrderStatusChangeMock(...args),
@@ -106,8 +107,13 @@ vi.mock('../prisma', () => ({
       findUnique: (...args: unknown[]) => fulfilmentVerificationFindUniqueMock(...args),
       update: (...args: unknown[]) => fulfilmentVerificationUpdateMock(...args),
     },
+    collectionEvent: { findUnique: (...args: unknown[]) => collectionEventFindUniqueMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
+}));
+
+vi.mock('../lib/cloudinary', () => ({
+  getParcelEvidenceViewUrl: (publicId: string) => `https://signed.example/${publicId}`,
 }));
 
 const { createApp } = await import('../app');
@@ -1187,5 +1193,71 @@ describe('POST /api/v1/admin/fulfilment/verification-requests/:id/resolve', () =
 
     expect(res.status).toBe(400);
     expect(fulfilmentVerificationUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/admin/fulfilment/collection-events/:shipmentId', () => {
+  it('returns the collection event with a fresh signed proof-photo URL', async () => {
+    collectionEventFindUniqueMock.mockResolvedValue({
+      id: 'event-1',
+      shipmentId: 'shipment-1',
+      idCheckPerformed: true,
+      idCheckOverrideReason: null,
+      proofImageUrl: 'parcel-evidence/abc123',
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+      shipment: { reference: 'FF-HRE-000001' },
+      verifiedBy: { id: 'agent-1', displayName: 'Agent One' },
+    });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/fulfilment/collection-events/shipment-1').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      id: 'event-1',
+      shipmentId: 'shipment-1',
+      shipmentReference: 'FF-HRE-000001',
+      verifiedBy: { id: 'agent-1', displayName: 'Agent One' },
+      idCheckPerformed: true,
+      idCheckOverrideReason: null,
+      proofImageUrl: 'https://signed.example/parcel-evidence/abc123',
+      createdAt: '2026-07-01T00:00:00.000Z',
+    });
+  });
+
+  it('returns proofImageUrl: null when no photo was captured', async () => {
+    collectionEventFindUniqueMock.mockResolvedValue({
+      id: 'event-1',
+      shipmentId: 'shipment-1',
+      idCheckPerformed: false,
+      idCheckOverrideReason: 'Supervisor override -- buyer verified by phone',
+      proofImageUrl: null,
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+      shipment: { reference: 'FF-HRE-000001' },
+      verifiedBy: { id: 'agent-1', displayName: 'Agent One' },
+    });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/fulfilment/collection-events/shipment-1').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.proofImageUrl).toBeNull();
+    expect(res.body.data.idCheckOverrideReason).toBe('Supervisor override -- buyer verified by phone');
+  });
+
+  it('404s when no collection event exists for that shipment', async () => {
+    collectionEventFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/fulfilment/collection-events/shipment-1').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('fails closed without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/fulfilment/collection-events/shipment-1').set({ 'x-admin-token': 'wrong-token' });
+
+    expect(res.status).toBe(401);
   });
 });

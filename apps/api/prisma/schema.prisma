@@ -1079,6 +1079,10 @@ model CollectionEvent {
   shipmentId       String   @unique @map("shipment_id") @db.Uuid
   verifiedById     String   @map("verified_by_id") @db.Uuid
   idCheckPerformed Boolean  @default(false) @map("id_check_performed")
+  // Set only when a high-value parcel's ID check was skipped via a
+  // supervisor override -- required by SCRUM-145's server-side enforcement
+  // whenever idCheckPerformed is false above the configured value threshold.
+  idCheckOverrideReason String? @map("id_check_override_reason")
   proofImageUrl    String?  @map("proof_image_url")
   createdAt        DateTime @default(now()) @map("created_at")
 

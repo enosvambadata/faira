@@ -255,9 +255,40 @@ export interface HubOpsTransitionResult {
   displayStatus: string;
 }
 
+export interface HubOpsCollectionShipment {
+  id: string;
+  reference: string | null;
+  status: string;
+  displayStatus: string;
+  buyerName: string;
+  buyerContact: string;
+  declaredValue: string;
+  requiresIdCheck: boolean;
+}
+
+export interface CollectPayload {
+  code: string;
+  idCheckPerformed: boolean;
+  idCheckOverrideReason?: string;
+  proofImageUrl?: string;
+}
+
 export const hubOps = {
   search: (reference: string) =>
     request<HubOpsShipment>(`/api/v1/fulfilment/hub-ops/shipments/search?reference=${encodeURIComponent(reference)}`, {
+      auth: true,
+    }),
+
+  searchAtDestination: (reference: string) =>
+    request<HubOpsCollectionShipment>(
+      `/api/v1/fulfilment/hub-ops/shipments/search-at-destination?reference=${encodeURIComponent(reference)}`,
+      { auth: true },
+    ),
+
+  collect: (id: string, payload: CollectPayload) =>
+    request<HubOpsTransitionResult>(`/api/v1/fulfilment/hub-ops/shipments/${id}/collect`, {
+      method: "POST",
+      body: payload,
       auth: true,
     }),
 
