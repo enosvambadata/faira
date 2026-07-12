@@ -17,6 +17,12 @@ const bookingUpdateManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyHandedOverMock = vi.fn();
+const notifyBookingCancelledMock = vi.fn();
+const stopDeleteMock = vi.fn();
+const stopCountMock = vi.fn();
+const stopFindManyMock = vi.fn();
+const routeFindUniqueMock = vi.fn();
+const routeUpdateManyMock = vi.fn();
 
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: vi.fn(),
@@ -25,6 +31,8 @@ vi.mock('../services/collectUkNotifications', () => ({
   notifyUnableToCollect: vi.fn(),
   notifyArrivedAtWarehouse: vi.fn(),
   notifyHandedOver: (...args: unknown[]) => notifyHandedOverMock(...args),
+  notifyBookingCancelled: (...args: unknown[]) => notifyBookingCancelledMock(...args),
+  notifyCollectionWillBeRescheduled: vi.fn(),
 }));
 
 vi.mock('../supabase', () => ({
@@ -54,6 +62,15 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => bookingFindManyMock(...args),
       findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
+    },
+    collectUkCollectionStop: {
+      delete: (...args: unknown[]) => stopDeleteMock(...args),
+      count: (...args: unknown[]) => stopCountMock(...args),
+      findMany: (...args: unknown[]) => stopFindManyMock(...args),
+    },
+    collectUkCollectionRoute: {
+      findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
+      updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
     },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
@@ -90,10 +107,26 @@ beforeEach(() => {
   bookingFindUniqueMock.mockResolvedValue(null);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   notifyHandedOverMock.mockResolvedValue(undefined);
+  stopDeleteMock.mockResolvedValue({});
+  stopCountMock.mockResolvedValue(0);
+  stopFindManyMock.mockResolvedValue([]);
+  routeFindUniqueMock.mockResolvedValue(null);
+  routeUpdateManyMock.mockResolvedValue({ count: 0 });
+  notifyBookingCancelledMock.mockResolvedValue(undefined);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCompany: { create: (...args: unknown[]) => companyCreateMock(...args) },
       collectUkCompanyRole: { create: (...args: unknown[]) => companyRoleCreateMock(...args) },
+      collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
+      collectUkCollectionStop: {
+        delete: (...args: unknown[]) => stopDeleteMock(...args),
+        count: (...args: unknown[]) => stopCountMock(...args),
+        findMany: (...args: unknown[]) => stopFindManyMock(...args),
+      },
+      collectUkCollectionRoute: {
+        findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
+        updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
+      },
     }),
   );
 });
@@ -469,5 +502,68 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-hand
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(409);
+  });
+});
+
+describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/cancel', () => {
+  const BOOKING_ID = 'booking-1';
+  const REQUESTED_BOOKING = { id: BOOKING_ID, companyId: COMPANY_A, status: 'REQUESTED', stop: null };
+
+  it('cancels a booking that has not been scheduled yet', async () => {
+    bookingFindUniqueMock.mockResolvedValue(REQUESTED_BOOKING);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/cancel`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: BOOKING_ID, status: 'CANCELLED' });
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID, status: { in: ['REQUESTED', 'DRIVER_ASSIGNED', 'EN_ROUTE'] } },
+      data: { status: 'CANCELLED' },
+    });
+    expect(stopDeleteMock).not.toHaveBeenCalled();
+    expect(notifyBookingCancelledMock).toHaveBeenCalledWith(BOOKING_ID);
+  });
+
+  it('releases the pending stop from its route when cancelling a scheduled booking', async () => {
+    bookingFindUniqueMock.mockResolvedValue({
+      ...REQUESTED_BOOKING,
+      status: 'DRIVER_ASSIGNED',
+      stop: { id: 'stop-1', routeId: 'route-1', status: 'PENDING' },
+    });
+    routeFindUniqueMock.mockResolvedValue({ id: 'route-1', status: 'PLANNED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/cancel`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(stopDeleteMock).toHaveBeenCalledWith({ where: { id: 'stop-1' } });
+  });
+
+  it('409s once the parcel has been collected', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...REQUESTED_BOOKING, status: 'COLLECTED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/${BOOKING_ID}/cancel`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyBookingCancelledMock).not.toHaveBeenCalled();
+  });
+
+  it("403s (tenant isolation) cancelling another company's booking", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_B}/bookings/${BOOKING_ID}/cancel`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(bookingFindUniqueMock).not.toHaveBeenCalled();
   });
 });

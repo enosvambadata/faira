@@ -615,6 +615,12 @@ export const collectUkCompanies = {
       method: "POST",
       auth: true,
     }),
+
+  cancelBooking: (id: string, bookingId: string) =>
+    request<{ id: string; status: string }>(`/api/v1/collect-uk/companies/${id}/bookings/${bookingId}/cancel`, {
+      method: "POST",
+      auth: true,
+    }),
 };
 
 export interface CollectUkBookingCompany {
@@ -685,6 +691,12 @@ export const collectUkBookings = {
 
   track: (token: string) =>
     request<CollectUkBookingTrackingInfo>(`/api/v1/collect-uk/tracking/${encodeURIComponent(token)}`),
+
+  cancel: (token: string) =>
+    request<{ reference: string | null; status: string }>(
+      `/api/v1/collect-uk/tracking/${encodeURIComponent(token)}/cancel`,
+      { method: "POST" },
+    ),
 };
 
 export interface CollectUkDriverProfile {
@@ -767,6 +779,17 @@ export interface CollectUkUnscheduledBooking {
   vehicleType: CollectUkVehicleType | null;
 }
 
+export interface CollectUkFailedBooking {
+  id: string;
+  reference: string | null;
+  companyName: string;
+  customerName: string;
+  collectionAddress: string;
+  collectionPostcode: string;
+  failureReason: string | null;
+  failedAt: string | null;
+}
+
 export interface CollectUkAdminDriver {
   id: string;
   userId: string;
@@ -831,6 +854,15 @@ export const collectUkDispatch = {
     request<{ id: string }>(`/api/v1/admin/collect-uk/routes/${routeId}/stops`, {
       method: "POST",
       body: { bookingId },
+      adminToken,
+    }),
+
+  listFailed: (adminToken: string) =>
+    request<CollectUkFailedBooking[]>("/api/v1/admin/collect-uk/bookings/failed", { adminToken }),
+
+  requeueBooking: (adminToken: string, bookingId: string) =>
+    request<{ id: string; status: string }>(`/api/v1/admin/collect-uk/bookings/${bookingId}/requeue`, {
+      method: "POST",
       adminToken,
     }),
 

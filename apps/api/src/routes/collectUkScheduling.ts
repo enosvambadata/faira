@@ -5,7 +5,7 @@ import { prisma } from '../prisma';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
-import { notifyCollectionScheduled } from '../services/collectUkNotifications';
+import { notifyCollectionScheduled, notifyCollectionWillBeRescheduled } from '../services/collectUkNotifications';
 import { geocodePostcode, estimatedRoadMiles, orderByNearestNeighbour, GeoPoint } from '../lib/collectUkGeo';
 
 const router = Router();
@@ -302,6 +302,79 @@ router.get('/bookings/unscheduled', requireAdmin, async (_req: Request, res: Res
       vehicleType: b.vehicleType,
     })),
   });
+});
+
+// Collections the driver couldn't make -- each needs a dispatcher
+// decision: requeue for a fresh route, or leave for the company to
+// resolve with the customer.
+router.get('/bookings/failed', requireAdmin, async (_req: Request, res: Response) => {
+  const bookings = await prisma.collectUkCollectionBooking.findMany({
+    where: { status: 'UNABLE_TO_COLLECT' },
+    include: { company: true, stop: { select: { failureReason: true, completedAt: true } } },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  res.status(200).json({
+    data: bookings.map(b => ({
+      id: b.id,
+      reference: b.reference,
+      companyName: b.company.name,
+      customerName: b.customerName,
+      collectionAddress: b.collectionAddress,
+      collectionPostcode: b.collectionPostcode,
+      failureReason: b.stop?.failureReason ?? null,
+      failedAt: b.stop?.completedAt ?? null,
+    })),
+  });
+});
+
+// Puts a failed collection back in the unscheduled queue. The resolved
+// stop is deleted so a fresh route assignment is possible (stop.bookingId
+// is unique -- one live stop per booking, ever); its failure reason
+// survives in the audit log and the customer is told a new date is coming.
+router.post('/bookings/:id/requeue', requireAdmin, async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const booking = await prisma.collectUkCollectionBooking.findUnique({
+    where: { id: req.params.id },
+    include: { stop: { include: { driver: true } } },
+  });
+  if (!booking) {
+    next(new ApiError('NOT_FOUND', 'Booking not found', 404));
+    return;
+  }
+  if (booking.status !== 'UNABLE_TO_COLLECT') {
+    next(new ApiError('INVALID_STATE', 'Only a failed collection can be requeued', 409));
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async tx => {
+      const updated = await tx.collectUkCollectionBooking.updateMany({
+        where: { id: booking.id, status: 'UNABLE_TO_COLLECT' },
+        data: { status: 'REQUESTED' },
+      });
+      if (updated.count === 0) throw new BookingTransitionConflict();
+
+      if (booking.stop) {
+        await tx.collectUkCollectionStop.delete({ where: { id: booking.stop.id } });
+      }
+    });
+  } catch (err) {
+    if (err instanceof BookingTransitionConflict) {
+      next(new ApiError('INVALID_STATE', 'Only a failed collection can be requeued', 409));
+      return;
+    }
+    throw err;
+  }
+
+  if (booking.stop) {
+    await recordAuditLog(booking.stop.driver.userId, 'COLLECT_UK_BOOKING_REQUEUED', {
+      bookingId: booking.id,
+      previousFailureReason: booking.stop.failureReason,
+    });
+  }
+  await notifyCollectionWillBeRescheduled(booking.id);
+
+  res.status(200).json({ data: { id: booking.id, status: 'REQUESTED' } });
 });
 
 const assignStopSchema = z.object({

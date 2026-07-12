@@ -5,9 +5,15 @@ import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Package, Check } from "@/components/ui/icons";
 import { collectUkBookings, CollectUkBookingTrackingInfo, FulfilmentApiError } from "@/lib/api";
+
+// The only state a customer can self-cancel from -- afterwards a driver
+// round is already planned around the booking, so cancellation goes
+// through the shipping company instead.
+const CANCELLABLE_LABEL = "Booking received -- awaiting scheduling";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
@@ -42,6 +48,23 @@ export default function CollectUkTrackingPage() {
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState<CollectUkBookingTrackingInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const result = await collectUkBookings.cancel(token);
+      setInfo(prev => (prev ? { ...prev, status: result.status } : prev));
+      setConfirmingCancel(false);
+    } catch (err) {
+      setCancelError(err instanceof FulfilmentApiError ? err.message : "Could not cancel this booking right now.");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +164,36 @@ export default function CollectUkTrackingPage() {
                 </ol>
               )}
             </Card>
+
+            {info.status === CANCELLABLE_LABEL && (
+              <Card className="mt-4">
+                <h2 className="text-base font-semibold text-text">Need to cancel?</h2>
+                <p className="mt-1 text-sm text-muted">
+                  You can cancel free of charge while your booking is awaiting scheduling.
+                </p>
+                {cancelError && (
+                  <div className="mt-3">
+                    <Alert tone="error">{cancelError}</Alert>
+                  </div>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {!confirmingCancel ? (
+                    <Button type="button" variant="secondary" size="md" onClick={() => setConfirmingCancel(true)}>
+                      Cancel this booking
+                    </Button>
+                  ) : (
+                    <>
+                      <Button type="button" variant="danger" size="md" loading={cancelling} onClick={handleCancel}>
+                        Yes, cancel it
+                      </Button>
+                      <Button type="button" variant="ghost" size="md" onClick={() => setConfirmingCancel(false)}>
+                        Keep my booking
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
 
             <Card className="mt-4">
               <dl className="flex flex-col gap-3 text-sm">

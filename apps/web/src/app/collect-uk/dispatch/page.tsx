@@ -17,6 +17,7 @@ import { getDispatchToken, setDispatchToken, clearDispatchToken } from "@/lib/di
 import {
   collectUkDispatch,
   CollectUkUnscheduledBooking,
+  CollectUkFailedBooking,
   CollectUkAdminDriver,
   CollectUkAdminRouteSummary,
   FulfilmentApiError,
@@ -40,8 +41,10 @@ export default function DispatchPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [queue, setQueue] = useState<CollectUkUnscheduledBooking[]>([]);
+  const [failed, setFailed] = useState<CollectUkFailedBooking[]>([]);
   const [drivers, setDrivers] = useState<CollectUkAdminDriver[]>([]);
   const [routes, setRoutes] = useState<CollectUkAdminRouteSummary[]>([]);
+  const [requeueingId, setRequeueingId] = useState<string | null>(null);
 
   const [assignRouteByBooking, setAssignRouteByBooking] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -70,12 +73,14 @@ export default function DispatchPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [q, d, r] = await Promise.all([
+        const [q, f, d, r] = await Promise.all([
           collectUkDispatch.listUnscheduled(activeToken),
+          collectUkDispatch.listFailed(activeToken),
           collectUkDispatch.listDrivers(activeToken),
           collectUkDispatch.listRoutes(activeToken),
         ]);
         setQueue(q);
+        setFailed(f);
         setDrivers(d);
         setRoutes(r);
       } catch (err) {
@@ -131,6 +136,21 @@ export default function DispatchPage() {
       toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not assign this booking", tone: "error" });
     } finally {
       setAssigningId(null);
+    }
+  };
+
+  const handleRequeue = async (bookingId: string) => {
+    if (!token) return;
+    setRequeueingId(bookingId);
+    try {
+      await collectUkDispatch.requeueBooking(token, bookingId);
+      toast({ title: "Booking returned to the queue", tone: "success" });
+      await loadAll(token);
+    } catch (err) {
+      if (err instanceof FulfilmentApiError && err.status === 401) return handleAuthFailure();
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not requeue this booking", tone: "error" });
+    } finally {
+      setRequeueingId(null);
     }
   };
 
@@ -272,6 +292,39 @@ export default function DispatchPage() {
                     </ul>
                   )}
                 </Card>
+
+                {failed.length > 0 && (
+                  <Card className="mt-4">
+                    <h2 className="text-base font-semibold text-text">
+                      Failed collections <span className="font-normal text-muted">({failed.length})</span>
+                    </h2>
+                    <ul className="mt-3 flex flex-col gap-3">
+                      {failed.map(b => (
+                        <li key={b.id} className="rounded-md border border-red/30 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-mono text-text">{b.reference}</span>
+                            <span className="text-muted">{b.companyName}</span>
+                          </div>
+                          <p className="mt-1 text-text">
+                            {b.customerName} — {b.collectionAddress}, {b.collectionPostcode}
+                          </p>
+                          {b.failureReason && <p className="text-red">Driver: “{b.failureReason}”</p>}
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              size="md"
+                              variant="secondary"
+                              loading={requeueingId === b.id}
+                              onClick={() => handleRequeue(b.id)}
+                            >
+                              Requeue for collection
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
 
                 <Card className="mt-4">
                   <h2 className="text-base font-semibold text-text">Routes</h2>

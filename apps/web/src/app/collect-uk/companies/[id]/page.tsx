@@ -50,6 +50,8 @@ export default function CompanyDashboardPage() {
   const [addingWarehouse, setAddingWarehouse] = useState(false);
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
   const [confirmingHandoverId, setConfirmingHandoverId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const isAdmin = myRole === "COMPANY_ADMIN";
 
@@ -119,6 +121,21 @@ export default function CompanyDashboardPage() {
       setWarehouseError(err instanceof FulfilmentApiError ? err.message : "Could not add this warehouse right now.");
     } finally {
       setAddingWarehouse(false);
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!company) return;
+    setCancellingBookingId(bookingId);
+    try {
+      await collectUkCompanies.cancelBooking(company.id, bookingId);
+      setBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, status: "CANCELLED" } : b)));
+      setConfirmCancelId(null);
+      toast({ title: "Booking cancelled", tone: "success" });
+    } catch (err) {
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not cancel this booking.", tone: "error" });
+    } finally {
+      setCancellingBookingId(null);
     }
   };
 
@@ -297,6 +314,30 @@ export default function CompanyDashboardPage() {
                         >
                           Confirm handover
                         </Button>
+                      )}
+                      {["REQUESTED", "DRIVER_ASSIGNED", "EN_ROUTE"].includes(b.status) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {confirmCancelId !== b.id ? (
+                            <Button type="button" variant="ghost" size="md" onClick={() => setConfirmCancelId(b.id)}>
+                              Cancel booking
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="md"
+                                loading={cancellingBookingId === b.id}
+                                onClick={() => handleCancelBooking(b.id)}
+                              >
+                                Yes, cancel it
+                              </Button>
+                              <Button type="button" variant="ghost" size="md" onClick={() => setConfirmCancelId(null)}>
+                                Keep it
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}

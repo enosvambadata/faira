@@ -20,6 +20,8 @@ const routeUpdateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyCollectionScheduledMock = vi.fn();
+const notifyRescheduledMock = vi.fn();
+const stopDeleteMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
 
 // Only the network-touching geocoder is mocked -- the distance maths and
@@ -33,6 +35,8 @@ vi.mock('../lib/collectUkGeo', async importOriginal => ({
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: vi.fn(),
   notifyCollectionScheduled: (...args: unknown[]) => notifyCollectionScheduledMock(...args),
+  notifyBookingCancelled: vi.fn(),
+  notifyCollectionWillBeRescheduled: (...args: unknown[]) => notifyRescheduledMock(...args),
   notifyParcelCollected: vi.fn(),
   notifyUnableToCollect: vi.fn(),
   notifyArrivedAtWarehouse: vi.fn(),
@@ -63,6 +67,7 @@ vi.mock('../prisma', () => ({
       findFirst: (...args: unknown[]) => stopFindFirstMock(...args),
       create: (...args: unknown[]) => stopCreateMock(...args),
       update: (...args: unknown[]) => stopUpdateMock(...args),
+      delete: (...args: unknown[]) => stopDeleteMock(...args),
     },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
@@ -95,6 +100,8 @@ beforeEach(() => {
   notifyCollectionScheduledMock.mockResolvedValue(undefined);
   bookingUpdateMock.mockResolvedValue({});
   routeFindManyMock.mockResolvedValue([]);
+  stopDeleteMock.mockResolvedValue({});
+  notifyRescheduledMock.mockResolvedValue(undefined);
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
   geocodePostcodeMock.mockResolvedValue(null);
@@ -104,6 +111,7 @@ beforeEach(() => {
       collectUkCollectionStop: {
         create: (...args: unknown[]) => stopCreateMock(...args),
         update: (...args: unknown[]) => stopUpdateMock(...args),
+        delete: (...args: unknown[]) => stopDeleteMock(...args),
       },
       collectUkCollectionRoute: { update: (...args: unknown[]) => routeUpdateMock(...args) },
     }),
@@ -528,5 +536,69 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/optimise', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('EMPTY_ROUTE');
+  });
+});
+
+describe('GET /api/v1/admin/collect-uk/bookings/failed', () => {
+  it('lists failed collections with the driver-entered reason', async () => {
+    bookingFindManyMock.mockResolvedValue([
+      {
+        id: BOOKING_ID,
+        reference: 'FC-x-000001',
+        company: { name: 'ABC Logistics' },
+        customerName: 'Jane',
+        collectionAddress: '10 Test St',
+        collectionPostcode: 'E1 6AN',
+        stop: { failureReason: 'No answer at the door', completedAt: new Date('2026-08-01T10:00:00Z') },
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/bookings/failed').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).toMatchObject({ id: BOOKING_ID, failureReason: 'No answer at the door' });
+  });
+});
+
+describe('POST /api/v1/admin/collect-uk/bookings/:id/requeue', () => {
+  const FAILED_BOOKING = {
+    id: BOOKING_ID,
+    status: 'UNABLE_TO_COLLECT',
+    stop: { id: 'stop-1', failureReason: 'No answer', driver: { userId: USER_ID } },
+  };
+
+  it('returns a failed collection to the unscheduled queue, releasing its stop', async () => {
+    bookingFindUniqueMock.mockResolvedValue(FAILED_BOOKING);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/bookings/${BOOKING_ID}/requeue`).set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: BOOKING_ID, status: 'REQUESTED' });
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: BOOKING_ID, status: 'UNABLE_TO_COLLECT' },
+      data: { status: 'REQUESTED' },
+    });
+    expect(stopDeleteMock).toHaveBeenCalledWith({ where: { id: 'stop-1' } });
+    expect(notifyRescheduledMock).toHaveBeenCalledWith(BOOKING_ID);
+  });
+
+  it('409s when the booking did not fail collection', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...FAILED_BOOKING, status: 'REQUESTED' });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/bookings/${BOOKING_ID}/requeue`).set(ADMIN_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(stopDeleteMock).not.toHaveBeenCalled();
+    expect(notifyRescheduledMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/bookings/${BOOKING_ID}/requeue`);
+
+    expect(res.status).toBe(401);
   });
 });
