@@ -13,9 +13,21 @@ const bookingFindManyMock = vi.fn();
 const bookingUpdateManyMock = vi.fn();
 const stopFindFirstMock = vi.fn();
 const stopCreateMock = vi.fn();
+const bookingUpdateMock = vi.fn();
+const stopUpdateMock = vi.fn();
+const routeUpdateMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyCollectionScheduledMock = vi.fn();
+const geocodePostcodeMock = vi.fn();
+
+// Only the network-touching geocoder is mocked -- the distance maths and
+// nearest-neighbour ordering run for real so these tests exercise the
+// actual optimisation behaviour.
+vi.mock('../lib/collectUkGeo', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/collectUkGeo')>()),
+  geocodePostcode: (...args: unknown[]) => geocodePostcodeMock(...args),
+}));
 
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: vi.fn(),
@@ -37,15 +49,18 @@ vi.mock('../prisma', () => ({
     collectUkCollectionRoute: {
       create: (...args: unknown[]) => routeCreateMock(...args),
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
+      update: (...args: unknown[]) => routeUpdateMock(...args),
     },
     collectUkCollectionBooking: {
       findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args),
       findMany: (...args: unknown[]) => bookingFindManyMock(...args),
       updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
+      update: (...args: unknown[]) => bookingUpdateMock(...args),
     },
     collectUkCollectionStop: {
       findFirst: (...args: unknown[]) => stopFindFirstMock(...args),
       create: (...args: unknown[]) => stopCreateMock(...args),
+      update: (...args: unknown[]) => stopUpdateMock(...args),
     },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
@@ -76,10 +91,18 @@ beforeEach(() => {
   stopFindFirstMock.mockResolvedValue(null);
   auditLogCreateMock.mockResolvedValue({});
   notifyCollectionScheduledMock.mockResolvedValue(undefined);
+  bookingUpdateMock.mockResolvedValue({});
+  stopUpdateMock.mockResolvedValue({});
+  routeUpdateMock.mockResolvedValue({});
+  geocodePostcodeMock.mockResolvedValue(null);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
-      collectUkCollectionStop: { create: (...args: unknown[]) => stopCreateMock(...args) },
+      collectUkCollectionStop: {
+        create: (...args: unknown[]) => stopCreateMock(...args),
+        update: (...args: unknown[]) => stopUpdateMock(...args),
+      },
+      collectUkCollectionRoute: { update: (...args: unknown[]) => routeUpdateMock(...args) },
     }),
   );
 });
@@ -330,5 +353,139 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/stops', () => {
     ]);
 
     expect([first.status, second.status].sort()).toEqual([201, 409]);
+  });
+});
+
+describe('POST /api/v1/admin/collect-uk/routes/:id/optimise', () => {
+  const LONDON = { latitude: 51.5074, longitude: -0.1278 };
+  const BIRMINGHAM = { latitude: 52.4796, longitude: -1.9026 };
+  const WOLVERHAMPTON = { latitude: 52.585, longitude: -2.134 };
+
+  const STOP_LONDON = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    bookingId: 'booking-london',
+    booking: {
+      id: 'booking-london',
+      reference: 'FC-x-000001',
+      customerName: 'London Customer',
+      collectionPostcode: 'SW1A 1AA',
+      collectionLatitude: LONDON.latitude,
+      collectionLongitude: LONDON.longitude,
+    },
+  };
+  const STOP_BIRMINGHAM = {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    bookingId: 'booking-birmingham',
+    booking: {
+      id: 'booking-birmingham',
+      reference: 'FC-x-000002',
+      customerName: 'Birmingham Customer',
+      collectionPostcode: 'B1 1AA',
+      collectionLatitude: BIRMINGHAM.latitude,
+      collectionLongitude: BIRMINGHAM.longitude,
+    },
+  };
+
+  const PLANNED_ROUTE = {
+    ...ROUTE,
+    status: 'PLANNED',
+    stops: [STOP_LONDON, STOP_BIRMINGHAM],
+  };
+
+  it('orders stops nearest-neighbour from the start postcode and records per-leg + total mileage', async () => {
+    routeFindUniqueMock.mockResolvedValue(PLANNED_ROUTE);
+    geocodePostcodeMock.mockResolvedValue(WOLVERHAMPTON); // start postcode
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`)
+      .set(ADMIN_HEADER)
+      .send({ startPostcode: 'WV1 1AA' });
+
+    expect(res.status).toBe(200);
+    // From Wolverhampton: Birmingham first, then London.
+    expect(res.body.data.stops.map((s: { bookingId: string }) => s.bookingId)).toEqual([
+      'booking-birmingham',
+      'booking-london',
+    ]);
+    expect(res.body.data.stops[0].distanceFromPreviousMiles).toBeGreaterThan(10);
+    expect(res.body.data.stops[1].distanceFromPreviousMiles).toBeGreaterThan(100);
+    expect(res.body.data.totalDistanceMiles).toBeCloseTo(
+      res.body.data.stops[0].distanceFromPreviousMiles + res.body.data.stops[1].distanceFromPreviousMiles,
+      1,
+    );
+    expect(stopUpdateMock).toHaveBeenCalledWith({
+      where: { id: STOP_BIRMINGHAM.id },
+      data: { sequenceOrder: 0, distanceFromPreviousMiles: expect.any(Number) },
+    });
+    expect(routeUpdateMock).toHaveBeenCalledWith({
+      where: { id: ROUTE_ID },
+      data: { totalDistanceMiles: res.body.data.totalDistanceMiles },
+    });
+  });
+
+  it('leaves the first leg null when no start postcode is given', async () => {
+    routeFindUniqueMock.mockResolvedValue(PLANNED_ROUTE);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`).set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.stops[0].distanceFromPreviousMiles).toBeNull();
+    expect(res.body.data.stops[1].distanceFromPreviousMiles).toBeGreaterThan(0);
+  });
+
+  it('geocodes and persists coordinates for bookings that are missing them', async () => {
+    const ungeocodedStop = {
+      ...STOP_LONDON,
+      booking: { ...STOP_LONDON.booking, collectionLatitude: null, collectionLongitude: null },
+    };
+    routeFindUniqueMock.mockResolvedValue({ ...PLANNED_ROUTE, stops: [ungeocodedStop, STOP_BIRMINGHAM] });
+    geocodePostcodeMock.mockResolvedValue(LONDON);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`).set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(200);
+    expect(bookingUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'booking-london' },
+      data: { collectionLatitude: LONDON.latitude, collectionLongitude: LONDON.longitude },
+    });
+  });
+
+  it('422s listing postcodes that cannot be geocoded', async () => {
+    const ungeocodedStop = {
+      ...STOP_LONDON,
+      booking: { ...STOP_LONDON.booking, collectionLatitude: null, collectionLongitude: null },
+    };
+    routeFindUniqueMock.mockResolvedValue({ ...PLANNED_ROUTE, stops: [ungeocodedStop] });
+    geocodePostcodeMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`).set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('UNGEOCODABLE_STOPS');
+    expect(stopUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s for a route that has already started', async () => {
+    routeFindUniqueMock.mockResolvedValue({ ...PLANNED_ROUTE, status: 'IN_PROGRESS' });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`).set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(409);
+    expect(stopUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('409s for a route with no stops', async () => {
+    routeFindUniqueMock.mockResolvedValue({ ...PLANNED_ROUTE, stops: [] });
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/optimise`).set(ADMIN_HEADER).send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('EMPTY_ROUTE');
   });
 });

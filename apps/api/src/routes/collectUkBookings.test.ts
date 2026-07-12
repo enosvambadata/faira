@@ -8,6 +8,12 @@ const bookingCreateMock = vi.fn();
 const bookingFindUniqueMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyBookingConfirmedMock = vi.fn();
+const geocodePostcodeMock = vi.fn();
+
+vi.mock('../lib/collectUkGeo', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/collectUkGeo')>()),
+  geocodePostcode: (...args: unknown[]) => geocodePostcodeMock(...args),
+}));
 
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: (...args: unknown[]) => notifyBookingConfirmedMock(...args),
@@ -63,6 +69,7 @@ beforeEach(() => {
   companyFindUniqueMock.mockResolvedValue(COMPANY);
   warehouseFindFirstMock.mockResolvedValue(WAREHOUSE);
   notifyBookingConfirmedMock.mockResolvedValue(undefined);
+  geocodePostcodeMock.mockResolvedValue({ latitude: 51.5074, longitude: -0.1278 });
   companyUpdateMock.mockResolvedValue({ ...COMPANY, nextBookingSequence: 6 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
@@ -119,9 +126,24 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
         warehouseId: WAREHOUSE.id,
         customerName: 'Jane Customer',
         destinationCountry: 'Zimbabwe',
+        collectionLatitude: 51.5074,
+        collectionLongitude: -0.1278,
       }),
     });
     expect(notifyBookingConfirmedMock).toHaveBeenCalledWith('booking-1');
+  });
+
+  it('still creates the booking when geocoding fails (best-effort)', async () => {
+    geocodePostcodeMock.mockResolvedValue(null);
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/book/abc-logistics').send(VALID_BOOKING_BODY);
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ collectionLatitude: undefined, collectionLongitude: undefined }),
+    });
   });
 
   it('400s on an invalid body', async () => {

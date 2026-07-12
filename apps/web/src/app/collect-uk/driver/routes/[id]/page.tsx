@@ -107,6 +107,12 @@ function StopCard({ stop, onResolved }: { stop: CollectUkDriverStop; onResolved:
           <dt className="text-muted">Destination</dt>
           <dd className="text-right text-text">{stop.destinationCountry}</dd>
         </div>
+        {stop.distanceFromPreviousMiles != null && (
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted">Drive from previous stop</dt>
+            <dd className="text-right text-text">~{stop.distanceFromPreviousMiles} miles</dd>
+          </div>
+        )}
         <div className="flex justify-between gap-4">
           <dt className="text-muted">Size</dt>
           <dd className="text-right text-text">{stop.parcelSizeTier.replaceAll("_", " ")}</dd>
@@ -218,6 +224,12 @@ export default function DriverRouteDetailPage() {
             <h1 className="text-xl font-semibold text-text">
               {new Date(route.routeDate).toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </h1>
+            {route.totalDistanceMiles != null && (
+              <p className="mt-1 text-sm text-muted">
+                {route.stops.length} stop{route.stops.length === 1 ? "" : "s"} — est.{" "}
+                <span className="font-semibold text-text">{route.totalDistanceMiles} miles</span> total
+              </p>
+            )}
 
             {route.stops.length === 0 && (
               <Card className="mt-4">

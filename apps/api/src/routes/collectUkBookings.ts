@@ -7,6 +7,7 @@ import { generateBookingReference } from '../services/collectUkBookingReference'
 import { generateBookingTrackingToken, verifyBookingTrackingToken } from '../lib/collectUkBookingToken';
 import { collectUkBuyerStatus } from '../lib/collectUkBookingStatus';
 import { notifyBookingConfirmed } from '../services/collectUkNotifications';
+import { geocodePostcode } from '../lib/collectUkGeo';
 
 const router = Router();
 
@@ -76,6 +77,11 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
     return;
   }
 
+  // Best-effort, resolved before the transaction (no network calls inside
+  // a DB transaction) -- a geocoding outage must never block a booking;
+  // the route optimiser retries missing coordinates later.
+  const geo = await geocodePostcode(parsed.data.collectionPostcode);
+
   const booking = await prisma.$transaction(async tx => {
     const reference = await generateBookingReference(tx, company.id);
     return tx.collectUkCollectionBooking.create({
@@ -92,6 +98,8 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
         parcelSizeTier: parsed.data.parcelSizeTier,
         parcelWeightKg: parsed.data.parcelWeightKg,
         specialInstructions: parsed.data.specialInstructions,
+        collectionLatitude: geo?.latitude,
+        collectionLongitude: geo?.longitude,
       },
     });
   });

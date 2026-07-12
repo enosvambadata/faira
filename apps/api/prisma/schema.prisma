@@ -1500,6 +1500,11 @@ model CollectUkCollectionBooking {
   parcelSizeTier      CollectUkParcelSizeTier  @map("parcel_size_tier")
   parcelWeightKg      Decimal?                 @map("parcel_weight_kg") @db.Decimal(6, 2)
   specialInstructions String?                  @map("special_instructions")
+  // Geocoded from collectionPostcode at booking time (postcodes.io),
+  // best-effort -- null means geocoding failed/unavailable and the route
+  // optimiser will retry before ordering stops.
+  collectionLatitude  Float?                   @map("collection_latitude")
+  collectionLongitude Float?                   @map("collection_longitude")
   status              CollectUkBookingStatus   @default(REQUESTED)
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
@@ -1524,11 +1529,15 @@ enum CollectUkRouteStatus {
 // not a reuse of Fulfilment's TransportRun (fixed two-hub freight runs).
 // See the reuse assessment for why these aren't the same shape.
 model CollectUkCollectionRoute {
-  id        String                @id @default(uuid()) @db.Uuid
-  driverId  String                @map("driver_id") @db.Uuid
-  routeDate DateTime              @map("route_date") @db.Date
-  status    CollectUkRouteStatus  @default(PLANNED)
-  createdAt DateTime              @default(now()) @map("created_at")
+  id                 String                @id @default(uuid()) @db.Uuid
+  driverId           String                @map("driver_id") @db.Uuid
+  routeDate          DateTime              @map("route_date") @db.Date
+  status             CollectUkRouteStatus  @default(PLANNED)
+  // Estimated road miles across the ordered stop sequence (haversine x
+  // road factor), written by the optimise endpoint -- the input for
+  // driver pay and per-collection pricing, not a turn-by-turn figure.
+  totalDistanceMiles Float?                @map("total_distance_miles")
+  createdAt          DateTime              @default(now()) @map("created_at")
 
   driver CollectUkDriver           @relation(fields: [driverId], references: [id], onDelete: Restrict)
   stops  CollectUkCollectionStop[]
@@ -1553,6 +1562,9 @@ model CollectUkCollectionStop {
   bookingId     String               @unique @map("booking_id") @db.Uuid
   driverId      String               @map("driver_id") @db.Uuid
   sequenceOrder Int                  @map("sequence_order")
+  // Estimated road miles from the previous stop in sequence (first stop:
+  // from the route's start postcode if one was given to the optimiser).
+  distanceFromPreviousMiles Float?   @map("distance_from_previous_miles")
   status        CollectUkStopStatus  @default(PENDING)
   proofPhotoUrl String?              @map("proof_photo_url")
   signatureUrl  String?              @map("signature_url")

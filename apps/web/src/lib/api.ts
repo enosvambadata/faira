@@ -688,6 +688,7 @@ export interface CollectUkDriverStop {
   sequenceOrder: number;
   status: "PENDING" | "COLLECTED" | "UNABLE_TO_COLLECT";
   bookingId: string;
+  distanceFromPreviousMiles: number | null;
   bookingReference: string | null;
   companyName: string;
   customerName: string;
@@ -700,6 +701,7 @@ export interface CollectUkDriverStop {
 }
 
 export interface CollectUkDriverRouteDetail extends CollectUkDriverRoute {
+  totalDistanceMiles: number | null;
   stops: CollectUkDriverStop[];
 }
 

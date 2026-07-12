@@ -6,6 +6,7 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyCollectionScheduled } from '../services/collectUkNotifications';
+import { geocodePostcode, estimatedRoadMiles, orderByNearestNeighbour, GeoPoint } from '../lib/collectUkGeo';
 
 const router = Router();
 
@@ -113,6 +114,7 @@ router.get('/routes/:id', requireAdmin, async (req: Request<{ id: string }>, res
       driverId: route.driverId,
       routeDate: route.routeDate,
       status: route.status,
+      totalDistanceMiles: route.totalDistanceMiles,
       stops: route.stops.map(s => ({
         id: s.id,
         sequenceOrder: s.sequenceOrder,
@@ -123,10 +125,134 @@ router.get('/routes/:id', requireAdmin, async (req: Request<{ id: string }>, res
         customerName: s.booking.customerName,
         collectionAddress: s.booking.collectionAddress,
         collectionPostcode: s.booking.collectionPostcode,
+        distanceFromPreviousMiles: s.distanceFromPreviousMiles,
       })),
     },
   });
 });
+
+const optimiseRouteSchema = z.object({
+  // Where the driver starts the round (e.g. the van's base) -- the first
+  // leg's distance is measured from here when given; without it the
+  // first stop is chosen arbitrarily and its leg distance is null.
+  startPostcode: z.string().trim().min(1).max(20).optional(),
+});
+
+// Orders a PLANNED route's stops nearest-neighbour and records estimated
+// per-leg + total mileage -- the cost side of every collection round
+// (driver pay, per-collection pricing). Estimates only; see collectUkGeo.
+router.post(
+  '/routes/:id/optimise',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const parsed = optimiseRouteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const route = await prisma.collectUkCollectionRoute.findUnique({
+      where: { id: req.params.id },
+      include: { driver: true, stops: { include: { booking: true } } },
+    });
+    if (!route) {
+      next(new ApiError('NOT_FOUND', 'Route not found', 404));
+      return;
+    }
+    if (route.status !== 'PLANNED') {
+      next(new ApiError('INVALID_STATE', 'Only a route that has not started can be re-ordered', 409));
+      return;
+    }
+    if (route.stops.length === 0) {
+      next(new ApiError('EMPTY_ROUTE', 'This route has no stops to optimise', 409));
+      return;
+    }
+
+    // Fill in coordinates for any booking that failed geocoding at
+    // booking time (or predates geocoding entirely).
+    const points = new Map<string, GeoPoint>();
+    const failedPostcodes: string[] = [];
+    for (const stop of route.stops) {
+      const { booking } = stop;
+      if (booking.collectionLatitude != null && booking.collectionLongitude != null) {
+        points.set(stop.id, { latitude: booking.collectionLatitude, longitude: booking.collectionLongitude });
+        continue;
+      }
+      const geo = await geocodePostcode(booking.collectionPostcode);
+      if (!geo) {
+        failedPostcodes.push(booking.collectionPostcode);
+        continue;
+      }
+      points.set(stop.id, geo);
+      await prisma.collectUkCollectionBooking.update({
+        where: { id: booking.id },
+        data: { collectionLatitude: geo.latitude, collectionLongitude: geo.longitude },
+      });
+    }
+    if (failedPostcodes.length > 0) {
+      next(
+        new ApiError('UNGEOCODABLE_STOPS', 'Some collection postcodes could not be geocoded', 422, {
+          postcodes: failedPostcodes,
+        }),
+      );
+      return;
+    }
+
+    let start: GeoPoint | undefined;
+    if (parsed.data.startPostcode) {
+      const geo = await geocodePostcode(parsed.data.startPostcode);
+      if (!geo) {
+        next(new ApiError('UNGEOCODABLE_START', 'The start postcode could not be geocoded', 422));
+        return;
+      }
+      start = geo;
+    }
+
+    const ordered = orderByNearestNeighbour(route.stops, s => points.get(s.id)!, start);
+
+    const legs: (number | null)[] = ordered.map((stop, i) => {
+      const from = i === 0 ? start : points.get(ordered[i - 1].id)!;
+      if (!from) return null; // first stop with no start point given
+      return estimatedRoadMiles(from, points.get(stop.id)!);
+    });
+    const totalDistanceMiles = Math.round(legs.reduce<number>((sum, d) => sum + (d ?? 0), 0) * 10) / 10;
+
+    await prisma.$transaction(async tx => {
+      for (let i = 0; i < ordered.length; i++) {
+        await tx.collectUkCollectionStop.update({
+          where: { id: ordered[i].id },
+          data: { sequenceOrder: i, distanceFromPreviousMiles: legs[i] },
+        });
+      }
+      await tx.collectUkCollectionRoute.update({
+        where: { id: route.id },
+        data: { totalDistanceMiles },
+      });
+    });
+
+    await recordAuditLog(route.driver.userId, 'COLLECT_UK_ROUTE_OPTIMISED', {
+      routeId: route.id,
+      totalDistanceMiles,
+      stopCount: ordered.length,
+    });
+
+    res.status(200).json({
+      data: {
+        id: route.id,
+        totalDistanceMiles,
+        stops: ordered.map((s, i) => ({
+          id: s.id,
+          sequenceOrder: i,
+          bookingId: s.bookingId,
+          bookingReference: s.booking.reference,
+          customerName: s.booking.customerName,
+          collectionPostcode: s.booking.collectionPostcode,
+          distanceFromPreviousMiles: legs[i],
+        })),
+      },
+    });
+  },
+);
 
 // The dispatcher's queue -- every REQUESTED booking across every company,
 // since one driver's route can (and typically will) carry bookings from
