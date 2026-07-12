@@ -10,7 +10,7 @@ import { test, expect } from "@playwright/test";
 test("seller can register and complete onboarding", async ({ page }) => {
   const uniqueEmail = `e2e-onboarding-${Date.now()}@faira-test.dev`;
 
-  await page.goto("/");
+  await page.goto("/fulfilment");
   await expect(page.getByRole("heading", { name: "Faira Fulfilment" })).toBeVisible();
   await page.getByRole("link", { name: "Register as a seller" }).click();
 

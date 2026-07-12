@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Faira Fulfilment",
-  description: "Faira Fulfilment — trusted parcel fulfilment between Faira hubs in Zimbabwe.",
+  title: "Faira",
+  description: "Faira — logistics for African shipping and fulfilment.",
 };
 
 export default function RootLayout({

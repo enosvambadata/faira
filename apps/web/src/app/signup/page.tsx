@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -31,8 +31,9 @@ function validate(form: FormState): Partial<Record<keyof FormState, string>> {
   return errors;
 }
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export default function SignupPage() {
       const { error } = await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
       if (error) throw error;
 
-      router.push("/onboarding");
+      router.push(searchParams.get("redirect") || "/onboarding");
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.code === "ACCOUNT_ALREADY_EXISTS") {
         setSubmitError("An account with this email already exists. Try signing in instead.");
@@ -68,9 +69,9 @@ export default function SignupPage() {
   return (
     <AuthLayout>
       <Card>
-        <h1 className="text-xl font-semibold text-text">Create your seller account</h1>
+        <h1 className="text-xl font-semibold text-text">Create your account</h1>
         <p className="mt-1 text-sm text-muted">
-          Just an email and password for now — we&apos;ll collect your business details next.
+          Just an email and password for now — we&apos;ll collect your details next.
         </p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
@@ -119,11 +120,22 @@ export default function SignupPage() {
 
         <p className="mt-5 text-center text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary">
+          <Link
+            href={searchParams.get("redirect") ? `/login?next=${encodeURIComponent(searchParams.get("redirect")!)}` : "/login"}
+            className="font-medium text-primary"
+          >
             Sign in
           </Link>
         </p>
       </Card>
     </AuthLayout>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }
