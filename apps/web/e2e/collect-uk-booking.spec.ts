@@ -68,7 +68,9 @@ test.describe("Faira Collect UK guest booking", () => {
 
     // --- Customer follows the tracking link ---
     await page.goto(trackingLink!);
-    await expect(page.getByText("Booking received")).toBeVisible({ timeout: 15_000 });
+    // Full label, not a substring -- the tracking page's progress timeline
+    // also contains a "Booking received" step name.
+    await expect(page.getByText("Booking received -- awaiting scheduling")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(companyName)).toBeVisible();
     await expect(page.getByText("Zimbabwe")).toBeVisible();
 

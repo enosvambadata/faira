@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/Alert";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 import {
   collectUkCompanies,
   CollectUkCompany,
@@ -138,8 +139,8 @@ export default function CompanyDashboardPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
-          <span className="text-lg font-semibold text-primary">Faira Collect — Company Portal</span>
-          <Link href="/collect-uk" className="text-sm font-medium text-muted hover:text-text">
+          <CollectBrand suffix="Company Portal" />
+          <Link href="/collect-uk" className="cursor-pointer text-sm font-medium text-muted transition-colors duration-200 hover:text-primary">
             All companies
           </Link>
         </div>

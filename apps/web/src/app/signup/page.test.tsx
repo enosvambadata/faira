@@ -5,6 +5,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+  // SignupPage reads ?redirect= to route new accounts to the right product
+  // onboarding; no param in these tests exercises the default (fulfilment
+  // onboarding) path.
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const signupMock = vi.fn();

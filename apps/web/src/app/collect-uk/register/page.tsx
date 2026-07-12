@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { collectUkCompanies, FulfilmentApiError } from "@/lib/api";
+import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 export default function RegisterCompanyPage() {
   const router = useRouter();
@@ -40,7 +41,7 @@ export default function RegisterCompanyPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
         <div className="mx-auto max-w-2xl px-6 py-3">
-          <span className="text-lg font-semibold text-primary">Faira Collect — Company Portal</span>
+          <CollectBrand suffix="Company Portal" />
         </div>
       </header>
 

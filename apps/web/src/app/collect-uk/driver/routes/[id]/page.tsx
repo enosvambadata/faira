@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { FileUpload, UploadState } from "@/components/ui/FileUpload";
 import { useToast } from "@/components/ui/Toast";
+import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 import {
   collectUkDriverPortal,
   CollectUkDriverRouteDetail,
@@ -195,8 +196,8 @@ export default function DriverRouteDetailPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
-          <span className="text-lg font-semibold text-primary">Faira Collect — Driver</span>
-          <Link href="/collect-uk/driver" className="text-sm font-medium text-muted hover:text-text">
+          <CollectBrand suffix="Driver" />
+          <Link href="/collect-uk/driver" className="cursor-pointer text-sm font-medium text-muted transition-colors duration-200 hover:text-primary">
             All routes
           </Link>
         </div>
