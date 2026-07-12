@@ -16,8 +16,13 @@ import {
   CollectUkCompany,
   CollectUkWarehouse,
   CollectUkCompanyRoleType,
+  CollectUkBookingSummary,
   FulfilmentApiError,
 } from "@/lib/api";
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
 
 export default function CompanyDashboardPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +32,9 @@ export default function CompanyDashboardPage() {
   const [company, setCompany] = useState<CollectUkCompany | null>(null);
   const [myRole, setMyRole] = useState<CollectUkCompanyRoleType | null>(null);
   const [warehouses, setWarehouses] = useState<CollectUkWarehouse[]>([]);
+  const [bookings, setBookings] = useState<CollectUkBookingSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const [name, setName] = useState("");
   const [countriesServed, setCountriesServed] = useState("");
@@ -46,15 +53,17 @@ export default function CompanyDashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [memberships, companyDetail, warehouseList] = await Promise.all([
+        const [memberships, companyDetail, warehouseList, bookingList] = await Promise.all([
           collectUkCompanies.mine(),
           collectUkCompanies.get(id),
           collectUkCompanies.listWarehouses(id),
+          collectUkCompanies.listBookings(id),
         ]);
         setCompany(companyDetail);
         setName(companyDetail.name);
         setCountriesServed(companyDetail.countriesServed.join(", "));
         setWarehouses(warehouseList);
+        setBookings(bookingList);
         setMyRole(memberships.find(m => m.id === id)?.role ?? null);
       } catch (err) {
         setError(err instanceof FulfilmentApiError ? err.message : "Could not load this company right now.");
@@ -139,6 +148,28 @@ export default function CompanyDashboardPage() {
             </div>
 
             <Card className="mt-6">
+              <h2 className="text-base font-semibold text-text">Your booking link</h2>
+              <p className="mt-1 text-sm text-muted">Share this with customers so they can book a collection directly.</p>
+              <div className="mt-3 flex items-center gap-2">
+                <code className="flex-1 truncate rounded-md bg-light px-3 py-2 text-sm text-text">
+                  {typeof window !== "undefined" ? `${window.location.origin}/collect-uk/book/${company.slug}` : ""}
+                </code>
+                <Button
+                  type="button"
+                  size="md"
+                  variant="secondary"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/collect-uk/book/${company.slug}`);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                  }}
+                >
+                  {linkCopied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="mt-4">
               <h2 className="text-base font-semibold text-text">Company profile</h2>
               {isAdmin ? (
                 <form onSubmit={handleSaveProfile} className="mt-4 flex flex-col gap-4">
@@ -211,6 +242,31 @@ export default function CompanyDashboardPage() {
                     Add warehouse
                   </Button>
                 </form>
+              )}
+            </Card>
+
+            <Card className="mt-4">
+              <h2 className="text-base font-semibold text-text">Bookings</h2>
+
+              {bookings.length === 0 && <p className="mt-3 text-sm text-muted">No bookings yet.</p>}
+
+              {bookings.length > 0 && (
+                <ul className="mt-3 flex flex-col gap-3">
+                  {bookings.map(b => (
+                    <li key={b.id} className="rounded-md border border-border p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-text">{b.reference}</span>
+                        <StatusBadge label={b.status.replaceAll("_", " ")} tone="neutral" />
+                      </div>
+                      <p className="mt-1 text-muted">
+                        {b.customerName} — {b.destinationCountry}
+                      </p>
+                      <p className="text-muted">
+                        {b.collectionAddress}, {b.collectionPostcode} — collect by {formatDate(b.preferredDate)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card>
           </>

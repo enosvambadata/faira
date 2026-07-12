@@ -278,4 +278,45 @@ router.patch(
   },
 );
 
+// Dispatcher-facing visibility into incoming bookings -- the Collection
+// Scheduling epic (SCRUM-162) will build real dispatch tooling on top of
+// this list; for now it's just read access so a company isn't blind to
+// what customers have booked.
+router.get(
+  '/:id/bookings',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    if (!isAssignedToCompany(req, req.params.id)) {
+      await recordAuditLog(req.userId!, 'COLLECT_UK_COMPANY_ASSIGNMENT_DENIED', {
+        targetCompanyId: req.params.id,
+        actualCompanyAssignments: (req.companyRoles ?? []).map(r => r.companyId),
+      });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const bookings = await prisma.collectUkCollectionBooking.findMany({
+      where: { companyId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json({
+      data: bookings.map(b => ({
+        id: b.id,
+        reference: b.reference,
+        status: b.status,
+        customerName: b.customerName,
+        customerContact: b.customerContact,
+        destinationCountry: b.destinationCountry,
+        collectionAddress: b.collectionAddress,
+        collectionPostcode: b.collectionPostcode,
+        preferredDate: b.preferredDate,
+        parcelSizeTier: b.parcelSizeTier,
+        createdAt: b.createdAt,
+      })),
+    });
+  },
+);
+
 export default router;

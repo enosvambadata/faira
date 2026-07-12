@@ -11,6 +11,7 @@ const warehouseFindManyMock = vi.fn();
 const warehouseFindUniqueMock = vi.fn();
 const warehouseCreateMock = vi.fn();
 const warehouseUpdateMock = vi.fn();
+const bookingFindManyMock = vi.fn();
 const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 
@@ -37,6 +38,7 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => warehouseCreateMock(...args),
       update: (...args: unknown[]) => warehouseUpdateMock(...args),
     },
+    collectUkCollectionBooking: { findMany: (...args: unknown[]) => bookingFindManyMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -68,6 +70,7 @@ beforeEach(() => {
   warehouseFindManyMock.mockResolvedValue([]);
   warehouseCreateMock.mockResolvedValue({});
   warehouseUpdateMock.mockResolvedValue({});
+  bookingFindManyMock.mockResolvedValue([]);
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCompany: { create: (...args: unknown[]) => companyCreateMock(...args) },
@@ -306,5 +309,50 @@ describe('warehouse routes', () => {
 
     expect(res.status).toBe(404);
     expect(warehouseUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/collect-uk/companies/:id/bookings', () => {
+  it('lists bookings for an assigned company', async () => {
+    bookingFindManyMock.mockResolvedValue([
+      {
+        id: 'booking-1',
+        reference: 'FC-abc-logistics-000001',
+        status: 'REQUESTED',
+        customerName: 'Jane Customer',
+        customerContact: '+447700900000',
+        destinationCountry: 'Zimbabwe',
+        collectionAddress: '10 Test St',
+        collectionPostcode: 'E1 6AN',
+        preferredDate: new Date('2026-08-01T00:00:00Z'),
+        parcelSizeTier: 'MEDIUM',
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].reference).toBe('FC-abc-logistics-000001');
+  });
+
+  it("403s (tenant isolation) listing another company's bookings", async () => {
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_B}/bookings`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
+    expect(bookingFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a DISPATCHER (read-only) to list bookings', async () => {
+    companyRoleFindManyMock.mockResolvedValue([{ role: 'DISPATCHER', companyId: COMPANY_A }]);
+    bookingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
   });
 });
