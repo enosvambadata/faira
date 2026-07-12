@@ -537,4 +537,68 @@ export const tracking = {
   get: (token: string) => request<BuyerTrackingInfo>(`/api/v1/fulfilment/tracking/${encodeURIComponent(token)}`),
 };
 
+export type CollectUkCompanyRoleType = "COMPANY_ADMIN" | "DISPATCHER";
+
+export interface CollectUkCompany {
+  id: string;
+  name: string;
+  slug: string;
+  countriesServed: string[];
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CollectUkCompanyMembership extends CollectUkCompany {
+  role: CollectUkCompanyRoleType;
+}
+
+export interface CollectUkWarehouse {
+  id: string;
+  companyId: string;
+  name: string;
+  address: string;
+  city: string;
+  postcode: string;
+  openingHours: string;
+  isActive: boolean;
+}
+
+export interface CreateCollectUkCompanyPayload {
+  name: string;
+  countriesServed: string[];
+}
+
+export interface CollectUkWarehousePayload {
+  name: string;
+  address: string;
+  city: string;
+  postcode: string;
+  openingHours: string;
+}
+
+export const collectUkCompanies = {
+  create: (payload: CreateCollectUkCompanyPayload) =>
+    request<CollectUkCompany>("/api/v1/collect-uk/companies", { method: "POST", body: payload, auth: true }),
+
+  mine: () => request<CollectUkCompanyMembership[]>("/api/v1/collect-uk/companies/mine", { auth: true }),
+
+  get: (id: string) => request<CollectUkCompany>(`/api/v1/collect-uk/companies/${id}`, { auth: true }),
+
+  update: (id: string, payload: Partial<CreateCollectUkCompanyPayload>) =>
+    request<CollectUkCompany>(`/api/v1/collect-uk/companies/${id}`, { method: "PATCH", body: payload, auth: true }),
+
+  listWarehouses: (id: string) =>
+    request<CollectUkWarehouse[]>(`/api/v1/collect-uk/companies/${id}/warehouses`, { auth: true }),
+
+  createWarehouse: (id: string, payload: CollectUkWarehousePayload) =>
+    request<CollectUkWarehouse>(`/api/v1/collect-uk/companies/${id}/warehouses`, { method: "POST", body: payload, auth: true }),
+
+  updateWarehouse: (id: string, warehouseId: string, payload: Partial<CollectUkWarehousePayload & { isActive: boolean }>) =>
+    request<CollectUkWarehouse>(`/api/v1/collect-uk/companies/${id}/warehouses/${warehouseId}`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    }),
+};
+
 export { ApiError as FulfilmentApiError };
