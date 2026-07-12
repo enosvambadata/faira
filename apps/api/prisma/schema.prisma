@@ -1498,6 +1498,9 @@ model CollectUkCollectionBooking {
   collectionPostcode  String                   @map("collection_postcode")
   preferredDate       DateTime                 @map("preferred_date")
   parcelSizeTier      CollectUkParcelSizeTier  @map("parcel_size_tier")
+  // One booking can be several physical boxes -- each gets a printed
+  // "i of N" label so none go missing between doorstep and warehouse.
+  numberOfParcels     Int                      @default(1) @map("number_of_parcels")
   parcelWeightKg      Decimal?                 @map("parcel_weight_kg") @db.Decimal(6, 2)
   specialInstructions String?                  @map("special_instructions")
   // Geocoded from collectionPostcode at booking time (postcodes.io),

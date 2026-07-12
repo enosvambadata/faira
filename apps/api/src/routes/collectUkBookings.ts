@@ -46,6 +46,7 @@ const createBookingSchema = z.object({
   collectionPostcode: z.string().trim().min(1).max(20),
   preferredDate: z.coerce.date(),
   parcelSizeTier: z.enum(['SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE']),
+  numberOfParcels: z.number().int().min(1).max(50).default(1),
   parcelWeightKg: z.number().positive().optional(),
   specialInstructions: z.string().trim().max(1000).optional(),
 });
@@ -96,6 +97,7 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
         collectionPostcode: parsed.data.collectionPostcode,
         preferredDate: parsed.data.preferredDate,
         parcelSizeTier: parsed.data.parcelSizeTier,
+        numberOfParcels: parsed.data.numberOfParcels,
         parcelWeightKg: parsed.data.parcelWeightKg,
         specialInstructions: parsed.data.specialInstructions,
         collectionLatitude: geo?.latitude,
