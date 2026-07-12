@@ -34,6 +34,7 @@ function stopResponse(s: {
   sequenceOrder: number;
   status: string;
   bookingId: string;
+  distanceFromPreviousMiles: number | null;
   booking: {
     reference: string | null;
     customerName: string;
@@ -51,6 +52,7 @@ function stopResponse(s: {
     sequenceOrder: s.sequenceOrder,
     status: s.status,
     bookingId: s.bookingId,
+    distanceFromPreviousMiles: s.distanceFromPreviousMiles,
     bookingReference: s.booking.reference,
     companyName: s.booking.company.name,
     customerName: s.booking.customerName,
@@ -87,6 +89,7 @@ router.get(
         id: route.id,
         routeDate: route.routeDate,
         status: route.status,
+        totalDistanceMiles: route.totalDistanceMiles,
         stops: route.stops.map(stopResponse),
       },
     });
