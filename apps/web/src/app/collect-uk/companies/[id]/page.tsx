@@ -184,7 +184,7 @@ export default function CompanyDashboardPage() {
               {isAdmin && (
                 <form onSubmit={handleAddWarehouse} className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
                   <h3 className="text-sm font-medium text-text">Add a warehouse</h3>
-                  <Field label="Name" required>
+                  <Field label="Warehouse name" required>
                     {p => <Input {...p} value={whName} onChange={e => setWhName(e.target.value)} placeholder="Main Depot" />}
                   </Field>
                   <Field label="Address" required>
