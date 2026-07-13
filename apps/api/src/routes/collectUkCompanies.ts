@@ -6,7 +6,12 @@ import { requireCompanyRole, CompanyRequest } from '../middleware/requireCompany
 import { isAssignedToCompany } from '../lib/companyAssignment';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
-import { notifyHandedOver, notifyBookingCancelled, notifyArrivedAtWarehouse } from '../services/collectUkNotifications';
+import {
+  notifyHandedOver,
+  notifyBookingCancelled,
+  notifyArrivedAtWarehouse,
+  notifyCollectionWeekSet,
+} from '../services/collectUkNotifications';
 import { advanceRouteProgress } from '../services/collectUkRouteProgress';
 
 const router = Router();
@@ -342,17 +347,40 @@ router.post(
       return;
     }
 
-    const window = await prisma.collectUkCollectionWindow.create({
-      data: { companyId: req.params.id, startDate: parsed.data.startDate, endDate: parsed.data.endDate },
+    // Declaring a week SWEEPS the waiting queue: every windowless
+    // REQUESTED booking (customers who registered interest before any
+    // week existed) attaches to the new window in the same transaction,
+    // and each of those customers is told their collection week is set.
+    // The exact day still arrives later via the routing notification.
+    const { window, sweptBookingIds } = await prisma.$transaction(async tx => {
+      const created = await tx.collectUkCollectionWindow.create({
+        data: { companyId: req.params.id, startDate: parsed.data.startDate, endDate: parsed.data.endDate },
+      });
+      const waiting = await tx.collectUkCollectionBooking.findMany({
+        where: { companyId: req.params.id, status: 'REQUESTED', collectionWindowId: null },
+        select: { id: true },
+      });
+      if (waiting.length > 0) {
+        await tx.collectUkCollectionBooking.updateMany({
+          where: { id: { in: waiting.map(b => b.id) }, status: 'REQUESTED', collectionWindowId: null },
+          data: { collectionWindowId: created.id },
+        });
+      }
+      return { window: created, sweptBookingIds: waiting.map(b => b.id) };
     });
+
     await recordAuditLog(req.userId!, 'COLLECT_UK_WINDOW_CREATED', {
       companyId: req.params.id,
       windowId: window.id,
       startDate: window.startDate,
       endDate: window.endDate,
+      sweptBookings: sweptBookingIds.length,
     });
+    for (const bookingId of sweptBookingIds) {
+      await notifyCollectionWeekSet(bookingId);
+    }
 
-    res.status(201).json({ data: windowResponse(window) });
+    res.status(201).json({ data: { ...windowResponse(window), attachedBookings: sweptBookingIds.length } });
   },
 );
 

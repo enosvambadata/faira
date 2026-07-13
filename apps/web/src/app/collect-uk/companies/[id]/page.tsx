@@ -142,7 +142,15 @@ export default function CompanyDashboardPage() {
       setWindows(prev => [window, ...prev]);
       setWinStart("");
       setWinEnd("");
-      toast({ title: "Collection week added", tone: "success" });
+      toast({
+        title:
+          window.attachedBookings > 0
+            ? `Collection week added — ${window.attachedBookings} waiting booking${window.attachedBookings === 1 ? "" : "s"} moved into it`
+            : "Collection week added",
+        tone: "success",
+      });
+      // Re-pull bookings so the swept ones show their new week immediately.
+      setBookings(await collectUkCompanies.listBookings(company.id));
     } catch (err) {
       setWindowError(err instanceof FulfilmentApiError ? err.message : "Could not add this collection week.");
     } finally {
@@ -348,6 +356,32 @@ export default function CompanyDashboardPage() {
 
             <Card className="mt-4">
               <h2 className="text-base font-semibold text-text">Bookings</h2>
+
+              {bookings.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-md border border-border bg-bg p-3">
+                    <p className="text-2xl font-bold text-primary">
+                      {bookings.filter(b => b.status === "REQUESTED" && !b.collectionWindow).length}
+                    </p>
+                    <p className="text-xs text-muted">awaiting a collection week</p>
+                  </div>
+                  <div className="rounded-md border border-border bg-bg p-3">
+                    <p className="text-2xl font-bold text-text">
+                      {bookings.filter(b => b.status === "REQUESTED" && b.collectionWindow).length}
+                    </p>
+                    <p className="text-xs text-muted">booked into a week</p>
+                  </div>
+                  <div className="rounded-md border border-border bg-bg p-3">
+                    <p className="text-2xl font-bold text-text">
+                      {bookings.reduce(
+                        (sum, b) => (b.status === "REQUESTED" ? sum + b.numberOfParcels : sum),
+                        0,
+                      )}
+                    </p>
+                    <p className="text-xs text-muted">parcels waiting collection</p>
+                  </div>
+                </div>
+              )}
 
               {bookings.length === 0 && <p className="mt-3 text-sm text-muted">No bookings yet.</p>}
 
