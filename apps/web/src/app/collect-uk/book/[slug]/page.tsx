@@ -284,6 +284,13 @@ export default function BookCollectionPage() {
                 <Button type="submit" size="lg" loading={submitting} disabled={!canSubmit}>
                   Book collection
                 </Button>
+                <p className="text-center text-xs text-muted">
+                  By booking you agree to our{" "}
+                  <a href="/privacy" target="_blank" className="cursor-pointer underline transition-colors duration-200 hover:text-primary">
+                    privacy notice
+                  </a>
+                  . Your details are shared with {company.name} to ship your parcels.
+                </p>
               </form>
             </Card>
           </>
