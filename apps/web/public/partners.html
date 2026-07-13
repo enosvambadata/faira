@@ -170,6 +170,32 @@
   @media (prefers-reduced-motion: reduce) {
     * { transition-duration: 0.01ms !important; }
   }
+
+  /* Print: browsers drop background colours by default, which would turn
+     the dark CTA block into white-on-white -- restyle it (and tidy the
+     rest) so the printout carries the full pitch including the call to
+     action, with the register URL spelled out. */
+  @media print {
+    html, body { background: #fff; }
+    .chips .chip { border: 1px solid #94a3b8; }
+    section, .panel, .price-card, .worked, .step { break-inside: avoid; }
+    .cta { background: #fff; color: #0f172a; border-top: 3px solid #0f172a; margin-top: 24px; }
+    .cta h2 { color: #0f172a; }
+    .cta p, .cta .foot { color: #334155; }
+    .cta .eyebrow { color: #0369a1 !important; }
+    .btn { background: none; color: #0369a1; border: 2px solid #0369a1; padding: 10px 20px; }
+    .btn::after {
+      content: " — faira-web-production.up.railway.app/signup";
+      font-weight: 600; font-size: 13px;
+    }
+    .cta .alt, .cta .alt a { color: #0f172a; }
+    .foot { border-top-color: #cbd5e1; }
+    .price-card { background: #fff; color: #0f172a; border: 2px solid #0f172a; }
+    .price-card .eyebrow { color: #0369a1 !important; }
+    .price-line { border-bottom-color: #cbd5e1; }
+    .price-line .lbl { color: #334155; }
+    .price-note { color: #475569; }
+  }
 </style>
 </head>
 <body>
