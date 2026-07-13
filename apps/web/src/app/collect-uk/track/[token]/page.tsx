@@ -212,8 +212,14 @@ export default function CollectUkTrackingPage() {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted">Preferred date</dt>
-                  <dd className="text-right text-text">{formatDate(info.preferredDate)}</dd>
+                  <dt className="text-muted">Collection week</dt>
+                  <dd className="text-right text-text">
+                    {info.collectionWindow
+                      ? `${formatDate(info.collectionWindow.startDate)} – ${formatDate(info.collectionWindow.endDate)}`
+                      : info.preferredDate
+                        ? formatDate(info.preferredDate)
+                        : "Being scheduled — we'll text you"}
+                  </dd>
                 </div>
               </dl>
             </Card>

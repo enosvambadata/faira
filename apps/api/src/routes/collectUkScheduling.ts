@@ -282,8 +282,8 @@ router.post(
 router.get('/bookings/unscheduled', requireAdmin, async (_req: Request, res: Response) => {
   const bookings = await prisma.collectUkCollectionBooking.findMany({
     where: { status: 'REQUESTED' },
-    include: { company: true },
-    orderBy: { preferredDate: 'asc' },
+    include: { company: true, collectionWindow: true },
+    orderBy: { createdAt: 'asc' },
   });
 
   res.status(200).json({
@@ -295,6 +295,9 @@ router.get('/bookings/unscheduled', requireAdmin, async (_req: Request, res: Res
       collectionAddress: b.collectionAddress,
       collectionPostcode: b.collectionPostcode,
       preferredDate: b.preferredDate,
+      collectionWindow: b.collectionWindow
+        ? { startDate: b.collectionWindow.startDate, endDate: b.collectionWindow.endDate }
+        : null,
       parcelSizeTier: b.parcelSizeTier,
       numberOfParcels: b.numberOfParcels,
       itemTypes: b.itemTypes,

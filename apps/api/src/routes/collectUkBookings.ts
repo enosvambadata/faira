@@ -30,6 +30,19 @@ export const publicRateLimiter = rateLimit({
   },
 });
 
+// The company's next open collection window -- "open" meaning it hasn't
+// ended yet. Customers book into this window; when none exists the
+// booking queues windowless and the customer is told their collection
+// week will be confirmed later.
+async function findNextWindow(companyId: string) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return prisma.collectUkCollectionWindow.findFirst({
+    where: { companyId, endDate: { gte: today } },
+    orderBy: { startDate: 'asc' },
+  });
+}
+
 router.get('/book/:companySlug', publicRateLimiter, async (req: Request<{ companySlug: string }>, res: Response, next: NextFunction) => {
   const company = await prisma.collectUkCompany.findUnique({ where: { slug: req.params.companySlug } });
   if (!company || !company.isActive) {
@@ -37,8 +50,15 @@ router.get('/book/:companySlug', publicRateLimiter, async (req: Request<{ compan
     return;
   }
 
+  const nextWindow = await findNextWindow(company.id);
+
   res.status(200).json({
-    data: { id: company.id, name: company.name, countriesServed: company.countriesServed },
+    data: {
+      id: company.id,
+      name: company.name,
+      countriesServed: company.countriesServed,
+      nextWindow: nextWindow ? { startDate: nextWindow.startDate, endDate: nextWindow.endDate } : null,
+    },
   });
 });
 
@@ -49,7 +69,6 @@ const createBookingSchema = z
     destinationCountry: z.string().trim().min(1).max(100),
     collectionAddress: z.string().trim().min(1).max(300),
     collectionPostcode: z.string().trim().min(1).max(20),
-    preferredDate: z.coerce.date(),
     parcelSizeTier: z.enum(['SMALL', 'MEDIUM', 'LARGE', 'EXTRA_LARGE']),
     numberOfParcels: z.number().int().min(1).max(50).default(1),
     itemTypes: z.array(z.enum(['DRUM', 'SUITCASE', 'FRIDGE', 'STOVE', 'PALLET', 'VEHICLE', 'OTHER'])).min(1),
@@ -94,6 +113,11 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
     return;
   }
 
+  // Customers never pick dates -- the booking attaches to the company's
+  // next open collection window (or queues windowless when none exists,
+  // to be attached when the company declares one).
+  const nextWindow = await findNextWindow(company.id);
+
   // Best-effort, resolved before the transaction (no network calls inside
   // a DB transaction) -- a geocoding outage must never block a booking;
   // the route optimiser retries missing coordinates later.
@@ -111,7 +135,7 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
         destinationCountry: parsed.data.destinationCountry,
         collectionAddress: parsed.data.collectionAddress,
         collectionPostcode: parsed.data.collectionPostcode,
-        preferredDate: parsed.data.preferredDate,
+        collectionWindowId: nextWindow?.id,
         parcelSizeTier: parsed.data.parcelSizeTier,
         numberOfParcels: parsed.data.numberOfParcels,
         itemTypes: Array.from(new Set(parsed.data.itemTypes)),
@@ -144,7 +168,7 @@ router.get('/tracking/:token', publicRateLimiter, async (req: Request<{ token: s
 
   const booking = await prisma.collectUkCollectionBooking.findUnique({
     where: { id: verified.bookingId },
-    include: { company: true },
+    include: { company: true, collectionWindow: true },
   });
   if (!booking) {
     next(new ApiError('INVALID_TOKEN', 'This tracking link is invalid or has expired', 404));
@@ -160,6 +184,9 @@ router.get('/tracking/:token', publicRateLimiter, async (req: Request<{ token: s
       collectionAddress: booking.collectionAddress,
       collectionPostcode: booking.collectionPostcode,
       preferredDate: booking.preferredDate,
+      collectionWindow: booking.collectionWindow
+        ? { startDate: booking.collectionWindow.startDate, endDate: booking.collectionWindow.endDate }
+        : null,
     },
   });
 });

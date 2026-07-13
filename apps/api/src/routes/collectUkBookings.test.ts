@@ -10,6 +10,7 @@ const transactionMock = vi.fn();
 const notifyBookingConfirmedMock = vi.fn();
 const notifyBookingCancelledMock = vi.fn();
 const bookingUpdateManyMock = vi.fn();
+const windowFindFirstMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
 
 vi.mock('../lib/collectUkGeo', async importOriginal => ({
@@ -35,6 +36,7 @@ vi.mock('../prisma', () => ({
       update: (...args: unknown[]) => companyUpdateMock(...args),
     },
     collectUkCompanyWarehouse: { findFirst: (...args: unknown[]) => warehouseFindFirstMock(...args) },
+    collectUkCollectionWindow: { findFirst: (...args: unknown[]) => windowFindFirstMock(...args) },
     collectUkCollectionBooking: {
       create: (...args: unknown[]) => bookingCreateMock(...args),
       findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args),
@@ -65,7 +67,6 @@ const VALID_BOOKING_BODY = {
   destinationCountry: 'Zimbabwe',
   collectionAddress: '10 Test St',
   collectionPostcode: 'E1 6AN',
-  preferredDate: '2026-08-01',
   parcelSizeTier: 'MEDIUM',
   itemTypes: ['DRUM'],
 };
@@ -84,6 +85,7 @@ beforeEach(() => {
   geocodePostcodeMock.mockResolvedValue({ latitude: 51.5074, longitude: -0.1278 });
   notifyBookingCancelledMock.mockResolvedValue(undefined);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
+  windowFindFirstMock.mockResolvedValue(null);
   companyUpdateMock.mockResolvedValue({ ...COMPANY, nextBookingSequence: 6 });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
@@ -99,7 +101,7 @@ describe('GET /api/v1/collect-uk/book/:companySlug', () => {
     const res = await request(app).get('/api/v1/collect-uk/book/abc-logistics');
 
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ id: COMPANY.id, name: COMPANY.name, countriesServed: COMPANY.countriesServed });
+    expect(res.body.data).toEqual({ id: COMPANY.id, name: COMPANY.name, countriesServed: COMPANY.countriesServed, nextWindow: null });
   });
 
   it('404s for a nonexistent company', async () => {
@@ -419,5 +421,57 @@ describe('public rate limiting', () => {
     }
 
     expect(lastStatus).toBe(429);
+  });
+});
+
+describe('collection windows on booking', () => {
+  const WINDOW = {
+    id: 'window-1',
+    companyId: COMPANY.id,
+    startDate: new Date('2026-08-03T00:00:00Z'),
+    endDate: new Date('2026-08-09T00:00:00Z'),
+  };
+
+  it('GET /book/:slug exposes the next open window', async () => {
+    windowFindFirstMock.mockResolvedValue(WINDOW);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/collect-uk/book/abc-logistics');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.nextWindow).toMatchObject({});
+    expect(new Date(res.body.data.nextWindow.startDate).toISOString()).toBe(WINDOW.startDate.toISOString());
+  });
+
+  it('GET /book/:slug returns null when no window is open', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/collect-uk/book/abc-logistics');
+
+    expect(res.body.data.nextWindow).toBeNull();
+  });
+
+  it('attaches a new booking to the next open window', async () => {
+    windowFindFirstMock.mockResolvedValue(WINDOW);
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/book/abc-logistics').send(VALID_BOOKING_BODY);
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ collectionWindowId: 'window-1' }),
+    });
+  });
+
+  it('queues the booking windowless when the company has no open window', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/book/abc-logistics').send(VALID_BOOKING_BODY);
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ collectionWindowId: undefined }),
+    });
   });
 });

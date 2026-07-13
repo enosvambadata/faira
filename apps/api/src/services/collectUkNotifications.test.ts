@@ -33,6 +33,7 @@ const BOOKING = {
   destinationCountry: 'Zimbabwe',
   preferredDate: new Date('2026-08-01T00:00:00Z'),
   company: { name: 'ABC Logistics' },
+  collectionWindow: null,
 };
 
 beforeEach(() => {
@@ -43,12 +44,26 @@ beforeEach(() => {
 });
 
 describe('collectUkNotifications', () => {
-  it('booking confirmed: includes company, reference, date and tracking link', async () => {
+  it('booking confirmed with a collection window: includes the week and tracking link', async () => {
+    bookingFindUniqueMock.mockResolvedValue({
+      ...BOOKING,
+      collectionWindow: { startDate: new Date('2026-08-03T00:00:00Z'), endDate: new Date('2026-08-09T00:00:00Z') },
+    });
+
     await notifyBookingConfirmed('booking-1');
 
     expect(sendSmsMock).toHaveBeenCalledWith(
       '+447700900000',
-      'ABC Logistics: collection FC-abc-logistics-000001 booked for 1 Aug 2026. Track your parcel: https://app.example.com/collect-uk/track/test-tracking-token',
+      'ABC Logistics: booking FC-abc-logistics-000001 received -- collection week 3 Aug 2026 - 9 Aug 2026. Track your parcel: https://app.example.com/collect-uk/track/test-tracking-token',
+    );
+  });
+
+  it('booking confirmed without a window: promises the week will be texted', async () => {
+    await notifyBookingConfirmed('booking-1');
+
+    expect(sendSmsMock).toHaveBeenCalledWith(
+      '+447700900000',
+      "ABC Logistics: booking FC-abc-logistics-000001 received -- we'll text you when your collection week is set. Track your parcel: https://app.example.com/collect-uk/track/test-tracking-token",
     );
   });
 

@@ -54,7 +54,6 @@ test.describe("Faira Collect UK guest booking", () => {
     await page.getByRole("option", { name: "Zimbabwe" }).click();
     await page.getByLabel("Collection address").fill("10 Customer Street");
     await page.getByLabel("Postcode").fill("SW1A 1AA");
-    await page.getByLabel("Preferred collection date").fill("2026-09-01");
     await page.getByLabel("Parcel size").click();
     await page.getByRole("option", { name: "Medium (microwave)" }).click();
     await page.getByRole("checkbox", { name: "Drum(s)" }).click();

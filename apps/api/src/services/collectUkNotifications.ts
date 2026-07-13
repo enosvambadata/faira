@@ -27,7 +27,7 @@ function trackingUrl(bookingId: string): string {
 async function loadBooking(bookingId: string) {
   return prisma.collectUkCollectionBooking.findUnique({
     where: { id: bookingId },
-    include: { company: true },
+    include: { company: true, collectionWindow: true },
   });
 }
 
@@ -42,11 +42,15 @@ async function notify(bookingId: string, buildMessage: (b: NonNullable<Awaited<R
 }
 
 export async function notifyBookingConfirmed(bookingId: string): Promise<void> {
-  await notify(
-    bookingId,
-    b =>
-      `${b.company.name}: collection ${b.reference} booked for ${formatDate(b.preferredDate)}. Track your parcel: ${trackingUrl(b.id)}`,
-  );
+  await notify(bookingId, b => {
+    // Customers don't pick dates -- they're told the company's collection
+    // window (or that their week will be confirmed) and learn the exact
+    // day later from the "collection scheduled" message.
+    const when = b.collectionWindow
+      ? `collection week ${formatDate(b.collectionWindow.startDate)} - ${formatDate(b.collectionWindow.endDate)}`
+      : "we'll text you when your collection week is set";
+    return `${b.company.name}: booking ${b.reference} received -- ${when}. Track your parcel: ${trackingUrl(b.id)}`;
+  });
 }
 
 export async function notifyCollectionScheduled(bookingId: string, routeDate: Date): Promise<void> {
