@@ -203,6 +203,9 @@ export default function WelcomePage() {
         <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-between gap-3 px-6 py-6 text-sm text-muted sm:flex-row">
           <span>Faira Collect — a Vambadata product</span>
           <div className="flex items-center gap-5">
+            <Link href="/privacy" className="cursor-pointer transition-colors duration-200 hover:text-primary">
+              Privacy
+            </Link>
             <Link href="/fulfilment" className="cursor-pointer transition-colors duration-200 hover:text-primary">
               Faira Fulfilment
             </Link>
