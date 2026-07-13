@@ -7,6 +7,7 @@ import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyCollectionScheduled, notifyCollectionWillBeRescheduled } from '../services/collectUkNotifications';
 import { geocodePostcode, estimatedRoadMiles, orderByNearestNeighbour, GeoPoint } from '../lib/collectUkGeo';
+import { getCollectUkDriverDocViewUrl } from '../lib/cloudinary';
 
 const router = Router();
 
@@ -64,6 +65,87 @@ router.post('/drivers', requireAdmin, async (req: Request, res: Response, next: 
 router.get('/drivers', requireAdmin, async (_req: Request, res: Response) => {
   const drivers = await prisma.collectUkDriver.findMany({ orderBy: { createdAt: 'asc' } });
   res.status(200).json({ data: drivers });
+});
+
+// Own-van applications awaiting review, with signed short-lived view URLs
+// for the insurance documents (authenticated Cloudinary delivery -- the
+// raw public IDs are useless without a signature).
+router.get('/driver-applications', requireAdmin, async (_req: Request, res: Response) => {
+  const applications = await prisma.collectUkDriver.findMany({
+    where: { status: 'APPLIED' },
+    orderBy: { appliedAt: 'asc' },
+  });
+
+  res.status(200).json({
+    data: applications.map(a => ({
+      id: a.id,
+      fullName: a.fullName,
+      phone: a.phone,
+      county: a.county,
+      basePostcode: a.basePostcode,
+      vehicleMakeModel: a.vehicleMakeModel,
+      vehicleReference: a.vehicleReference,
+      capacityParcels: a.capacityParcels,
+      appliedAt: a.appliedAt,
+      documents: {
+        vanPhoto: a.vanPhotoUrl ? getCollectUkDriverDocViewUrl(a.vanPhotoUrl) : null,
+        motorInsurance: a.motorInsuranceUrl ? getCollectUkDriverDocViewUrl(a.motorInsuranceUrl) : null,
+        gitInsurance: a.gitInsuranceUrl ? getCollectUkDriverDocViewUrl(a.gitInsuranceUrl) : null,
+        liability: a.liabilityUrl ? getCollectUkDriverDocViewUrl(a.liabilityUrl) : null,
+      },
+    })),
+  });
+});
+
+// Approving is what turns an applicant into a routable driver -- the
+// reviewer is asserting they have checked the hire & reward, GIT and
+// public liability documents.
+router.post('/drivers/:id/approve', requireAdmin, async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const driver = await prisma.collectUkDriver.findUnique({ where: { id: req.params.id } });
+  if (!driver) {
+    next(new ApiError('NOT_FOUND', 'Driver not found', 404));
+    return;
+  }
+  if (driver.status !== 'APPLIED') {
+    next(new ApiError('INVALID_STATE', 'Only a pending application can be approved', 409));
+    return;
+  }
+
+  await prisma.collectUkDriver.update({
+    where: { id: driver.id },
+    data: { status: 'ACTIVE', reviewedAt: new Date(), reviewNotes: null },
+  });
+  await recordAuditLog(driver.userId, 'COLLECT_UK_DRIVER_APPROVED', { driverId: driver.id });
+
+  res.status(200).json({ data: { id: driver.id, status: 'ACTIVE' } });
+});
+
+const rejectSchema = z.object({ reviewNotes: z.string().trim().min(1).max(500) });
+
+router.post('/drivers/:id/reject', requireAdmin, async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+  const parsed = rejectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'A reason is required', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const driver = await prisma.collectUkDriver.findUnique({ where: { id: req.params.id } });
+  if (!driver) {
+    next(new ApiError('NOT_FOUND', 'Driver not found', 404));
+    return;
+  }
+  if (driver.status !== 'APPLIED') {
+    next(new ApiError('INVALID_STATE', 'Only a pending application can be rejected', 409));
+    return;
+  }
+
+  await prisma.collectUkDriver.update({
+    where: { id: driver.id },
+    data: { status: 'REJECTED', reviewedAt: new Date(), reviewNotes: parsed.data.reviewNotes },
+  });
+  await recordAuditLog(driver.userId, 'COLLECT_UK_DRIVER_REJECTED', { driverId: driver.id, reason: parsed.data.reviewNotes });
+
+  res.status(200).json({ data: { id: driver.id, status: 'REJECTED' } });
 });
 
 const createRouteSchema = z.object({

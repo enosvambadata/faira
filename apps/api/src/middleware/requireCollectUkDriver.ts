@@ -14,8 +14,12 @@ export interface DriverRequest extends AuthenticatedRequest {
 // Faira employees. Fails closed: no driver row means no access.
 export async function requireCollectUkDriver(req: DriverRequest, _res: Response, next: NextFunction): Promise<void> {
   const driver = await prisma.collectUkDriver.findUnique({ where: { userId: req.userId! } });
-  if (!driver) {
-    next(new ApiError('FORBIDDEN', 'You are not registered as a driver', 403));
+  if (!driver || driver.status !== 'ACTIVE') {
+    // APPLIED/REJECTED applicants and deactivated drivers are all locked
+    // out of operational routes -- only a Faira-approved driver may see or
+    // resolve stops. The portal's /me endpoint (requireAuth only) is how
+    // an applicant checks their application status.
+    next(new ApiError('FORBIDDEN', 'You are not an approved driver', 403));
     return;
   }
 

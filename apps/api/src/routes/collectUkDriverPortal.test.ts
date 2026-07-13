@@ -10,6 +10,8 @@ const stopFindUniqueMock = vi.fn();
 const stopUpdateManyMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
+const driverCreateMock = vi.fn();
+const driverUpdateMock = vi.fn();
 const notifyParcelCollectedMock = vi.fn();
 const notifyUnableToCollectMock = vi.fn();
 const notifyArrivedAtWarehouseMock = vi.fn();
@@ -36,7 +38,11 @@ vi.mock('../supabase', () => ({
 vi.mock('../prisma', () => ({
   prisma: {
     user: { upsert: vi.fn().mockResolvedValue({}) },
-    collectUkDriver: { findUnique: (...args: unknown[]) => driverFindUniqueMock(...args) },
+    collectUkDriver: {
+      findUnique: (...args: unknown[]) => driverFindUniqueMock(...args),
+      create: (...args: unknown[]) => driverCreateMock(...args),
+      update: (...args: unknown[]) => driverUpdateMock(...args),
+    },
     collectUkCollectionRoute: {
       findMany: (...args: unknown[]) => routeFindManyMock(...args),
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
@@ -55,6 +61,16 @@ vi.mock('../prisma', () => ({
 }));
 
 vi.mock('../lib/cloudinary', () => ({
+  signCollectUkDriverDocUpload: () => ({
+    signature: 'sig',
+    timestamp: 123,
+    apiKey: 'key',
+    cloudName: 'cloud',
+    folder: 'collect-uk-driver-docs',
+    transformation: 'w_2000,h_2000,c_limit',
+    type: 'authenticated',
+  }),
+  getCollectUkDriverDocViewUrl: (id: string) => 'https://signed.example/' + id,
   signCollectUkProofUpload: () => ({
     signature: 'sig',
     timestamp: 123,
@@ -105,6 +121,8 @@ beforeEach(() => {
   stopUpdateManyMock.mockResolvedValue({ count: 1 });
   stopCountMock.mockResolvedValue(0);
   stopFindManyMock.mockResolvedValue([]);
+  driverCreateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
+  driverUpdateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
   notifyParcelCollectedMock.mockResolvedValue(undefined);
   notifyUnableToCollectMock.mockResolvedValue(undefined);
   notifyArrivedAtWarehouseMock.mockResolvedValue(undefined);
@@ -122,13 +140,14 @@ describe('GET /api/v1/collect-uk/driver/me', () => {
     expect(res.body.data.id).toBe(DRIVER_ID);
   });
 
-  it('403s when the caller has no driver profile', async () => {
+  it('returns null (200) when the caller has never applied', async () => {
     driverFindUniqueMock.mockResolvedValue(null);
 
     const app = createApp();
     const res = await request(app).get('/api/v1/collect-uk/driver/me').set(AUTH_HEADER);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeNull();
   });
 });
 
@@ -360,5 +379,76 @@ describe('POST /api/v1/collect-uk/driver/stops/:id/unable-to-collect', () => {
       .send({ failureReason: 'No answer' });
 
     expect(res.status).toBe(409);
+  });
+});
+
+describe('POST /api/v1/collect-uk/driver/apply', () => {
+  const APPLICATION = {
+    fullName: 'Tendai Driver',
+    phone: '+447700900001',
+    basePostcode: 'M1 1AE',
+    county: 'Greater Manchester',
+    vehicleMakeModel: 'Ford Transit LWB',
+    vehicleReference: 'AB12 CDE',
+    vanPhotoUrl: 'collect-uk-driver-docs/van',
+    motorInsuranceUrl: 'collect-uk-driver-docs/motor',
+    gitInsuranceUrl: 'collect-uk-driver-docs/git',
+    liabilityUrl: 'collect-uk-driver-docs/liability',
+  };
+
+  it('creates an APPLIED driver record with documents', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(APPLICATION);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('APPLIED');
+    expect(driverCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: USER_ID, status: 'APPLIED', gitInsuranceUrl: 'collect-uk-driver-docs/git' }),
+    });
+  });
+
+  it('409s when the caller already has a live driver record', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(APPLICATION);
+
+    expect(res.status).toBe(409);
+    expect(driverCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a REJECTED applicant resubmit (same row back to APPLIED)', async () => {
+    driverFindUniqueMock.mockResolvedValue({ ...DRIVER, status: 'REJECTED' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(APPLICATION);
+
+    expect(res.status).toBe(201);
+    expect(driverUpdateMock).toHaveBeenCalledWith({
+      where: { id: DRIVER_ID },
+      data: expect.objectContaining({ status: 'APPLIED', reviewNotes: null }),
+    });
+  });
+
+  it('400s when a required insurance document is missing', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+    const { gitInsuranceUrl: _omit, ...withoutGit } = APPLICATION;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(withoutGit);
+
+    expect(res.status).toBe(400);
+    expect(driverCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('driver portal is gated to ACTIVE drivers', () => {
+  it('403s an APPLIED applicant trying to list routes', async () => {
+    driverFindUniqueMock.mockResolvedValue({ ...DRIVER, status: 'APPLIED' });
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/collect-uk/driver/routes').set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
   });
 });

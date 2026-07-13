@@ -6,6 +6,7 @@ const userFindUniqueMock = vi.fn();
 const driverCreateMock = vi.fn();
 const driverFindManyMock = vi.fn();
 const driverFindUniqueMock = vi.fn();
+const driverUpdateMock = vi.fn();
 const routeCreateMock = vi.fn();
 const routeFindUniqueMock = vi.fn();
 const routeFindManyMock = vi.fn();
@@ -35,6 +36,11 @@ vi.mock('../lib/collectUkGeo', async importOriginal => ({
   geocodePostcode: (...args: unknown[]) => geocodePostcodeMock(...args),
 }));
 
+vi.mock('../lib/cloudinary', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/cloudinary')>()),
+  getCollectUkDriverDocViewUrl: (id: string) => 'https://signed.example/' + id,
+}));
+
 vi.mock('../services/collectUkNotifications', () => ({
   notifyBookingConfirmed: vi.fn(),
   notifyCollectionScheduled: (...args: unknown[]) => notifyCollectionScheduledMock(...args),
@@ -58,6 +64,7 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => driverCreateMock(...args),
       findMany: (...args: unknown[]) => driverFindManyMock(...args),
       findUnique: (...args: unknown[]) => driverFindUniqueMock(...args),
+      update: (...args: unknown[]) => driverUpdateMock(...args),
     },
     collectUkCollectionRoute: {
       create: (...args: unknown[]) => routeCreateMock(...args),
@@ -100,6 +107,8 @@ beforeEach(() => {
   process.env.ADMIN_TOKEN = ADMIN_TOKEN;
   userFindUniqueMock.mockResolvedValue({ id: USER_ID });
   driverFindUniqueMock.mockResolvedValue(DRIVER);
+  driverUpdateMock.mockResolvedValue({});
+  driverFindManyMock.mockResolvedValue([]);
   routeFindUniqueMock.mockResolvedValue(ROUTE);
   bookingFindUniqueMock.mockResolvedValue(BOOKING);
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -703,5 +712,72 @@ describe('GET /api/v1/admin/collect-uk/companies/:companyId/bookings', () => {
 
     expect(res.status).toBe(401);
     expect(bookingFindManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('driver application vetting (admin)', () => {
+  const APPLICANT = {
+    ...DRIVER,
+    status: 'APPLIED',
+    fullName: 'Tendai Driver',
+    county: 'Greater Manchester',
+    basePostcode: 'M1 1AE',
+    vehicleMakeModel: 'Ford Transit',
+    appliedAt: new Date('2026-07-13'),
+    vanPhotoUrl: 'docs/van',
+    motorInsuranceUrl: 'docs/motor',
+    gitInsuranceUrl: 'docs/git',
+    liabilityUrl: 'docs/liability',
+    phone: '+447700900001',
+  };
+
+  it('lists pending applications with signed document view URLs', async () => {
+    driverFindManyMock.mockResolvedValue([APPLICANT]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/driver-applications').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].fullName).toBe('Tendai Driver');
+    expect(res.body.data[0].documents.gitInsurance).toBe('https://signed.example/docs/git');
+  });
+
+  it('approves a pending application to ACTIVE', async () => {
+    driverFindUniqueMock.mockResolvedValue(APPLICANT);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/drivers/${DRIVER_ID}/approve`).set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(driverUpdateMock).toHaveBeenCalledWith({
+      where: { id: DRIVER_ID },
+      data: expect.objectContaining({ status: 'ACTIVE' }),
+    });
+  });
+
+  it('rejects a pending application with a reason', async () => {
+    driverFindUniqueMock.mockResolvedValue(APPLICANT);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/admin/collect-uk/drivers/${DRIVER_ID}/reject`)
+      .set(ADMIN_HEADER)
+      .send({ reviewNotes: 'Motor insurance is personal cover, not hire & reward' });
+
+    expect(res.status).toBe(200);
+    expect(driverUpdateMock).toHaveBeenCalledWith({
+      where: { id: DRIVER_ID },
+      data: expect.objectContaining({ status: 'REJECTED', reviewNotes: 'Motor insurance is personal cover, not hire & reward' }),
+    });
+  });
+
+  it('409s approving a driver who is not a pending applicant', async () => {
+    driverFindUniqueMock.mockResolvedValue(DRIVER); // ACTIVE
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/admin/collect-uk/drivers/${DRIVER_ID}/approve`).set(ADMIN_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(driverUpdateMock).not.toHaveBeenCalled();
   });
 });

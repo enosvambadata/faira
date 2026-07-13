@@ -14,6 +14,7 @@ const PROTECTED_PREFIXES = [
   "/collect-uk/register",
   "/collect-uk/companies",
   "/collect-uk/driver",
+  "/collect-uk/drive",
 ];
 const PUBLIC_ONLY_PREFIXES = ["/login", "/signup"];
 

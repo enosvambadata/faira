@@ -99,6 +99,21 @@ export function signCollectUkProofUpload() {
   return signUpload('collect-uk-proof', 'w_1600,h_1600,c_limit', { type: 'authenticated' });
 }
 
+// Driver application documents (van photo, insurance certificates) --
+// authenticated delivery like proof photos: these contain personal and
+// financial details and must never be publicly fetchable.
+export function signCollectUkDriverDocUpload() {
+  return signUpload('collect-uk-driver-docs', 'w_2000,h_2000,c_limit', { type: 'authenticated' });
+}
+
+export function getCollectUkDriverDocViewUrl(publicId: string): string {
+  return cloudinary.url(publicId, {
+    type: 'authenticated',
+    sign_url: true,
+    secure: true,
+  });
+}
+
 export function getCollectUkProofViewUrl(publicId: string): string {
   return cloudinary.url(publicId, {
     type: 'authenticated',

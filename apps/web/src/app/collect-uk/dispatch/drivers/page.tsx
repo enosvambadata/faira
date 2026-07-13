@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useDispatchAuth } from "@/lib/dispatchContext";
-import { collectUkDispatch, CollectUkAdminDriver, FulfilmentApiError } from "@/lib/api";
+import { collectUkDispatch, CollectUkAdminDriver, CollectUkDriverApplication, FulfilmentApiError } from "@/lib/api";
 
 export default function DispatchDriversPage() {
   const { token, authFailure } = useDispatchAuth();
@@ -19,6 +19,10 @@ export default function DispatchDriversPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<CollectUkAdminDriver[]>([]);
+  const [applications, setApplications] = useState<CollectUkDriverApplication[]>([]);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [newDriverUserId, setNewDriverUserId] = useState("");
   const [newDriverVehicle, setNewDriverVehicle] = useState("");
   const [creatingDriver, setCreatingDriver] = useState(false);
@@ -27,7 +31,12 @@ export default function DispatchDriversPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      setDrivers(await collectUkDispatch.listDrivers(token));
+      const [d, a] = await Promise.all([
+        collectUkDispatch.listDrivers(token),
+        collectUkDispatch.listDriverApplications(token),
+      ]);
+      setDrivers(d);
+      setApplications(a);
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
       setLoadError(err instanceof FulfilmentApiError ? err.message : "Could not load drivers right now.");
@@ -39,6 +48,37 @@ export default function DispatchDriversPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleApprove = async (driverId: string) => {
+    setDecidingId(driverId);
+    try {
+      await collectUkDispatch.approveDriver(token, driverId);
+      toast({ title: "Driver approved", tone: "success" });
+      await load();
+    } catch (err) {
+      if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not approve", tone: "error" });
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
+  const handleReject = async (driverId: string) => {
+    if (!rejectReason.trim()) return;
+    setDecidingId(driverId);
+    try {
+      await collectUkDispatch.rejectDriver(token, driverId, rejectReason.trim());
+      toast({ title: "Application rejected", tone: "success" });
+      setRejectingId(null);
+      setRejectReason("");
+      await load();
+    } catch (err) {
+      if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not reject", tone: "error" });
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   const handleCreateDriver = async (e: FormEvent) => {
     e.preventDefault();
@@ -74,6 +114,88 @@ export default function DispatchDriversPage() {
   return (
     <>
       <h1 className="text-xl font-semibold text-text">Drivers</h1>
+
+      {applications.length > 0 && (
+        <Card className="mt-4">
+          <h2 className="text-base font-semibold text-text">
+            Applications to review <span className="font-normal text-muted">({applications.length})</span>
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Check all three insurance documents before approving — approval makes the driver routable.
+          </p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {applications.map(a => (
+              <li key={a.id} className="rounded-md border border-warning/40 p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-text">{a.fullName}</span>
+                  <span className="text-muted">{a.county} · {a.basePostcode}</span>
+                </div>
+                <p className="mt-1 text-muted">
+                  {a.vehicleMakeModel} · {a.vehicleReference} · capacity {a.capacityParcels} · {a.phone}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-3 text-sm">
+                  {([
+                    ["Van photo", a.documents.vanPhoto],
+                    ["Motor insurance", a.documents.motorInsurance],
+                    ["Goods in Transit", a.documents.gitInsurance],
+                    ["Public liability", a.documents.liability],
+                  ] as const).map(([label, url]) =>
+                    url ? (
+                      <a
+                        key={label}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="cursor-pointer font-medium text-primary underline transition-colors duration-200 hover:text-primary-dark"
+                      >
+                        {label}
+                      </a>
+                    ) : (
+                      <span key={label} className="text-red">{label}: missing</span>
+                    ),
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <Button
+                    type="button"
+                    size="md"
+                    loading={decidingId === a.id && rejectingId !== a.id}
+                    onClick={() => handleApprove(a.id)}
+                  >
+                    Approve
+                  </Button>
+                  {rejectingId !== a.id ? (
+                    <Button type="button" variant="ghost" size="md" onClick={() => setRejectingId(a.id)}>
+                      Reject…
+                    </Button>
+                  ) : (
+                    <>
+                      <div className="min-w-56 flex-1">
+                        <Field label="Reason (sent context for the applicant)" required>
+                          {p => <Input {...p} value={rejectReason} onChange={e => setRejectReason(e.target.value)} />}
+                        </Field>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="md"
+                        loading={decidingId === a.id}
+                        disabled={!rejectReason.trim()}
+                        onClick={() => handleReject(a.id)}
+                      >
+                        Confirm reject
+                      </Button>
+                      <Button type="button" variant="ghost" size="md" onClick={() => { setRejectingId(null); setRejectReason(""); }}>
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <h2 className="text-base font-semibold text-text">

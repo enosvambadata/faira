@@ -755,7 +755,24 @@ export interface CollectUkDriverProfile {
   userId: string;
   vehicleReference: string | null;
   capacityParcels: number;
-  status: "ACTIVE" | "INACTIVE";
+  status: "APPLIED" | "REJECTED" | "ACTIVE" | "INACTIVE";
+  fullName: string | null;
+  county: string | null;
+  reviewNotes: string | null;
+}
+
+export interface DriverApplicationPayload {
+  fullName: string;
+  phone: string;
+  basePostcode: string;
+  county: string;
+  vehicleMakeModel: string;
+  vehicleReference: string;
+  capacityParcels?: number;
+  vanPhotoUrl: string;
+  motorInsuranceUrl: string;
+  gitInsuranceUrl: string;
+  liabilityUrl: string;
 }
 
 export interface CollectUkDriverRoute {
@@ -791,7 +808,13 @@ export interface CollectUkDriverRouteDetail extends CollectUkDriverRoute {
 }
 
 export const collectUkDriverPortal = {
-  me: () => request<CollectUkDriverProfile>("/api/v1/collect-uk/driver/me", { auth: true }),
+  me: () => request<CollectUkDriverProfile | null>("/api/v1/collect-uk/driver/me", { auth: true }),
+
+  apply: (payload: DriverApplicationPayload) =>
+    request<{ id: string; status: string }>("/api/v1/collect-uk/driver/apply", { method: "POST", body: payload, auth: true }),
+
+  getApplyUploadParams: () =>
+    request<CloudinarySignedUpload>("/api/v1/collect-uk/driver/apply/upload-params", { auth: true }),
 
   listRoutes: () => request<CollectUkDriverRoute[]>("/api/v1/collect-uk/driver/routes", { auth: true }),
 
@@ -829,6 +852,24 @@ export interface CollectUkUnscheduledBooking {
   itemTypes: CollectUkItemType[];
   itemTypeOther: string | null;
   vehicleType: CollectUkVehicleType | null;
+}
+
+export interface CollectUkDriverApplication {
+  id: string;
+  fullName: string | null;
+  phone: string | null;
+  county: string | null;
+  basePostcode: string | null;
+  vehicleMakeModel: string | null;
+  vehicleReference: string | null;
+  capacityParcels: number;
+  appliedAt: string | null;
+  documents: {
+    vanPhoto: string | null;
+    motorInsurance: string | null;
+    gitInsurance: string | null;
+    liability: string | null;
+  };
 }
 
 export interface CollectUkAdminCompanyBookings {
@@ -945,6 +986,22 @@ export const collectUkDispatch = {
     request<CollectUkRate & { companyId: string }>(`/api/v1/admin/collect-uk/companies/${companyId}/rate`, {
       method: "PUT",
       body: rate,
+      adminToken,
+    }),
+
+  listDriverApplications: (adminToken: string) =>
+    request<CollectUkDriverApplication[]>("/api/v1/admin/collect-uk/driver-applications", { adminToken }),
+
+  approveDriver: (adminToken: string, driverId: string) =>
+    request<{ id: string; status: string }>(`/api/v1/admin/collect-uk/drivers/${driverId}/approve`, {
+      method: "POST",
+      adminToken,
+    }),
+
+  rejectDriver: (adminToken: string, driverId: string, reviewNotes: string) =>
+    request<{ id: string; status: string }>(`/api/v1/admin/collect-uk/drivers/${driverId}/reject`, {
+      method: "POST",
+      body: { reviewNotes },
       adminToken,
     }),
 
