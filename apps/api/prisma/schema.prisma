@@ -1480,6 +1480,11 @@ model CollectUkCompanyRole {
 }
 
 enum CollectUkDriverStatus {
+  // Self-serve application awaiting Faira's document review.
+  APPLIED
+  // Application rejected (reviewNotes says why); user may reapply after
+  // fixing the problem -- dispatch re-reviews the same row.
+  REJECTED
   ACTIVE
   INACTIVE
 }
@@ -1493,6 +1498,24 @@ model CollectUkDriver {
   vehicleReference String?               @map("vehicle_reference")
   capacityParcels  Int                   @default(20) @map("capacity_parcels")
   status           CollectUkDriverStatus @default(ACTIVE)
+  // Own-van driver application (self-serve via /collect-uk/drive).
+  // Insurance documents are Cloudinary public IDs in the authenticated
+  // collect-uk-driver-docs folder -- commercial (hire & reward) motor
+  // insurance, Goods in Transit, and public liability are the legal
+  // prerequisites for carrying customers' goods; Faira verifies them
+  // before approving. Null on legacy admin-created drivers.
+  fullName          String?  @map("full_name")
+  phone             String?
+  basePostcode      String?  @map("base_postcode")
+  county            String?
+  vehicleMakeModel  String?  @map("vehicle_make_model")
+  vanPhotoUrl       String?  @map("van_photo_url")
+  motorInsuranceUrl String?  @map("motor_insurance_url")
+  gitInsuranceUrl   String?  @map("git_insurance_url")
+  liabilityUrl      String?  @map("liability_url")
+  reviewNotes       String?  @map("review_notes")
+  appliedAt         DateTime? @map("applied_at")
+  reviewedAt        DateTime? @map("reviewed_at")
   createdAt        DateTime              @default(now()) @map("created_at")
 
   user   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)

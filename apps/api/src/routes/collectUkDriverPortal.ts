@@ -6,15 +6,73 @@ import { requireCollectUkDriver, DriverRequest } from '../middleware/requireColl
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { advanceRouteProgress } from '../services/collectUkRouteProgress';
-import { signCollectUkProofUpload } from '../lib/cloudinary';
+import { signCollectUkProofUpload, signCollectUkDriverDocUpload } from '../lib/cloudinary';
 import { notifyParcelCollected, notifyUnableToCollect, notifyArrivedAtWarehouse } from '../services/collectUkNotifications';
+import { AuthenticatedRequest } from '../middleware/requireAuth';
 
 const router = Router();
 
 class StopTransitionConflict extends Error {}
 
-router.get('/me', requireAuth, requireCollectUkDriver, async (req: DriverRequest, res: Response) => {
-  res.status(200).json({ data: req.driver });
+// requireAuth only (no ACTIVE gate): this is how an applicant checks
+// where their application stands. null = never applied.
+router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const driver = await prisma.collectUkDriver.findUnique({ where: { userId: req.userId! } });
+  res.status(200).json({ data: driver });
+});
+
+const applySchema = z.object({
+  fullName: z.string().trim().min(1).max(200),
+  phone: z.string().trim().min(5).max(30),
+  basePostcode: z.string().trim().min(1).max(20),
+  county: z.string().trim().min(1).max(100),
+  vehicleMakeModel: z.string().trim().min(1).max(200),
+  vehicleReference: z.string().trim().min(1).max(100),
+  capacityParcels: z.number().int().positive().max(500).optional(),
+  vanPhotoUrl: z.string().trim().min(1).max(500),
+  motorInsuranceUrl: z.string().trim().min(1).max(500),
+  gitInsuranceUrl: z.string().trim().min(1).max(500),
+  liabilityUrl: z.string().trim().min(1).max(500),
+});
+
+// Own-van driver application. All four documents are required up front:
+// commercial (hire & reward) motor insurance, Goods in Transit and public
+// liability are the legal prerequisites for carrying customers' goods,
+// and Faira verifies them before approving. A REJECTED applicant may
+// resubmit (same row returns to APPLIED for re-review).
+router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const parsed = applySchema.safeParse(req.body);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const existing = await prisma.collectUkDriver.findUnique({ where: { userId: req.userId! } });
+  if (existing && existing.status !== 'REJECTED') {
+    next(new ApiError('ALREADY_APPLIED', 'You already have a driver record with Faira', 409));
+    return;
+  }
+
+  const data = {
+    ...parsed.data,
+    status: 'APPLIED' as const,
+    appliedAt: new Date(),
+    reviewedAt: null,
+    reviewNotes: null,
+  };
+  const driver = existing
+    ? await prisma.collectUkDriver.update({ where: { id: existing.id }, data })
+    : await prisma.collectUkDriver.create({ data: { userId: req.userId!, ...data } });
+
+  await recordAuditLog(req.userId!, 'COLLECT_UK_DRIVER_APPLIED', { driverId: driver.id, county: driver.county });
+
+  res.status(201).json({ data: { id: driver.id, status: driver.status } });
+});
+
+// Signed upload params for application documents -- requireAuth only,
+// since applicants are by definition not yet drivers.
+router.get('/apply/upload-params', requireAuth, (_req, res: Response) => {
+  res.status(200).json({ data: signCollectUkDriverDocUpload() });
 });
 
 router.get('/evidence-upload-params', requireAuth, requireCollectUkDriver, (_req, res: Response) => {

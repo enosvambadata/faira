@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { createClient } from "@/lib/supabase";
-import { collectUkDriverPortal, CollectUkDriverRoute, FulfilmentApiError } from "@/lib/api";
+import { collectUkDriverPortal, CollectUkDriverRoute, CollectUkDriverProfile, FulfilmentApiError } from "@/lib/api";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 const ROUTE_STATUS_TONE: Record<CollectUkDriverRoute["status"], "neutral" | "info" | "success"> = {
@@ -26,12 +26,17 @@ export default function DriverRoutesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [routes, setRoutes] = useState<CollectUkDriverRoute[]>([]);
+  const [profile, setProfile] = useState<CollectUkDriverProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        setRoutes(await collectUkDriverPortal.listRoutes());
+        const me = await collectUkDriverPortal.me();
+        setProfile(me);
+        if (me?.status === "ACTIVE") {
+          setRoutes(await collectUkDriverPortal.listRoutes());
+        }
       } catch (err) {
         setError(err instanceof FulfilmentApiError ? err.message : "Could not load your routes right now.");
       } finally {
@@ -72,7 +77,41 @@ export default function DriverRoutesPage() {
           </div>
         )}
 
-        {!loading && !error && routes.length === 0 && (
+        {!loading && !error && !profile && (
+          <Card className="mt-6">
+            <p className="text-sm text-text">You&rsquo;re not registered as a Faira driver yet.</p>
+            <p className="mt-1 text-sm text-muted">
+              Got your own van and insurance? Apply to drive for Faira — you set your base area, we
+              send you routes.
+            </p>
+            <Link href="/collect-uk/drive" className="mt-3 inline-block">
+              <Button type="button" size="md">Apply to drive</Button>
+            </Link>
+          </Card>
+        )}
+
+        {!loading && !error && profile?.status === "APPLIED" && (
+          <div className="mt-6">
+            <Alert tone="info">
+              Your driver application is being reviewed — we check your insurance documents before
+              your first route. We&rsquo;ll be in touch soon.
+            </Alert>
+          </div>
+        )}
+
+        {!loading && !error && profile?.status === "REJECTED" && (
+          <Card className="mt-6">
+            <Alert tone="error">
+              Your application wasn&rsquo;t approved{profile.reviewNotes ? `: ${profile.reviewNotes}` : "."}
+            </Alert>
+            <p className="mt-3 text-sm text-muted">Fix the issue and apply again — your details are kept.</p>
+            <Link href="/collect-uk/drive" className="mt-3 inline-block">
+              <Button type="button" size="md" variant="secondary">Reapply</Button>
+            </Link>
+          </Card>
+        )}
+
+        {!loading && !error && profile?.status === "ACTIVE" && routes.length === 0 && (
           <Card className="mt-6">
             <p className="text-sm text-muted">No routes assigned yet.</p>
           </Card>
