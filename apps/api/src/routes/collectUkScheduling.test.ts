@@ -663,3 +663,45 @@ describe('company rates (admin)', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/v1/admin/collect-uk/companies/:companyId/bookings', () => {
+  it("returns a company's full booking history with window and charge", async () => {
+    companyFindUniqueMock.mockResolvedValue({ id: 'company-1', name: 'ABC', slug: 'abc' });
+    bookingFindManyMock.mockResolvedValue([
+      {
+        id: 'b1', reference: 'FC-abc-000001', status: 'HANDED_OVER',
+        customerName: 'Jane', customerContact: '+447700900000',
+        collectionAddress: '10 Test St', collectionPostcode: 'E1 6AN',
+        parcelSizeTier: 'MEDIUM', numberOfParcels: 2,
+        itemTypes: ['DRUM'], itemTypeOther: null, vehicleType: null,
+        collectionWindow: { startDate: new Date('2026-08-03'), endDate: new Date('2026-08-09') },
+        chargePence: 3700, createdAt: new Date('2026-07-13'),
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/companies/company-1/bookings').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.company.name).toBe('ABC');
+    expect(res.body.data.bookings[0]).toMatchObject({ status: 'HANDED_OVER', chargePence: 3700 });
+    expect(res.body.data.bookings[0].collectionWindow).not.toBeNull();
+  });
+
+  it('404s for an unknown company', async () => {
+    companyFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/companies/nope/bookings').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('fails closed without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/companies/company-1/bookings');
+
+    expect(res.status).toBe(401);
+    expect(bookingFindManyMock).not.toHaveBeenCalled();
+  });
+});

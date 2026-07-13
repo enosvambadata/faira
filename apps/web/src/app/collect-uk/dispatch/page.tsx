@@ -427,13 +427,19 @@ export default function DispatchPage() {
                   {companies.length > 0 && (
                     <ul className="mt-3 flex flex-col gap-2">
                       {companies.map(c => (
-                        <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
-                          <span className="font-medium text-text">{c.name}</span>
-                          <span className="text-muted">
-                            {c.rate
-                              ? `£${(c.rate.basePerStopPence / 100).toFixed(2)}/stop + £${(c.rate.tierSmallPence / 100).toFixed(2)}–£${(c.rate.tierXlPence / 100).toFixed(2)}/parcel`
-                              : "no rate set"}
-                          </span>
+                        <li key={c.id}>
+                          <Link
+                            href={`/collect-uk/dispatch/companies/${c.id}`}
+                            className="flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3 text-sm transition-colors duration-200 hover:border-primary"
+                          >
+                            <span className="font-medium text-text">{c.name}</span>
+                            <span className="text-muted">
+                              {c.rate
+                                ? `£${(c.rate.basePerStopPence / 100).toFixed(2)}/stop + £${(c.rate.tierSmallPence / 100).toFixed(2)}–£${(c.rate.tierXlPence / 100).toFixed(2)}/parcel`
+                                : "no rate set"}{" "}
+                              →
+                            </span>
+                          </Link>
                         </li>
                       ))}
                     </ul>
