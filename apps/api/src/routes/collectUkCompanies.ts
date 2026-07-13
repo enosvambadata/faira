@@ -280,6 +280,82 @@ router.patch(
   },
 );
 
+const windowResponse = (w: { id: string; companyId: string; startDate: Date; endDate: Date }) => ({
+  id: w.id,
+  companyId: w.companyId,
+  startDate: w.startDate,
+  endDate: w.endDate,
+});
+
+router.get(
+  '/:id/windows',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    if (!isAssignedToCompany(req, req.params.id)) {
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const windows = await prisma.collectUkCollectionWindow.findMany({
+      where: { companyId: req.params.id },
+      orderBy: { startDate: 'desc' },
+      take: 20,
+    });
+    res.status(200).json({ data: windows.map(windowResponse) });
+  },
+);
+
+const createWindowSchema = z
+  .object({
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.endDate < data.startDate) {
+      ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'The window must end on or after it starts' });
+    }
+  });
+
+// The company telling Faira "collect for us during these days" -- the
+// heart of the pooling model. Customers booking via this company's link
+// attach to the next open window automatically; they never pick dates.
+router.post(
+  '/:id/windows',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN'),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    const parsed = createWindowSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+    if (!isAssignedToCompany(req, req.params.id)) {
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    if (parsed.data.endDate < today) {
+      next(new ApiError('VALIDATION_ERROR', 'A collection window cannot be entirely in the past', 400));
+      return;
+    }
+
+    const window = await prisma.collectUkCollectionWindow.create({
+      data: { companyId: req.params.id, startDate: parsed.data.startDate, endDate: parsed.data.endDate },
+    });
+    await recordAuditLog(req.userId!, 'COLLECT_UK_WINDOW_CREATED', {
+      companyId: req.params.id,
+      windowId: window.id,
+      startDate: window.startDate,
+      endDate: window.endDate,
+    });
+
+    res.status(201).json({ data: windowResponse(window) });
+  },
+);
+
 // Dispatcher-facing visibility into incoming bookings -- the Collection
 // Scheduling epic (SCRUM-162) will build real dispatch tooling on top of
 // this list; for now it's just read access so a company isn't blind to
@@ -300,6 +376,7 @@ router.get(
 
     const bookings = await prisma.collectUkCollectionBooking.findMany({
       where: { companyId: req.params.id },
+      include: { collectionWindow: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -314,6 +391,9 @@ router.get(
         collectionAddress: b.collectionAddress,
         collectionPostcode: b.collectionPostcode,
         preferredDate: b.preferredDate,
+        collectionWindow: b.collectionWindow
+          ? { startDate: b.collectionWindow.startDate, endDate: b.collectionWindow.endDate }
+          : null,
         parcelSizeTier: b.parcelSizeTier,
         numberOfParcels: b.numberOfParcels,
         itemTypes: b.itemTypes,

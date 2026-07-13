@@ -19,6 +19,8 @@ const transactionMock = vi.fn();
 const notifyHandedOverMock = vi.fn();
 const notifyBookingCancelledMock = vi.fn();
 const stopDeleteMock = vi.fn();
+const windowFindManyMock = vi.fn();
+const windowCreateMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
 const routeFindUniqueMock = vi.fn();
@@ -68,6 +70,10 @@ vi.mock('../prisma', () => ({
       count: (...args: unknown[]) => stopCountMock(...args),
       findMany: (...args: unknown[]) => stopFindManyMock(...args),
     },
+    collectUkCollectionWindow: {
+      findMany: (...args: unknown[]) => windowFindManyMock(...args),
+      create: (...args: unknown[]) => windowCreateMock(...args),
+    },
     collectUkCollectionRoute: {
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
@@ -108,6 +114,8 @@ beforeEach(() => {
   bookingUpdateManyMock.mockResolvedValue({ count: 1 });
   notifyHandedOverMock.mockResolvedValue(undefined);
   stopDeleteMock.mockResolvedValue({});
+  windowFindManyMock.mockResolvedValue([]);
+  windowCreateMock.mockResolvedValue({});
   stopCountMock.mockResolvedValue(0);
   stopFindManyMock.mockResolvedValue([]);
   routeFindUniqueMock.mockResolvedValue(null);
@@ -565,5 +573,71 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/cancel', () 
 
     expect(res.status).toBe(403);
     expect(bookingFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('collection windows', () => {
+  it('lists windows for an assigned company', async () => {
+    windowFindManyMock.mockResolvedValue([
+      { id: 'w-1', companyId: COMPANY_A, startDate: new Date('2026-08-03'), endDate: new Date('2026-08-09') },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+  });
+
+  it('creates a window for a COMPANY_ADMIN', async () => {
+    windowCreateMock.mockResolvedValue({
+      id: 'w-1',
+      companyId: COMPANY_A,
+      startDate: new Date('2099-08-03'),
+      endDate: new Date('2099-08-09'),
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2099-08-03', endDate: '2099-08-09' });
+
+    expect(res.status).toBe(201);
+    expect(windowCreateMock).toHaveBeenCalled();
+  });
+
+  it('400s when the window ends before it starts', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2099-08-09', endDate: '2099-08-03' });
+
+    expect(res.status).toBe(400);
+    expect(windowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when the window is entirely in the past', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2020-01-01', endDate: '2020-01-07' });
+
+    expect(res.status).toBe(400);
+    expect(windowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('403s a DISPATCHER creating a window', async () => {
+    companyRoleFindManyMock.mockResolvedValue([{ role: 'DISPATCHER', companyId: COMPANY_A }]);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2099-08-03', endDate: '2099-08-09' });
+
+    expect(res.status).toBe(403);
   });
 });

@@ -17,6 +17,7 @@ import {
   collectUkCompanies,
   CollectUkCompany,
   CollectUkWarehouse,
+  CollectUkCompanyWindow,
   CollectUkCompanyRoleType,
   CollectUkBookingSummary,
   FulfilmentApiError,
@@ -34,6 +35,7 @@ export default function CompanyDashboardPage() {
   const [company, setCompany] = useState<CollectUkCompany | null>(null);
   const [myRole, setMyRole] = useState<CollectUkCompanyRoleType | null>(null);
   const [warehouses, setWarehouses] = useState<CollectUkWarehouse[]>([]);
+  const [windows, setWindows] = useState<CollectUkCompanyWindow[]>([]);
   const [bookings, setBookings] = useState<CollectUkBookingSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -51,6 +53,10 @@ export default function CompanyDashboardPage() {
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
   const [confirmingHandoverId, setConfirmingHandoverId] = useState<string | null>(null);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [winStart, setWinStart] = useState("");
+  const [winEnd, setWinEnd] = useState("");
+  const [addingWindow, setAddingWindow] = useState(false);
+  const [windowError, setWindowError] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const isAdmin = myRole === "COMPANY_ADMIN";
@@ -58,16 +64,18 @@ export default function CompanyDashboardPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [memberships, companyDetail, warehouseList, bookingList] = await Promise.all([
+        const [memberships, companyDetail, warehouseList, bookingList, windowList] = await Promise.all([
           collectUkCompanies.mine(),
           collectUkCompanies.get(id),
           collectUkCompanies.listWarehouses(id),
           collectUkCompanies.listBookings(id),
+          collectUkCompanies.listWindows(id),
         ]);
         setCompany(companyDetail);
         setName(companyDetail.name);
         setCountriesServed(companyDetail.countriesServed.join(", "));
         setWarehouses(warehouseList);
+        setWindows(windowList);
         setBookings(bookingList);
         setMyRole(memberships.find(m => m.id === id)?.role ?? null);
       } catch (err) {
@@ -121,6 +129,24 @@ export default function CompanyDashboardPage() {
       setWarehouseError(err instanceof FulfilmentApiError ? err.message : "Could not add this warehouse right now.");
     } finally {
       setAddingWarehouse(false);
+    }
+  };
+
+  const handleAddWindow = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!company || !winStart || !winEnd) return;
+    setAddingWindow(true);
+    setWindowError(null);
+    try {
+      const window = await collectUkCompanies.createWindow(company.id, { startDate: winStart, endDate: winEnd });
+      setWindows(prev => [window, ...prev]);
+      setWinStart("");
+      setWinEnd("");
+      toast({ title: "Collection week added", tone: "success" });
+    } catch (err) {
+      setWindowError(err instanceof FulfilmentApiError ? err.message : "Could not add this collection week.");
+    } finally {
+      setAddingWindow(false);
     }
   };
 
@@ -280,6 +306,47 @@ export default function CompanyDashboardPage() {
             </Card>
 
             <Card className="mt-4">
+              <h2 className="text-base font-semibold text-text">Collection weeks</h2>
+              <p className="mt-1 text-sm text-muted">
+                Tell Faira which days we should collect for you — customers book into your next week and
+                we route the drivers.
+              </p>
+
+              {windows.length === 0 && (
+                <p className="mt-3 text-sm text-muted">
+                  No collection weeks yet — bookings are still accepted and will wait for your first week.
+                </p>
+              )}
+              {windows.length > 0 && (
+                <ul className="mt-3 flex flex-col gap-2">
+                  {windows.map(w => (
+                    <li key={w.id} className="rounded-md border border-border p-3 text-sm text-text">
+                      {formatDate(w.startDate)} – {formatDate(w.endDate)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {isAdmin && (
+                <form onSubmit={handleAddWindow} className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
+                  <h3 className="text-sm font-medium text-text">Add a collection week</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="First day" required>
+                      {p => <Input {...p} type="date" value={winStart} onChange={e => setWinStart(e.target.value)} />}
+                    </Field>
+                    <Field label="Last day" required>
+                      {p => <Input {...p} type="date" value={winEnd} onChange={e => setWinEnd(e.target.value)} />}
+                    </Field>
+                  </div>
+                  {windowError && <Alert tone="error">{windowError}</Alert>}
+                  <Button type="submit" size="md" loading={addingWindow} disabled={!winStart || !winEnd}>
+                    Add collection week
+                  </Button>
+                </form>
+              )}
+            </Card>
+
+            <Card className="mt-4">
               <h2 className="text-base font-semibold text-text">Bookings</h2>
 
               {bookings.length === 0 && <p className="mt-3 text-sm text-muted">No bookings yet.</p>}
@@ -296,7 +363,12 @@ export default function CompanyDashboardPage() {
                         {b.customerName} — {b.destinationCountry}
                       </p>
                       <p className="text-muted">
-                        {b.collectionAddress}, {b.collectionPostcode} — collect by {formatDate(b.preferredDate)}
+                        {b.collectionAddress}, {b.collectionPostcode} —{" "}
+                        {b.collectionWindow
+                          ? `week ${formatDate(b.collectionWindow.startDate)} – ${formatDate(b.collectionWindow.endDate)}`
+                          : b.preferredDate
+                            ? `collect by ${formatDate(b.preferredDate)}`
+                            : "awaiting a collection week"}
                       </p>
                       {b.itemTypes.length > 0 && (
                         <p className="text-muted">

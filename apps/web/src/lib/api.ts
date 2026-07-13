@@ -616,6 +616,16 @@ export const collectUkCompanies = {
       auth: true,
     }),
 
+  listWindows: (id: string) =>
+    request<CollectUkCompanyWindow[]>(`/api/v1/collect-uk/companies/${id}/windows`, { auth: true }),
+
+  createWindow: (id: string, payload: { startDate: string; endDate: string }) =>
+    request<CollectUkCompanyWindow>(`/api/v1/collect-uk/companies/${id}/windows`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
   cancelBooking: (id: string, bookingId: string) =>
     request<{ id: string; status: string }>(`/api/v1/collect-uk/companies/${id}/bookings/${bookingId}/cancel`, {
       method: "POST",
@@ -623,10 +633,23 @@ export const collectUkCompanies = {
     }),
 };
 
+export interface CollectUkWindowRange {
+  startDate: string;
+  endDate: string;
+}
+
+export interface CollectUkCompanyWindow {
+  id: string;
+  companyId: string;
+  startDate: string;
+  endDate: string;
+}
+
 export interface CollectUkBookingCompany {
   id: string;
   name: string;
   countriesServed: string[];
+  nextWindow: CollectUkWindowRange | null;
 }
 
 export interface CreateBookingPayload {
@@ -635,7 +658,6 @@ export interface CreateBookingPayload {
   destinationCountry: string;
   collectionAddress: string;
   collectionPostcode: string;
-  preferredDate: string;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels?: number;
   itemTypes: CollectUkItemType[];
@@ -662,7 +684,8 @@ export interface CollectUkBookingSummary {
   destinationCountry: string;
   collectionAddress: string;
   collectionPostcode: string;
-  preferredDate: string;
+  preferredDate: string | null;
+  collectionWindow: CollectUkWindowRange | null;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels: number;
   itemTypes: CollectUkItemType[];
@@ -678,7 +701,8 @@ export interface CollectUkBookingTrackingInfo {
   destinationCountry: string;
   collectionAddress: string;
   collectionPostcode: string;
-  preferredDate: string;
+  preferredDate: string | null;
+  collectionWindow: CollectUkWindowRange | null;
 }
 
 // Public and unauthenticated -- no Faira account for guest customers, per
@@ -771,7 +795,8 @@ export interface CollectUkUnscheduledBooking {
   customerName: string;
   collectionAddress: string;
   collectionPostcode: string;
-  preferredDate: string;
+  preferredDate: string | null;
+  collectionWindow: CollectUkWindowRange | null;
   parcelSizeTier: ParcelSizeTier;
   numberOfParcels: number;
   itemTypes: CollectUkItemType[];

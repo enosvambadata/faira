@@ -36,6 +36,10 @@ const VEHICLE_OPTIONS: { value: CollectUkVehicleType; label: string }[] = (
   ["SEDAN", "SUV", "TRUCK"] as CollectUkVehicleType[]
 ).map(value => ({ value, label: VEHICLE_TYPE_LABELS[value] }));
 
+function formatWindowDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 export default function BookCollectionPage() {
   const { slug } = useParams<{ slug: string }>();
 
@@ -49,7 +53,6 @@ export default function BookCollectionPage() {
   const [destinationCountry, setDestinationCountry] = useState<string | undefined>(undefined);
   const [collectionAddress, setCollectionAddress] = useState("");
   const [collectionPostcode, setCollectionPostcode] = useState("");
-  const [preferredDate, setPreferredDate] = useState("");
   const [parcelSizeTier, setParcelSizeTier] = useState<ParcelSizeTier | undefined>(undefined);
   const [numberOfParcels, setNumberOfParcels] = useState("1");
   const [itemTypes, setItemTypes] = useState<CollectUkItemType[]>([]);
@@ -89,7 +92,6 @@ export default function BookCollectionPage() {
     destinationCountry &&
     collectionAddress.trim() &&
     collectionPostcode.trim() &&
-    preferredDate &&
     parcelSizeTier &&
     parcelCountValid &&
     itemTypesValid;
@@ -107,7 +109,6 @@ export default function BookCollectionPage() {
         destinationCountry,
         collectionAddress: collectionAddress.trim(),
         collectionPostcode: collectionPostcode.trim(),
-        preferredDate,
         parcelSizeTier,
         numberOfParcels: parsedParcelCount,
         itemTypes,
@@ -161,6 +162,27 @@ export default function BookCollectionPage() {
               </span>
             </div>
 
+            <div className="mt-4 rounded-md border border-primary-light bg-primary-light/50 p-3.5 text-sm">
+              {company.nextWindow ? (
+                <>
+                  <span className="font-semibold text-primary-dark">
+                    Next collection week: {formatWindowDate(company.nextWindow.startDate)} –{" "}
+                    {formatWindowDate(company.nextWindow.endDate)}
+                  </span>
+                  <p className="mt-0.5 text-muted">
+                    Book now and we&rsquo;ll text you your exact collection day within that week.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-primary-dark">Collection dates coming soon</span>
+                  <p className="mt-0.5 text-muted">
+                    Book now to reserve your spot — we&rsquo;ll text you as soon as your collection week is set.
+                  </p>
+                </>
+              )}
+            </div>
+
             <Card className="mt-6">
               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                 <Field label="Your name" required>
@@ -189,10 +211,6 @@ export default function BookCollectionPage() {
 
                 <Field label="Postcode" required>
                   {p => <Input {...p} value={collectionPostcode} onChange={e => setCollectionPostcode(e.target.value)} placeholder="E1 6AN" />}
-                </Field>
-
-                <Field label="Preferred collection date" required>
-                  {p => <Input {...p} type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} />}
                 </Field>
 
                 <Field label="Parcel size" required>

@@ -262,7 +262,12 @@ export default function DispatchPage() {
                             {b.customerName} — {b.collectionAddress}, {b.collectionPostcode}
                           </p>
                           <p className="text-muted">
-                            Preferred {formatDate(b.preferredDate)} · {b.numberOfParcels} parcel{b.numberOfParcels === 1 ? "" : "s"}
+                            {b.collectionWindow
+                              ? `Week ${formatDate(b.collectionWindow.startDate)} – ${formatDate(b.collectionWindow.endDate)}`
+                              : b.preferredDate
+                                ? `Preferred ${formatDate(b.preferredDate)}`
+                                : "No collection week yet"}{" "}
+                            · {b.numberOfParcels} parcel{b.numberOfParcels === 1 ? "" : "s"}
                             {b.itemTypes.length > 0 && <> · {describeItems(b.itemTypes, b.itemTypeOther, b.vehicleType)}</>}
                           </p>
                           <div className="mt-2 flex flex-wrap items-end gap-2">

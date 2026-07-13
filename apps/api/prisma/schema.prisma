@@ -1379,12 +1379,33 @@ model CollectUkCompany {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  warehouses   CollectUkCompanyWarehouse[]
-  roles        CollectUkCompanyRole[]
-  bookings     CollectUkCollectionBooking[]
-  subscription CollectUkSubscription?
+  warehouses        CollectUkCompanyWarehouse[]
+  roles             CollectUkCompanyRole[]
+  bookings          CollectUkCollectionBooking[]
+  subscription      CollectUkSubscription?
+  collectionWindows CollectUkCollectionWindow[]
 
   @@map("collect_uk_companies")
+}
+
+// The days Faira collects for a company -- companies declare a window
+// (typically a week) in their portal and Faira routes drivers within it.
+// Customers never pick dates: they book into the company's next open
+// window (or queue windowless if none is declared yet), and learn their
+// actual collection day from the "collection scheduled" notification.
+// This is what makes pooling work: one driver, one round, many doorsteps.
+model CollectUkCollectionWindow {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company  CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bookings CollectUkCollectionBooking[]
+
+  @@index([companyId, endDate])
+  @@map("collect_uk_collection_windows")
 }
 
 // A company's own warehouse -- Faira does not operate this location,
@@ -1515,7 +1536,10 @@ model CollectUkCollectionBooking {
   destinationCountry  String                   @map("destination_country")
   collectionAddress   String                   @map("collection_address")
   collectionPostcode  String                   @map("collection_postcode")
-  preferredDate       DateTime                 @map("preferred_date")
+  // Legacy (pre-window bookings only) -- customers no longer pick dates;
+  // bookings attach to the company's next collection window instead.
+  preferredDate       DateTime?                @map("preferred_date")
+  collectionWindowId  String?                  @map("collection_window_id") @db.Uuid
   parcelSizeTier      CollectUkParcelSizeTier  @map("parcel_size_tier")
   // One booking can be several physical boxes -- each gets a printed
   // "i of N" label so none go missing between doorstep and warehouse.
@@ -1537,10 +1561,11 @@ model CollectUkCollectionBooking {
   createdAt           DateTime                 @default(now()) @map("created_at")
   updatedAt           DateTime                 @updatedAt @map("updated_at")
 
-  company   CollectUkCompany          @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  warehouse CollectUkCompanyWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  customer  User?                     @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
-  stop      CollectUkCollectionStop?
+  company          CollectUkCompany           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouse        CollectUkCompanyWarehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  customer         User?                      @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
+  collectionWindow CollectUkCollectionWindow? @relation(fields: [collectionWindowId], references: [id], onDelete: SetNull)
+  stop             CollectUkCollectionStop?
 
   @@index([companyId])
   @@index([status])
