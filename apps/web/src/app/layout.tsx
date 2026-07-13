@@ -27,7 +27,7 @@ const openSans = Open_Sans({
 
 export const metadata: Metadata = {
   title: "Faira",
-  description: "Faira — logistics for African shipping and fulfilment.",
+  description: "Faira — parcel collection and fulfilment logistics for shipping companies.",
 };
 
 export default function RootLayout({

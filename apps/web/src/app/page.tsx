@@ -82,7 +82,7 @@ export default function WelcomePage() {
         <section className="mx-auto w-full max-w-5xl px-6 pb-16 pt-14 sm:pt-20 text-center">
           <p className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-1.5 text-[13px] font-semibold text-muted">
             <Globe size={15} className="text-primary" />
-            Built for African shipping companies operating in the UK
+            Built for shipping companies collecting parcels in the UK
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-tight tracking-tight text-dark sm:text-5xl">
             Faira Collect
