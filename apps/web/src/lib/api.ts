@@ -626,6 +626,8 @@ export const collectUkCompanies = {
       auth: true,
     }),
 
+  getBilling: (id: string) => request<CollectUkBillingStatement>(`/api/v1/collect-uk/companies/${id}/billing`, { auth: true }),
+
   cancelBooking: (id: string, bookingId: string) =>
     request<{ id: string; status: string }>(`/api/v1/collect-uk/companies/${id}/bookings/${bookingId}/cancel`, {
       method: "POST",
@@ -636,6 +638,31 @@ export const collectUkCompanies = {
 export interface CollectUkWindowRange {
   startDate: string;
   endDate: string;
+}
+
+export interface CollectUkRate {
+  basePerStopPence: number;
+  tierSmallPence: number;
+  tierMediumPence: number;
+  tierLargePence: number;
+  tierXlPence: number;
+}
+
+export interface CollectUkBillingLine {
+  id: string;
+  reference: string | null;
+  customerName: string;
+  parcelSizeTier: ParcelSizeTier;
+  numberOfParcels: number;
+  chargePence: number | null;
+  isVehicle: boolean;
+  handedOverAt: string;
+}
+
+export interface CollectUkBillingStatement {
+  rate: CollectUkRate | null;
+  grandTotalPence: number;
+  groups: { window: CollectUkWindowRange | null; totalPence: number; lines: CollectUkBillingLine[] }[];
 }
 
 export interface CollectUkCompanyWindow {
@@ -804,6 +831,14 @@ export interface CollectUkUnscheduledBooking {
   vehicleType: CollectUkVehicleType | null;
 }
 
+export interface CollectUkAdminCompany {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  rate: CollectUkRate | null;
+}
+
 export interface CollectUkFailedBooking {
   id: string;
   reference: string | null;
@@ -879,6 +914,16 @@ export const collectUkDispatch = {
     request<{ id: string }>(`/api/v1/admin/collect-uk/routes/${routeId}/stops`, {
       method: "POST",
       body: { bookingId },
+      adminToken,
+    }),
+
+  listCompanies: (adminToken: string) =>
+    request<CollectUkAdminCompany[]>("/api/v1/admin/collect-uk/companies", { adminToken }),
+
+  setCompanyRate: (adminToken: string, companyId: string, rate: CollectUkRate) =>
+    request<CollectUkRate & { companyId: string }>(`/api/v1/admin/collect-uk/companies/${companyId}/rate`, {
+      method: "PUT",
+      body: rate,
       adminToken,
     }),
 

@@ -18,6 +18,7 @@ import {
   collectUkDispatch,
   CollectUkUnscheduledBooking,
   CollectUkFailedBooking,
+  CollectUkAdminCompany,
   CollectUkAdminDriver,
   CollectUkAdminRouteSummary,
   FulfilmentApiError,
@@ -45,6 +46,14 @@ export default function DispatchPage() {
   const [drivers, setDrivers] = useState<CollectUkAdminDriver[]>([]);
   const [routes, setRoutes] = useState<CollectUkAdminRouteSummary[]>([]);
   const [requeueingId, setRequeueingId] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<CollectUkAdminCompany[]>([]);
+  const [rateCompanyId, setRateCompanyId] = useState<string | undefined>(undefined);
+  const [rateBase, setRateBase] = useState("");
+  const [rateSmall, setRateSmall] = useState("");
+  const [rateMedium, setRateMedium] = useState("");
+  const [rateLarge, setRateLarge] = useState("");
+  const [rateXl, setRateXl] = useState("");
+  const [savingRate, setSavingRate] = useState(false);
 
   const [assignRouteByBooking, setAssignRouteByBooking] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -73,16 +82,18 @@ export default function DispatchPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [q, f, d, r] = await Promise.all([
+        const [q, f, d, r, c] = await Promise.all([
           collectUkDispatch.listUnscheduled(activeToken),
           collectUkDispatch.listFailed(activeToken),
           collectUkDispatch.listDrivers(activeToken),
           collectUkDispatch.listRoutes(activeToken),
+          collectUkDispatch.listCompanies(activeToken),
         ]);
         setQueue(q);
         setFailed(f);
         setDrivers(d);
         setRoutes(r);
+        setCompanies(c);
       } catch (err) {
         if (err instanceof FulfilmentApiError && err.status === 401) {
           handleAuthFailure();
@@ -151,6 +162,33 @@ export default function DispatchPage() {
       toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not requeue this booking", tone: "error" });
     } finally {
       setRequeueingId(null);
+    }
+  };
+
+  const poundsToPence = (v: string) => Math.round(Number.parseFloat(v) * 100);
+  const rateInputsValid = [rateBase, rateSmall, rateMedium, rateLarge, rateXl].every(
+    v => v.trim() !== "" && Number.isFinite(Number.parseFloat(v)) && Number.parseFloat(v) >= 0,
+  );
+
+  const handleSaveRate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!token || !rateCompanyId || !rateInputsValid) return;
+    setSavingRate(true);
+    try {
+      await collectUkDispatch.setCompanyRate(token, rateCompanyId, {
+        basePerStopPence: poundsToPence(rateBase),
+        tierSmallPence: poundsToPence(rateSmall),
+        tierMediumPence: poundsToPence(rateMedium),
+        tierLargePence: poundsToPence(rateLarge),
+        tierXlPence: poundsToPence(rateXl),
+      });
+      toast({ title: "Rate saved", tone: "success" });
+      await loadAll(token);
+    } catch (err) {
+      if (err instanceof FulfilmentApiError && err.status === 401) return handleAuthFailure();
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not save the rate", tone: "error" });
+    } finally {
+      setSavingRate(false);
     }
   };
 
@@ -376,6 +414,62 @@ export default function DispatchPage() {
                     </div>
                     <Button type="submit" size="md" loading={creatingRoute} disabled={!newRouteDriverId || !newRouteDate}>
                       Create route
+                    </Button>
+                  </form>
+                </Card>
+
+                <Card className="mt-4">
+                  <h2 className="text-base font-semibold text-text">Company rates</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    What Faira charges each company: base per stop + per parcel by size. Charges are
+                    snapshotted when the company confirms a handover.
+                  </p>
+                  {companies.length > 0 && (
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {companies.map(c => (
+                        <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
+                          <span className="font-medium text-text">{c.name}</span>
+                          <span className="text-muted">
+                            {c.rate
+                              ? `£${(c.rate.basePerStopPence / 100).toFixed(2)}/stop + £${(c.rate.tierSmallPence / 100).toFixed(2)}–£${(c.rate.tierXlPence / 100).toFixed(2)}/parcel`
+                              : "no rate set"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <form onSubmit={handleSaveRate} className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
+                    <h3 className="text-sm font-medium text-text">Set a company&rsquo;s rate (£)</h3>
+                    <Field label="Company" required>
+                      {p => (
+                        <Select
+                          {...p}
+                          value={rateCompanyId}
+                          onValueChange={setRateCompanyId}
+                          options={companies.map(c => ({ value: c.id, label: c.name }))}
+                          placeholder="Choose a company"
+                        />
+                      )}
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                      <Field label="Per stop" required>
+                        {p => <Input {...p} type="number" min={0} step="0.01" value={rateBase} onChange={e => setRateBase(e.target.value)} />}
+                      </Field>
+                      <Field label="Small" required>
+                        {p => <Input {...p} type="number" min={0} step="0.01" value={rateSmall} onChange={e => setRateSmall(e.target.value)} />}
+                      </Field>
+                      <Field label="Medium" required>
+                        {p => <Input {...p} type="number" min={0} step="0.01" value={rateMedium} onChange={e => setRateMedium(e.target.value)} />}
+                      </Field>
+                      <Field label="Large" required>
+                        {p => <Input {...p} type="number" min={0} step="0.01" value={rateLarge} onChange={e => setRateLarge(e.target.value)} />}
+                      </Field>
+                      <Field label="XL" required>
+                        {p => <Input {...p} type="number" min={0} step="0.01" value={rateXl} onChange={e => setRateXl(e.target.value)} />}
+                      </Field>
+                    </div>
+                    <Button type="submit" size="md" loading={savingRate} disabled={!rateCompanyId || !rateInputsValid}>
+                      Save rate
                     </Button>
                   </form>
                 </Card>

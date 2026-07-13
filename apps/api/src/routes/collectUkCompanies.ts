@@ -460,9 +460,16 @@ router.post(
       return;
     }
 
+    // Confirming handover is the billing trigger: accepting the work =
+    // accepting the charge, snapshotted at today's rate so later rate
+    // changes never rewrite history. Vehicles are excluded (quoted
+    // separately); no configured rate leaves the charge null.
+    const rate = await prisma.collectUkCompanyRate.findUnique({ where: { companyId: req.params.id } });
+    const chargePence = rate && !booking.itemTypes.includes('VEHICLE') ? computeChargePence(rate, booking) : null;
+
     const updateResult = await prisma.collectUkCollectionBooking.updateMany({
       where: { id: booking.id, status: 'AT_WAREHOUSE' },
-      data: { status: 'HANDED_OVER' },
+      data: { status: 'HANDED_OVER', chargePence },
     });
     if (updateResult.count === 0) {
       next(new ApiError('INVALID_STATE', 'This booking has not arrived at the warehouse yet', 409));
@@ -475,6 +482,88 @@ router.post(
     res.status(200).json({ data: { id: booking.id, status: 'HANDED_OVER' } });
   },
 );
+
+// The statement Stripe will invoice from once the account exists: every
+// handed-over booking with its snapshotted charge, grouped by collection
+// week. Vehicles and pre-rate handovers appear as "quoted separately" /
+// uncharged lines so the company sees the full picture.
+router.get(
+  '/:id/billing',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    if (!isAssignedToCompany(req, req.params.id)) {
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const [rate, bookings] = await Promise.all([
+      prisma.collectUkCompanyRate.findUnique({ where: { companyId: req.params.id } }),
+      prisma.collectUkCollectionBooking.findMany({
+        where: { companyId: req.params.id, status: 'HANDED_OVER' },
+        include: { collectionWindow: true },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ]);
+
+    const groups = new Map<
+      string,
+      { window: { startDate: Date; endDate: Date } | null; totalPence: number; lines: unknown[] }
+    >();
+    for (const b of bookings) {
+      const key = b.collectionWindowId ?? 'no-window';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          window: b.collectionWindow ? { startDate: b.collectionWindow.startDate, endDate: b.collectionWindow.endDate } : null,
+          totalPence: 0,
+          lines: [],
+        });
+      }
+      const group = groups.get(key)!;
+      group.totalPence += b.chargePence ?? 0;
+      group.lines.push({
+        id: b.id,
+        reference: b.reference,
+        customerName: b.customerName,
+        parcelSizeTier: b.parcelSizeTier,
+        numberOfParcels: b.numberOfParcels,
+        chargePence: b.chargePence,
+        isVehicle: b.itemTypes.includes('VEHICLE'),
+        handedOverAt: b.updatedAt,
+      });
+    }
+
+    res.status(200).json({
+      data: {
+        rate: rate
+          ? {
+              basePerStopPence: rate.basePerStopPence,
+              tierSmallPence: rate.tierSmallPence,
+              tierMediumPence: rate.tierMediumPence,
+              tierLargePence: rate.tierLargePence,
+              tierXlPence: rate.tierXlPence,
+            }
+          : null,
+        grandTotalPence: bookings.reduce((sum, b) => sum + (b.chargePence ?? 0), 0),
+        groups: Array.from(groups.values()),
+      },
+    });
+  },
+);
+
+const TIER_RATE_FIELD = {
+  SMALL: 'tierSmallPence',
+  MEDIUM: 'tierMediumPence',
+  LARGE: 'tierLargePence',
+  EXTRA_LARGE: 'tierXlPence',
+} as const;
+
+function computeChargePence(
+  rate: { basePerStopPence: number; tierSmallPence: number; tierMediumPence: number; tierLargePence: number; tierXlPence: number },
+  booking: { parcelSizeTier: keyof typeof TIER_RATE_FIELD; numberOfParcels: number },
+): number {
+  return rate.basePerStopPence + rate[TIER_RATE_FIELD[booking.parcelSizeTier]] * booking.numberOfParcels;
+}
 
 // A company can cancel up until the parcel is physically collected.
 // Cancelling a DRIVER_ASSIGNED booking also releases its pending stop

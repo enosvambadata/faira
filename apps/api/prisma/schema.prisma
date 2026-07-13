@@ -1384,8 +1384,32 @@ model CollectUkCompany {
   bookings          CollectUkCollectionBooking[]
   subscription      CollectUkSubscription?
   collectionWindows CollectUkCollectionWindow[]
+  rate              CollectUkCompanyRate?
 
   @@map("collect_uk_companies")
+}
+
+// What Faira charges this company per collection, set by Faira on the
+// dispatch board (negotiated B2B). Base call-out per stop + per-parcel
+// rate by size tier -- deliberately not raw mileage (pooled routes make
+// attribution arbitrary, and mileage billing would price away Faira's
+// own optimisation gains) and not self-declared weight (unverifiable at
+// a doorstep). All amounts are integer pence. Vehicle bookings are
+// excluded from auto-charging and quoted separately.
+model CollectUkCompanyRate {
+  id               String   @id @default(uuid()) @db.Uuid
+  companyId        String   @unique @map("company_id") @db.Uuid
+  basePerStopPence Int      @map("base_per_stop_pence")
+  tierSmallPence   Int      @map("tier_small_pence")
+  tierMediumPence  Int      @map("tier_medium_pence")
+  tierLargePence   Int      @map("tier_large_pence")
+  tierXlPence      Int      @map("tier_xl_pence")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("collect_uk_company_rates")
 }
 
 // The days Faira collects for a company -- companies declare a window
@@ -1555,6 +1579,11 @@ model CollectUkCollectionBooking {
   // Geocoded from collectionPostcode at booking time (postcodes.io),
   // best-effort -- null means geocoding failed/unavailable and the route
   // optimiser will retry before ordering stops.
+  // Snapshot of what Faira charges the company for this collection,
+  // written when the company confirms handover (accepting the work =
+  // accepting the charge). Null: handed over before rates existed, no
+  // rate configured, or a vehicle booking (quoted separately).
+  chargePence         Int?                     @map("charge_pence")
   collectionLatitude  Float?                   @map("collection_latitude")
   collectionLongitude Float?                   @map("collection_longitude")
   status              CollectUkBookingStatus   @default(REQUESTED)

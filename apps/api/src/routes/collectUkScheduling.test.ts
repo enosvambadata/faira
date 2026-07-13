@@ -22,6 +22,9 @@ const transactionMock = vi.fn();
 const notifyCollectionScheduledMock = vi.fn();
 const notifyRescheduledMock = vi.fn();
 const stopDeleteMock = vi.fn();
+const companyFindManyMock = vi.fn();
+const companyFindUniqueMock = vi.fn();
+const rateUpsertMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
 
 // Only the network-touching geocoder is mocked -- the distance maths and
@@ -46,6 +49,11 @@ vi.mock('../services/collectUkNotifications', () => ({
 vi.mock('../prisma', () => ({
   prisma: {
     user: { findUnique: (...args: unknown[]) => userFindUniqueMock(...args) },
+    collectUkCompany: {
+      findMany: (...args: unknown[]) => companyFindManyMock(...args),
+      findUnique: (...args: unknown[]) => companyFindUniqueMock(...args),
+    },
+    collectUkCompanyRate: { upsert: (...args: unknown[]) => rateUpsertMock(...args) },
     collectUkDriver: {
       create: (...args: unknown[]) => driverCreateMock(...args),
       findMany: (...args: unknown[]) => driverFindManyMock(...args),
@@ -101,6 +109,9 @@ beforeEach(() => {
   bookingUpdateMock.mockResolvedValue({});
   routeFindManyMock.mockResolvedValue([]);
   stopDeleteMock.mockResolvedValue({});
+  companyFindManyMock.mockResolvedValue([]);
+  companyFindUniqueMock.mockResolvedValue({ id: 'company-1', name: 'ABC' });
+  rateUpsertMock.mockResolvedValue({ companyId: 'company-1' });
   notifyRescheduledMock.mockResolvedValue(undefined);
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
@@ -598,6 +609,56 @@ describe('POST /api/v1/admin/collect-uk/bookings/:id/requeue', () => {
   it('fails closed without a valid admin token', async () => {
     const app = createApp();
     const res = await request(app).post(`/api/v1/admin/collect-uk/bookings/${BOOKING_ID}/requeue`);
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('company rates (admin)', () => {
+  it('lists companies with their rates', async () => {
+    companyFindManyMock.mockResolvedValue([
+      { id: 'c1', name: 'ABC', slug: 'abc', isActive: true,
+        rate: { basePerStopPence: 500, tierSmallPence: 300, tierMediumPence: 500, tierLargePence: 800, tierXlPence: 1200 } },
+      { id: 'c2', name: 'XYZ', slug: 'xyz', isActive: true, rate: null },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/companies').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].rate.basePerStopPence).toBe(500);
+    expect(res.body.data[1].rate).toBeNull();
+  });
+
+  it('upserts a company rate', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .put('/api/v1/admin/collect-uk/companies/company-1/rate')
+      .set(ADMIN_HEADER)
+      .send({ basePerStopPence: 500, tierSmallPence: 300, tierMediumPence: 500, tierLargePence: 800, tierXlPence: 1200 });
+
+    expect(res.status).toBe(200);
+    expect(rateUpsertMock).toHaveBeenCalledWith({
+      where: { companyId: 'company-1' },
+      create: expect.objectContaining({ companyId: 'company-1', basePerStopPence: 500 }),
+      update: expect.objectContaining({ basePerStopPence: 500 }),
+    });
+  });
+
+  it('400s on negative amounts', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .put('/api/v1/admin/collect-uk/companies/company-1/rate')
+      .set(ADMIN_HEADER)
+      .send({ basePerStopPence: -1, tierSmallPence: 300, tierMediumPence: 500, tierLargePence: 800, tierXlPence: 1200 });
+
+    expect(res.status).toBe(400);
+    expect(rateUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without a valid admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/companies');
 
     expect(res.status).toBe(401);
   });
