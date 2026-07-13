@@ -831,6 +831,27 @@ export interface CollectUkUnscheduledBooking {
   vehicleType: CollectUkVehicleType | null;
 }
 
+export interface CollectUkAdminCompanyBookings {
+  company: { id: string; name: string; slug: string };
+  bookings: {
+    id: string;
+    reference: string | null;
+    status: string;
+    customerName: string;
+    customerContact: string;
+    collectionAddress: string;
+    collectionPostcode: string;
+    parcelSizeTier: ParcelSizeTier;
+    numberOfParcels: number;
+    itemTypes: CollectUkItemType[];
+    itemTypeOther: string | null;
+    vehicleType: CollectUkVehicleType | null;
+    collectionWindow: CollectUkWindowRange | null;
+    chargePence: number | null;
+    createdAt: string;
+  }[];
+}
+
 export interface CollectUkAdminCompany {
   id: string;
   name: string;
@@ -926,6 +947,9 @@ export const collectUkDispatch = {
       body: rate,
       adminToken,
     }),
+
+  getCompanyBookings: (adminToken: string, companyId: string) =>
+    request<CollectUkAdminCompanyBookings>(`/api/v1/admin/collect-uk/companies/${companyId}/bookings`, { adminToken }),
 
   listFailed: (adminToken: string) =>
     request<CollectUkFailedBooking[]>("/api/v1/admin/collect-uk/bookings/failed", { adminToken }),

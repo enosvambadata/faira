@@ -119,6 +119,53 @@ router.get('/companies', requireAdmin, async (_req: Request, res: Response) => {
   });
 });
 
+// A company's complete booking history for the dispatch board -- every
+// status, not just the operational lanes. Companies see their own list
+// via the tenant-scoped portal; this is Faira's cross-tenant view.
+router.get(
+  '/companies/:companyId/bookings',
+  requireAdmin,
+  async (req: Request<{ companyId: string }>, res: Response, next: NextFunction) => {
+    const company = await prisma.collectUkCompany.findUnique({ where: { id: req.params.companyId } });
+    if (!company) {
+      next(new ApiError('NOT_FOUND', 'Company not found', 404));
+      return;
+    }
+
+    const bookings = await prisma.collectUkCollectionBooking.findMany({
+      where: { companyId: company.id },
+      include: { collectionWindow: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+
+    res.status(200).json({
+      data: {
+        company: { id: company.id, name: company.name, slug: company.slug },
+        bookings: bookings.map(b => ({
+          id: b.id,
+          reference: b.reference,
+          status: b.status,
+          customerName: b.customerName,
+          customerContact: b.customerContact,
+          collectionAddress: b.collectionAddress,
+          collectionPostcode: b.collectionPostcode,
+          parcelSizeTier: b.parcelSizeTier,
+          numberOfParcels: b.numberOfParcels,
+          itemTypes: b.itemTypes,
+          itemTypeOther: b.itemTypeOther,
+          vehicleType: b.vehicleType,
+          collectionWindow: b.collectionWindow
+            ? { startDate: b.collectionWindow.startDate, endDate: b.collectionWindow.endDate }
+            : null,
+          chargePence: b.chargePence,
+          createdAt: b.createdAt,
+        })),
+      },
+    });
+  },
+);
+
 const rateSchema = z.object({
   basePerStopPence: z.number().int().min(0),
   tierSmallPence: z.number().int().min(0),
