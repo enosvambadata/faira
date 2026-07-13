@@ -36,6 +36,9 @@ test.describe("Faira Collect UK guest booking", () => {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
 
+    // Warehouses live on their own tab since the page-per-function split.
+    await page.getByRole("link", { name: "Warehouses" }).click();
+    await page.waitForURL(/\/collect-uk\/companies\/.+\/warehouses/);
     await page.getByLabel("Warehouse name").fill("Main Depot");
     await page.getByLabel("Address").fill("1 Test Road");
     await page.getByLabel("City").fill("London");
@@ -77,6 +80,8 @@ test.describe("Faira Collect UK guest booking", () => {
     // --- Company admin sees the booking on their dashboard ---
     await page.goto("/collect-uk");
     await page.getByRole("link", { name: new RegExp(companyName) }).click();
+    // Bookings live on their own tab since the page-per-function split.
+    await page.getByRole("link", { name: "Bookings" }).click();
     await expect(page.getByRole("heading", { name: "Bookings" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Jane Customer")).toBeVisible();
   });

@@ -32,6 +32,9 @@ test.describe("Faira Collect UK company portal", () => {
     await expect(page.getByRole("heading", { name: `E2E Logistics ${uniqueId}` })).toBeVisible();
     await expect(page.getByText("Admin").first()).toBeVisible();
 
+    // Warehouses live on their own tab since the page-per-function split.
+    await page.getByRole("link", { name: "Warehouses" }).click();
+    await page.waitForURL(/\/collect-uk\/companies\/.+\/warehouses/);
     await page.getByLabel("Warehouse name").fill("Main Depot");
     await page.getByLabel("Address").fill("1 Test Road");
     await page.getByLabel("City").fill("London");

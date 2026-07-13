@@ -1,530 +1,109 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Alert } from "@/components/ui/Alert";
-import { StatusBadge } from "@/components/ui/StatusBadge";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { useToast } from "@/components/ui/Toast";
-import { CollectBrand } from "@/components/collect-uk/CollectBrand";
-import { describeItems } from "@/lib/collectUkItemLabels";
-import {
-  collectUkCompanies,
-  CollectUkCompany,
-  CollectUkWarehouse,
-  CollectUkCompanyWindow,
-  CollectUkBillingStatement,
-  CollectUkCompanyRoleType,
-  CollectUkBookingSummary,
-  FulfilmentApiError,
-} from "@/lib/api";
-
-function formatPounds(pence: number): string {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(pence / 100);
-}
+import { useCompanyPortal } from "@/lib/companyContext";
+import { collectUkCompanies, CollectUkBookingSummary, CollectUkCompanyWindow } from "@/lib/api";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
-export default function CompanyDashboardPage() {
-  const { id } = useParams<{ id: string }>();
-  const { toast } = useToast();
-
-  const [loading, setLoading] = useState(true);
-  const [company, setCompany] = useState<CollectUkCompany | null>(null);
-  const [myRole, setMyRole] = useState<CollectUkCompanyRoleType | null>(null);
-  const [warehouses, setWarehouses] = useState<CollectUkWarehouse[]>([]);
-  const [windows, setWindows] = useState<CollectUkCompanyWindow[]>([]);
-  const [billing, setBilling] = useState<CollectUkBillingStatement | null>(null);
-  const [bookings, setBookings] = useState<CollectUkBookingSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
+export default function CompanyOverviewPage() {
+  const { company } = useCompanyPortal();
   const [linkCopied, setLinkCopied] = useState(false);
-
-  const [name, setName] = useState("");
-  const [countriesServed, setCountriesServed] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-
-  const [whName, setWhName] = useState("");
-  const [whAddress, setWhAddress] = useState("");
-  const [whCity, setWhCity] = useState("");
-  const [whPostcode, setWhPostcode] = useState("");
-  const [whHours, setWhHours] = useState("");
-  const [addingWarehouse, setAddingWarehouse] = useState(false);
-  const [warehouseError, setWarehouseError] = useState<string | null>(null);
-  const [confirmingHandoverId, setConfirmingHandoverId] = useState<string | null>(null);
-  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
-  const [winStart, setWinStart] = useState("");
-  const [winEnd, setWinEnd] = useState("");
-  const [addingWindow, setAddingWindow] = useState(false);
-  const [windowError, setWindowError] = useState<string | null>(null);
-  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
-
-  const isAdmin = myRole === "COMPANY_ADMIN";
+  const [bookings, setBookings] = useState<CollectUkBookingSummary[]>([]);
+  const [windows, setWindows] = useState<CollectUkCompanyWindow[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [memberships, companyDetail, warehouseList, bookingList, windowList, billingStatement] = await Promise.all([
-          collectUkCompanies.mine(),
-          collectUkCompanies.get(id),
-          collectUkCompanies.listWarehouses(id),
-          collectUkCompanies.listBookings(id),
-          collectUkCompanies.listWindows(id),
-          collectUkCompanies.getBilling(id),
+        const [b, w] = await Promise.all([
+          collectUkCompanies.listBookings(company.id),
+          collectUkCompanies.listWindows(company.id),
         ]);
-        setCompany(companyDetail);
-        setName(companyDetail.name);
-        setCountriesServed(companyDetail.countriesServed.join(", "));
-        setWarehouses(warehouseList);
-        setWindows(windowList);
-        setBilling(billingStatement);
-        setBookings(bookingList);
-        setMyRole(memberships.find(m => m.id === id)?.role ?? null);
-      } catch (err) {
-        setError(err instanceof FulfilmentApiError ? err.message : "Could not load this company right now.");
-      } finally {
-        setLoading(false);
+        setBookings(b);
+        setWindows(w);
+      } catch {
+        // counters are a nice-to-have on the overview; the dedicated tabs
+        // surface their own errors properly
       }
     })();
-  }, [id]);
+  }, [company.id]);
 
-  const handleSaveProfile = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!company) return;
-    const countries = countriesServed.split(",").map(c => c.trim()).filter(Boolean);
-    if (!name.trim() || countries.length === 0) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const nextWindow = windows
+    .filter(w => w.endDate.slice(0, 10) >= today)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
 
-    setSavingProfile(true);
-    try {
-      const updated = await collectUkCompanies.update(company.id, { name: name.trim(), countriesServed: countries });
-      setCompany(updated);
-      toast({ title: "Company profile updated", tone: "success" });
-    } catch (err) {
-      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not save changes", tone: "error" });
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  const handleAddWarehouse = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!company || !whName.trim() || !whAddress.trim() || !whCity.trim() || !whPostcode.trim() || !whHours.trim()) return;
-
-    setAddingWarehouse(true);
-    setWarehouseError(null);
-    try {
-      const warehouse = await collectUkCompanies.createWarehouse(company.id, {
-        name: whName.trim(),
-        address: whAddress.trim(),
-        city: whCity.trim(),
-        postcode: whPostcode.trim(),
-        openingHours: whHours.trim(),
-      });
-      setWarehouses(prev => [...prev, warehouse]);
-      setWhName("");
-      setWhAddress("");
-      setWhCity("");
-      setWhPostcode("");
-      setWhHours("");
-      toast({ title: "Warehouse added", tone: "success" });
-    } catch (err) {
-      setWarehouseError(err instanceof FulfilmentApiError ? err.message : "Could not add this warehouse right now.");
-    } finally {
-      setAddingWarehouse(false);
-    }
-  };
-
-  const handleAddWindow = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!company || !winStart || !winEnd) return;
-    setAddingWindow(true);
-    setWindowError(null);
-    try {
-      const window = await collectUkCompanies.createWindow(company.id, { startDate: winStart, endDate: winEnd });
-      setWindows(prev => [window, ...prev]);
-      setWinStart("");
-      setWinEnd("");
-      toast({
-        title:
-          window.attachedBookings > 0
-            ? `Collection week added — ${window.attachedBookings} waiting booking${window.attachedBookings === 1 ? "" : "s"} moved into it`
-            : "Collection week added",
-        tone: "success",
-      });
-      // Re-pull bookings so the swept ones show their new week immediately.
-      setBookings(await collectUkCompanies.listBookings(company.id));
-    } catch (err) {
-      setWindowError(err instanceof FulfilmentApiError ? err.message : "Could not add this collection week.");
-    } finally {
-      setAddingWindow(false);
-    }
-  };
-
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!company) return;
-    setCancellingBookingId(bookingId);
-    try {
-      await collectUkCompanies.cancelBooking(company.id, bookingId);
-      setBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, status: "CANCELLED" } : b)));
-      setConfirmCancelId(null);
-      toast({ title: "Booking cancelled", tone: "success" });
-    } catch (err) {
-      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not cancel this booking.", tone: "error" });
-    } finally {
-      setCancellingBookingId(null);
-    }
-  };
-
-  const handleConfirmHandover = async (bookingId: string) => {
-    if (!company) return;
-    setConfirmingHandoverId(bookingId);
-    try {
-      await collectUkCompanies.confirmHandover(company.id, bookingId);
-      setBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, status: "HANDED_OVER" } : b)));
-      toast({ title: "Handover confirmed", tone: "success" });
-    } catch (err) {
-      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not confirm handover right now.", tone: "error" });
-    } finally {
-      setConfirmingHandoverId(null);
-    }
-  };
+  const waiting = bookings.filter(b => b.status === "REQUESTED" && !b.collectionWindow).length;
+  const inWeek = bookings.filter(b => b.status === "REQUESTED" && b.collectionWindow).length;
+  const parcelsWaiting = bookings.reduce((sum, b) => (b.status === "REQUESTED" ? sum + b.numberOfParcels : sum), 0);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-white">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
-          <CollectBrand suffix="Company Portal" />
-          <Link href="/collect-uk" className="cursor-pointer text-sm font-medium text-muted transition-colors duration-200 hover:text-primary">
-            All companies
-          </Link>
+    <>
+      <Card>
+        <h2 className="text-base font-semibold text-text">Your booking link</h2>
+        <p className="mt-1 text-sm text-muted">Share this with customers so they can book a collection directly.</p>
+        <div className="mt-3 flex items-center gap-2">
+          <code className="flex-1 truncate rounded-md bg-light px-3 py-2 text-sm text-text">
+            {typeof window !== "undefined" ? `${window.location.origin}/collect-uk/book/${company.slug}` : ""}
+          </code>
+          <Button
+            type="button"
+            size="md"
+            variant="secondary"
+            onClick={() => {
+              navigator.clipboard.writeText(`${window.location.origin}/collect-uk/book/${company.slug}`);
+              setLinkCopied(true);
+              setTimeout(() => setLinkCopied(false), 2000);
+            }}
+          >
+            {linkCopied ? "Copied!" : "Copy"}
+          </Button>
         </div>
-      </header>
+      </Card>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:px-6">
-        {loading && (
-          <Card className="flex flex-col gap-3">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-4 w-full" />
-          </Card>
-        )}
-
-        {!loading && error && <Alert tone="error">{error}</Alert>}
-
-        {!loading && company && (
-          <>
-            <div className="flex items-center justify-between">
-              <h1 className="text-xl font-semibold text-text">{company.name}</h1>
-              <StatusBadge label={isAdmin ? "Admin" : "Dispatcher"} tone="info" />
-            </div>
-
-            <Card className="mt-6">
-              <h2 className="text-base font-semibold text-text">Your booking link</h2>
-              <p className="mt-1 text-sm text-muted">Share this with customers so they can book a collection directly.</p>
-              <div className="mt-3 flex items-center gap-2">
-                <code className="flex-1 truncate rounded-md bg-light px-3 py-2 text-sm text-text">
-                  {typeof window !== "undefined" ? `${window.location.origin}/collect-uk/book/${company.slug}` : ""}
-                </code>
-                <Button
-                  type="button"
-                  size="md"
-                  variant="secondary"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/collect-uk/book/${company.slug}`);
-                    setLinkCopied(true);
-                    setTimeout(() => setLinkCopied(false), 2000);
-                  }}
-                >
-                  {linkCopied ? "Copied!" : "Copy"}
-                </Button>
-              </div>
-            </Card>
-
-            <Card className="mt-4">
-              <h2 className="text-base font-semibold text-text">Company profile</h2>
-              {isAdmin ? (
-                <form onSubmit={handleSaveProfile} className="mt-4 flex flex-col gap-4">
-                  <Field label="Company name" required>
-                    {p => <Input {...p} value={name} onChange={e => setName(e.target.value)} />}
-                  </Field>
-                  <Field label="Countries served" hint="Comma-separated" required>
-                    {p => <Input {...p} value={countriesServed} onChange={e => setCountriesServed(e.target.value)} />}
-                  </Field>
-                  <Button type="submit" size="md" loading={savingProfile} disabled={!name.trim() || !countriesServed.trim()}>
-                    Save changes
-                  </Button>
-                </form>
-              ) : (
-                <dl className="mt-4 flex flex-col gap-3 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted">Countries served</dt>
-                    <dd className="text-right text-text">{company.countriesServed.join(", ")}</dd>
-                  </div>
-                </dl>
-              )}
-            </Card>
-
-            <Card className="mt-4">
-              <h2 className="text-base font-semibold text-text">Warehouses</h2>
-
-              {warehouses.length === 0 && <p className="mt-3 text-sm text-muted">No warehouses added yet.</p>}
-
-              {warehouses.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-3">
-                  {warehouses.map(w => (
-                    <li key={w.id} className="rounded-md border border-border p-3 text-sm">
-                      <p className="font-medium text-text">{w.name}</p>
-                      <p className="text-muted">
-                        {w.address}, {w.city} {w.postcode}
-                      </p>
-                      <p className="text-muted">{w.openingHours}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {isAdmin && (
-                <form onSubmit={handleAddWarehouse} className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
-                  <h3 className="text-sm font-medium text-text">Add a warehouse</h3>
-                  <Field label="Warehouse name" required>
-                    {p => <Input {...p} value={whName} onChange={e => setWhName(e.target.value)} placeholder="Main Depot" />}
-                  </Field>
-                  <Field label="Address" required>
-                    {p => <Input {...p} value={whAddress} onChange={e => setWhAddress(e.target.value)} />}
-                  </Field>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="City" required>
-                      {p => <Input {...p} value={whCity} onChange={e => setWhCity(e.target.value)} />}
-                    </Field>
-                    <Field label="Postcode" required>
-                      {p => <Input {...p} value={whPostcode} onChange={e => setWhPostcode(e.target.value)} />}
-                    </Field>
-                  </div>
-                  <Field label="Opening hours" required>
-                    {p => <Input {...p} value={whHours} onChange={e => setWhHours(e.target.value)} placeholder="Mon-Fri 9am-5pm" />}
-                  </Field>
-                  {warehouseError && <Alert tone="error">{warehouseError}</Alert>}
-                  <Button
-                    type="submit"
-                    size="md"
-                    loading={addingWarehouse}
-                    disabled={!whName.trim() || !whAddress.trim() || !whCity.trim() || !whPostcode.trim() || !whHours.trim()}
-                  >
-                    Add warehouse
-                  </Button>
-                </form>
-              )}
-            </Card>
-
-            <Card className="mt-4">
-              <h2 className="text-base font-semibold text-text">Collection weeks</h2>
-              <p className="mt-1 text-sm text-muted">
-                Tell Faira which days we should collect for you — customers book into your next week and
-                we route the drivers.
-              </p>
-
-              {windows.length === 0 && (
-                <p className="mt-3 text-sm text-muted">
-                  No collection weeks yet — bookings are still accepted and will wait for your first week.
-                </p>
-              )}
-              {windows.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {windows.map(w => (
-                    <li key={w.id} className="rounded-md border border-border p-3 text-sm text-text">
-                      {formatDate(w.startDate)} – {formatDate(w.endDate)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {isAdmin && (
-                <form onSubmit={handleAddWindow} className="mt-4 flex flex-col gap-4 border-t border-border pt-4">
-                  <h3 className="text-sm font-medium text-text">Add a collection week</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="First day" required>
-                      {p => <Input {...p} type="date" value={winStart} onChange={e => setWinStart(e.target.value)} />}
-                    </Field>
-                    <Field label="Last day" required>
-                      {p => <Input {...p} type="date" value={winEnd} onChange={e => setWinEnd(e.target.value)} />}
-                    </Field>
-                  </div>
-                  {windowError && <Alert tone="error">{windowError}</Alert>}
-                  <Button type="submit" size="md" loading={addingWindow} disabled={!winStart || !winEnd}>
-                    Add collection week
-                  </Button>
-                </form>
-              )}
-            </Card>
-
-            <Card className="mt-4">
-              <h2 className="text-base font-semibold text-text">Bookings</h2>
-
-              {bookings.length > 0 && (
-                <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-md border border-border bg-bg p-3">
-                    <p className="text-2xl font-bold text-primary">
-                      {bookings.filter(b => b.status === "REQUESTED" && !b.collectionWindow).length}
-                    </p>
-                    <p className="text-xs text-muted">awaiting a collection week</p>
-                  </div>
-                  <div className="rounded-md border border-border bg-bg p-3">
-                    <p className="text-2xl font-bold text-text">
-                      {bookings.filter(b => b.status === "REQUESTED" && b.collectionWindow).length}
-                    </p>
-                    <p className="text-xs text-muted">booked into a week</p>
-                  </div>
-                  <div className="rounded-md border border-border bg-bg p-3">
-                    <p className="text-2xl font-bold text-text">
-                      {bookings.reduce(
-                        (sum, b) => (b.status === "REQUESTED" ? sum + b.numberOfParcels : sum),
-                        0,
-                      )}
-                    </p>
-                    <p className="text-xs text-muted">parcels waiting collection</p>
-                  </div>
-                </div>
-              )}
-
-              {bookings.length === 0 && <p className="mt-3 text-sm text-muted">No bookings yet.</p>}
-
-              {bookings.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-3">
-                  {bookings.map(b => (
-                    <li key={b.id} className="rounded-md border border-border p-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-text">{b.reference}</span>
-                        <StatusBadge label={b.status.replaceAll("_", " ")} tone="neutral" />
-                      </div>
-                      <p className="mt-1 text-muted">
-                        {b.customerName} — {b.destinationCountry}
-                      </p>
-                      <p className="text-muted">
-                        {b.collectionAddress}, {b.collectionPostcode} —{" "}
-                        {b.collectionWindow
-                          ? `week ${formatDate(b.collectionWindow.startDate)} – ${formatDate(b.collectionWindow.endDate)}`
-                          : b.preferredDate
-                            ? `collect by ${formatDate(b.preferredDate)}`
-                            : "awaiting a collection week"}
-                      </p>
-                      {b.itemTypes.length > 0 && (
-                        <p className="text-muted">
-                          {b.numberOfParcels} parcel{b.numberOfParcels === 1 ? "" : "s"}:{" "}
-                          {describeItems(b.itemTypes, b.itemTypeOther, b.vehicleType)}
-                        </p>
-                      )}
-                      {b.status === "AT_WAREHOUSE" && (
-                        <Button
-                          type="button"
-                          size="md"
-                          className="mt-2"
-                          loading={confirmingHandoverId === b.id}
-                          onClick={() => handleConfirmHandover(b.id)}
-                        >
-                          Confirm handover
-                        </Button>
-                      )}
-                      {["REQUESTED", "DRIVER_ASSIGNED", "EN_ROUTE"].includes(b.status) && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {confirmCancelId !== b.id ? (
-                            <Button type="button" variant="ghost" size="md" onClick={() => setConfirmCancelId(b.id)}>
-                              Cancel booking
-                            </Button>
-                          ) : (
-                            <>
-                              <Button
-                                type="button"
-                                variant="danger"
-                                size="md"
-                                loading={cancellingBookingId === b.id}
-                                onClick={() => handleCancelBooking(b.id)}
-                              >
-                                Yes, cancel it
-                              </Button>
-                              <Button type="button" variant="ghost" size="md" onClick={() => setConfirmCancelId(null)}>
-                                Keep it
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card className="mt-4">
-              <h2 className="text-base font-semibold text-text">Billing</h2>
-              <p className="mt-1 text-sm text-muted">
-                What Faira charges you for completed collections — a charge is added each time you
-                confirm a handover.
-              </p>
-
-              {billing?.rate ? (
-                <p className="mt-3 text-sm text-muted">
-                  Your rate: {formatPounds(billing.rate.basePerStopPence)} per collection stop +{" "}
-                  {formatPounds(billing.rate.tierSmallPence)}/{formatPounds(billing.rate.tierMediumPence)}/
-                  {formatPounds(billing.rate.tierLargePence)}/{formatPounds(billing.rate.tierXlPence)} per parcel
-                  (small/medium/large/XL). Vehicles quoted separately.
-                </p>
-              ) : (
-                <p className="mt-3 text-sm text-muted">
-                  No rate agreed with Faira yet — completed collections are recorded but not charged.
-                </p>
-              )}
-
-              {billing && billing.groups.length > 0 && (
-                <>
-                  <div className="mt-4 rounded-md border border-border bg-bg p-4 text-center">
-                    <p className="text-2xl font-bold text-dark">{formatPounds(billing.grandTotalPence)}</p>
-                    <p className="text-xs text-muted">total for all completed collections</p>
-                  </div>
-                  <div className="mt-4 flex flex-col gap-4">
-                    {billing.groups.map((group, i) => (
-                      <div key={i} className="rounded-md border border-border p-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="font-semibold text-text">
-                            {group.window
-                              ? `Week ${formatDate(group.window.startDate)} – ${formatDate(group.window.endDate)}`
-                              : "No collection week"}
-                          </span>
-                          <span className="font-semibold text-text">{formatPounds(group.totalPence)}</span>
-                        </div>
-                        <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
-                          {group.lines.map(line => (
-                            <li key={line.id} className="flex justify-between gap-4">
-                              <span>
-                                <span className="font-mono">{line.reference}</span> — {line.customerName} (
-                                {line.numberOfParcels} × {line.parcelSizeTier.replaceAll("_", " ").toLowerCase()})
-                              </span>
-                              <span>
-                                {line.isVehicle
-                                  ? "vehicle — quoted separately"
-                                  : line.chargePence != null
-                                    ? formatPounds(line.chargePence)
-                                    : "—"}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              {billing && billing.groups.length === 0 && (
-                <p className="mt-3 text-sm text-muted">No completed collections yet.</p>
-              )}
-            </Card>
-          </>
-        )}
-      </main>
-    </div>
+      <Card className="mt-4">
+        <h2 className="text-base font-semibold text-text">Demand</h2>
+        <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+          <div className="rounded-md border border-border bg-bg p-3">
+            <p className="text-2xl font-bold text-primary">{waiting}</p>
+            <p className="text-xs text-muted">awaiting a collection week</p>
+          </div>
+          <div className="rounded-md border border-border bg-bg p-3">
+            <p className="text-2xl font-bold text-text">{inWeek}</p>
+            <p className="text-xs text-muted">booked into a week</p>
+          </div>
+          <div className="rounded-md border border-border bg-bg p-3">
+            <p className="text-2xl font-bold text-text">{parcelsWaiting}</p>
+            <p className="text-xs text-muted">parcels waiting collection</p>
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          {nextWindow ? (
+            <>
+              Next collection week:{" "}
+              <span className="font-semibold text-text">
+                {formatDate(nextWindow.startDate)} – {formatDate(nextWindow.endDate)}
+              </span>
+            </>
+          ) : (
+            <>
+              No collection week declared —{" "}
+              <Link
+                href={`/collect-uk/companies/${company.id}/weeks`}
+                className="cursor-pointer font-medium text-primary underline"
+              >
+                add one
+              </Link>{" "}
+              when you&rsquo;re ready to receive.
+            </>
+          )}
+        </p>
+      </Card>
+    </>
   );
 }
