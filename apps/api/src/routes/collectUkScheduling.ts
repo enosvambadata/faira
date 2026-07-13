@@ -92,6 +92,67 @@ router.post('/routes', requireAdmin, async (req: Request, res: Response, next: N
   res.status(201).json({ data: route });
 });
 
+// Companies with their negotiated rates -- the dispatch board's rate
+// management view. Rates are Faira-set (B2B negotiation), never
+// company-editable.
+router.get('/companies', requireAdmin, async (_req: Request, res: Response) => {
+  const companies = await prisma.collectUkCompany.findMany({
+    include: { rate: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  res.status(200).json({
+    data: companies.map(c => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      isActive: c.isActive,
+      rate: c.rate
+        ? {
+            basePerStopPence: c.rate.basePerStopPence,
+            tierSmallPence: c.rate.tierSmallPence,
+            tierMediumPence: c.rate.tierMediumPence,
+            tierLargePence: c.rate.tierLargePence,
+            tierXlPence: c.rate.tierXlPence,
+          }
+        : null,
+    })),
+  });
+});
+
+const rateSchema = z.object({
+  basePerStopPence: z.number().int().min(0),
+  tierSmallPence: z.number().int().min(0),
+  tierMediumPence: z.number().int().min(0),
+  tierLargePence: z.number().int().min(0),
+  tierXlPence: z.number().int().min(0),
+});
+
+router.put(
+  '/companies/:companyId/rate',
+  requireAdmin,
+  async (req: Request<{ companyId: string }>, res: Response, next: NextFunction) => {
+    const parsed = rateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const company = await prisma.collectUkCompany.findUnique({ where: { id: req.params.companyId } });
+    if (!company) {
+      next(new ApiError('NOT_FOUND', 'Company not found', 404));
+      return;
+    }
+
+    const rate = await prisma.collectUkCompanyRate.upsert({
+      where: { companyId: company.id },
+      create: { companyId: company.id, ...parsed.data },
+      update: parsed.data,
+    });
+
+    res.status(200).json({ data: { companyId: rate.companyId, ...parsed.data } });
+  },
+);
+
 // Newest routes first -- the dispatch UI's route board.
 router.get('/routes', requireAdmin, async (_req: Request, res: Response) => {
   const routes = await prisma.collectUkCollectionRoute.findMany({

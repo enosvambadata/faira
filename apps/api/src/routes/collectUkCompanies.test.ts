@@ -21,6 +21,7 @@ const notifyBookingCancelledMock = vi.fn();
 const notifyWeekSetMock = vi.fn();
 const stopDeleteMock = vi.fn();
 const windowFindManyMock = vi.fn();
+const rateFindUniqueMock = vi.fn();
 const windowCreateMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
@@ -76,6 +77,7 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => windowFindManyMock(...args),
       create: (...args: unknown[]) => windowCreateMock(...args),
     },
+    collectUkCompanyRate: { findUnique: (...args: unknown[]) => rateFindUniqueMock(...args) },
     collectUkCollectionRoute: {
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
@@ -117,6 +119,7 @@ beforeEach(() => {
   notifyHandedOverMock.mockResolvedValue(undefined);
   stopDeleteMock.mockResolvedValue({});
   windowFindManyMock.mockResolvedValue([]);
+  rateFindUniqueMock.mockResolvedValue(null);
   windowCreateMock.mockResolvedValue({ id: 'w-1', companyId: COMPANY_A, startDate: new Date('2099-08-03'), endDate: new Date('2099-08-09') });
   notifyWeekSetMock.mockResolvedValue(undefined);
   stopCountMock.mockResolvedValue(0);
@@ -426,7 +429,7 @@ describe('GET /api/v1/collect-uk/companies/:id/bookings', () => {
 
 describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-handover', () => {
   const BOOKING_ID = 'booking-1';
-  const AT_WAREHOUSE_BOOKING = { id: BOOKING_ID, companyId: COMPANY_A, status: 'AT_WAREHOUSE' };
+  const AT_WAREHOUSE_BOOKING = { id: BOOKING_ID, companyId: COMPANY_A, status: 'AT_WAREHOUSE', itemTypes: ['DRUM'], parcelSizeTier: 'MEDIUM', numberOfParcels: 2 };
 
   it('confirms handover for a booking that has arrived at the warehouse', async () => {
     bookingFindUniqueMock.mockResolvedValue(AT_WAREHOUSE_BOOKING);
@@ -440,7 +443,7 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-hand
     expect(res.body.data).toEqual({ id: BOOKING_ID, status: 'HANDED_OVER' });
     expect(bookingUpdateManyMock).toHaveBeenCalledWith({
       where: { id: BOOKING_ID, status: 'AT_WAREHOUSE' },
-      data: { status: 'HANDED_OVER' },
+      data: { status: 'HANDED_OVER', chargePence: null },
     });
     expect(notifyHandedOverMock).toHaveBeenCalledWith(BOOKING_ID);
   });
@@ -682,5 +685,80 @@ describe('window declaration sweeps waiting bookings', () => {
     expect(res.body.data.attachedBookings).toBe(0);
     expect(bookingUpdateManyMock).not.toHaveBeenCalled();
     expect(notifyWeekSetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('billing', () => {
+  const RATE = { basePerStopPence: 500, tierSmallPence: 300, tierMediumPence: 500, tierLargePence: 800, tierXlPence: 1200 };
+
+  it('snapshots the charge when handover is confirmed with a rate configured', async () => {
+    rateFindUniqueMock.mockResolvedValue(RATE);
+    bookingFindUniqueMock.mockResolvedValue({
+      id: 'booking-1', companyId: COMPANY_A, status: 'AT_WAREHOUSE',
+      itemTypes: ['DRUM'], parcelSizeTier: 'MEDIUM', numberOfParcels: 3,
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/booking-1/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    // 500 base + 500 medium x 3 parcels = 2000p
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER', chargePence: 2000 },
+    });
+  });
+
+  it('leaves vehicle bookings uncharged (quoted separately)', async () => {
+    rateFindUniqueMock.mockResolvedValue(RATE);
+    bookingFindUniqueMock.mockResolvedValue({
+      id: 'booking-1', companyId: COMPANY_A, status: 'AT_WAREHOUSE',
+      itemTypes: ['VEHICLE'], parcelSizeTier: 'EXTRA_LARGE', numberOfParcels: 1,
+    });
+
+    const app = createApp();
+    await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/booking-1/confirm-handover`)
+      .set(AUTH_HEADER);
+
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER', chargePence: null },
+    });
+  });
+
+  it('returns the statement grouped by collection week with totals', async () => {
+    rateFindUniqueMock.mockResolvedValue(RATE);
+    const win = { startDate: new Date('2026-08-03'), endDate: new Date('2026-08-09') };
+    bookingFindManyMock.mockResolvedValue([
+      { id: 'b1', reference: 'FC-x-1', customerName: 'A', parcelSizeTier: 'MEDIUM', numberOfParcels: 1,
+        chargePence: 1000, itemTypes: ['DRUM'], collectionWindowId: 'w1', collectionWindow: win, updatedAt: new Date() },
+      { id: 'b2', reference: 'FC-x-2', customerName: 'B', parcelSizeTier: 'LARGE', numberOfParcels: 2,
+        chargePence: 2100, itemTypes: ['FRIDGE'], collectionWindowId: 'w1', collectionWindow: win, updatedAt: new Date() },
+      { id: 'b3', reference: 'FC-x-3', customerName: 'C', parcelSizeTier: 'EXTRA_LARGE', numberOfParcels: 1,
+        chargePence: null, itemTypes: ['VEHICLE'], collectionWindowId: null, collectionWindow: null, updatedAt: new Date() },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_A}/billing`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.grandTotalPence).toBe(3100);
+    expect(res.body.data.groups).toHaveLength(2);
+    const weekGroup = res.body.data.groups.find((g: { window: unknown }) => g.window !== null);
+    expect(weekGroup.totalPence).toBe(3100);
+    expect(weekGroup.lines).toHaveLength(2);
+    const vehicleLine = res.body.data.groups.find((g: { window: unknown }) => g.window === null).lines[0];
+    expect(vehicleLine.isVehicle).toBe(true);
+    expect(vehicleLine.chargePence).toBeNull();
+  });
+
+  it("403s (tenant isolation) reading another company's statement", async () => {
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_B}/billing`).set(AUTH_HEADER);
+
+    expect(res.status).toBe(403);
   });
 });
