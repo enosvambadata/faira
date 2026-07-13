@@ -18,6 +18,7 @@ const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyHandedOverMock = vi.fn();
 const notifyBookingCancelledMock = vi.fn();
+const notifyWeekSetMock = vi.fn();
 const stopDeleteMock = vi.fn();
 const windowFindManyMock = vi.fn();
 const windowCreateMock = vi.fn();
@@ -34,6 +35,7 @@ vi.mock('../services/collectUkNotifications', () => ({
   notifyArrivedAtWarehouse: vi.fn(),
   notifyHandedOver: (...args: unknown[]) => notifyHandedOverMock(...args),
   notifyBookingCancelled: (...args: unknown[]) => notifyBookingCancelledMock(...args),
+  notifyCollectionWeekSet: (...args: unknown[]) => notifyWeekSetMock(...args),
   notifyCollectionWillBeRescheduled: vi.fn(),
 }));
 
@@ -115,7 +117,8 @@ beforeEach(() => {
   notifyHandedOverMock.mockResolvedValue(undefined);
   stopDeleteMock.mockResolvedValue({});
   windowFindManyMock.mockResolvedValue([]);
-  windowCreateMock.mockResolvedValue({});
+  windowCreateMock.mockResolvedValue({ id: 'w-1', companyId: COMPANY_A, startDate: new Date('2099-08-03'), endDate: new Date('2099-08-09') });
+  notifyWeekSetMock.mockResolvedValue(undefined);
   stopCountMock.mockResolvedValue(0);
   stopFindManyMock.mockResolvedValue([]);
   routeFindUniqueMock.mockResolvedValue(null);
@@ -125,7 +128,11 @@ beforeEach(() => {
     callback({
       collectUkCompany: { create: (...args: unknown[]) => companyCreateMock(...args) },
       collectUkCompanyRole: { create: (...args: unknown[]) => companyRoleCreateMock(...args) },
-      collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
+      collectUkCollectionBooking: {
+        updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
+        findMany: (...args: unknown[]) => bookingFindManyMock(...args),
+      },
+      collectUkCollectionWindow: { create: (...args: unknown[]) => windowCreateMock(...args) },
       collectUkCollectionStop: {
         delete: (...args: unknown[]) => stopDeleteMock(...args),
         count: (...args: unknown[]) => stopCountMock(...args),
@@ -639,5 +646,41 @@ describe('collection windows', () => {
       .send({ startDate: '2099-08-03', endDate: '2099-08-09' });
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('window declaration sweeps waiting bookings', () => {
+  it('attaches every windowless REQUESTED booking to the new week and notifies each customer', async () => {
+    bookingFindManyMock.mockResolvedValue([{ id: 'wait-1' }, { id: 'wait-2' }]);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2099-08-03', endDate: '2099-08-09' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.attachedBookings).toBe(2);
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['wait-1', 'wait-2'] }, status: 'REQUESTED', collectionWindowId: null },
+      data: { collectionWindowId: 'w-1' },
+    });
+    expect(notifyWeekSetMock).toHaveBeenCalledWith('wait-1');
+    expect(notifyWeekSetMock).toHaveBeenCalledWith('wait-2');
+  });
+
+  it('reports zero attached when nothing was waiting', async () => {
+    bookingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/windows`)
+      .set(AUTH_HEADER)
+      .send({ startDate: '2099-08-03', endDate: '2099-08-09' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.attachedBookings).toBe(0);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWeekSetMock).not.toHaveBeenCalled();
   });
 });

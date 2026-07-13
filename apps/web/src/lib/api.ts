@@ -620,7 +620,7 @@ export const collectUkCompanies = {
     request<CollectUkCompanyWindow[]>(`/api/v1/collect-uk/companies/${id}/windows`, { auth: true }),
 
   createWindow: (id: string, payload: { startDate: string; endDate: string }) =>
-    request<CollectUkCompanyWindow>(`/api/v1/collect-uk/companies/${id}/windows`, {
+    request<CollectUkCompanyWindow & { attachedBookings: number }>(`/api/v1/collect-uk/companies/${id}/windows`, {
       method: "POST",
       body: payload,
       auth: true,

@@ -78,6 +78,16 @@ export async function notifyArrivedAtWarehouse(bookingId: string): Promise<void>
   await notify(bookingId, b => `${b.company.name}: your parcel ${b.reference} has arrived at our warehouse.`);
 }
 
+// Sent when a company declares a collection week and a previously
+// windowless booking is swept into it -- the customer's "interest" turns
+// into a real upcoming collection.
+export async function notifyCollectionWeekSet(bookingId: string): Promise<void> {
+  await notify(bookingId, b => {
+    if (!b.collectionWindow) return `${b.company.name}: your collection week for ${b.reference} will be confirmed soon.`;
+    return `${b.company.name}: your collection week for ${b.reference} is set -- ${formatDate(b.collectionWindow.startDate)} to ${formatDate(b.collectionWindow.endDate)}. We'll text you your exact day.`;
+  });
+}
+
 export async function notifyBookingCancelled(bookingId: string): Promise<void> {
   await notify(bookingId, b => `${b.company.name}: your collection ${b.reference} has been cancelled.`);
 }
