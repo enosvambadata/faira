@@ -22,7 +22,7 @@ test.describe("Faira Collect UK guest booking", () => {
     await page.getByLabel("Email address").fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await page.waitForURL(/\/collect-uk/, { timeout: 15_000 });
 
     await page.goto("/collect-uk/register");
     await page.getByLabel("Company name").fill(companyName);

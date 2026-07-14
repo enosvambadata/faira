@@ -54,7 +54,10 @@ function SignupForm() {
       const { error } = await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
       if (error) throw error;
 
-      router.push(searchParams.get("redirect") || "/onboarding");
+      // Collect UK is the flagship: a bare signup lands on its home (register
+      // a company / apply to drive). Fulfilment flows always arrive with an
+      // explicit ?redirect=/onboarding from the /fulfilment welcome page.
+      router.push(searchParams.get("redirect") || "/collect-uk");
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.code === "ACCOUNT_ALREADY_EXISTS") {
         setSubmitError("An account with this email already exists. Try signing in instead.");

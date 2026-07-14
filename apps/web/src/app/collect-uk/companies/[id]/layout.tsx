@@ -9,6 +9,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 import { CompanyContext } from "@/lib/companyContext";
+import { Button } from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import { collectUkCompanies, CollectUkCompany, CollectUkCompanyRoleType, FulfilmentApiError } from "@/lib/api";
 
 const TABS = [
@@ -26,6 +29,7 @@ const TABS = [
 export default function CompanyPortalLayout({ children }: { children: React.ReactNode }) {
   const { id } = useParams<{ id: string }>();
   const pathname = usePathname();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState<CollectUkCompany | null>(null);
@@ -53,12 +57,24 @@ export default function CompanyPortalLayout({ children }: { children: React.Reac
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-6 py-3">
           <CollectBrand suffix="Company Portal" />
-          <Link
-            href="/collect-uk"
-            className="cursor-pointer text-sm font-medium text-muted transition-colors duration-200 hover:text-primary"
-          >
-            All companies
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/collect-uk"
+              className="cursor-pointer px-2 text-sm font-medium text-muted transition-colors duration-200 hover:text-primary"
+            >
+              All companies
+            </Link>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={async () => {
+                await createClient().auth.signOut();
+                router.push("/login");
+              }}
+            >
+              Sign out
+            </Button>
+          </div>
         </div>
         {company && (
           <nav

@@ -30,7 +30,9 @@ function LoginForm() {
     })();
   }, []);
 
-  const destination = searchParams.get("next") || "/dashboard";
+  // Bare logins land on the Collect UK home (companies + driver in one
+  // place); Fulfilment surfaces link to /login with an explicit next.
+  const destination = searchParams.get("next") || "/collect-uk";
 
   const handleSwitchAccount = async () => {
     await createClient().auth.signOut();

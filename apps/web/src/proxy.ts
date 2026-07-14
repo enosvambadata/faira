@@ -72,7 +72,7 @@ export async function proxy(request: NextRequest) {
     // they're still logged in from an earlier session) -- falling back
     // to /dashboard only when neither is present, matching this proxy's
     // original single-product behaviour.
-    const destination = request.nextUrl.searchParams.get("redirect") || request.nextUrl.searchParams.get("next") || "/dashboard";
+    const destination = request.nextUrl.searchParams.get("redirect") || request.nextUrl.searchParams.get("next") || "/collect-uk";
     const url = request.nextUrl.clone();
     url.pathname = destination;
     url.search = "";

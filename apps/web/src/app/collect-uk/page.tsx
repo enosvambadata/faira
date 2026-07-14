@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -11,6 +13,7 @@ import { collectUkCompanies, collectUkDriverPortal, CollectUkCompanyMembership, 
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 export default function CollectUkHomePage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<CollectUkCompanyMembership[]>([]);
   const [driver, setDriver] = useState<CollectUkDriverProfile | null>(null);
@@ -33,8 +36,18 @@ export default function CollectUkHomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
-        <div className="mx-auto max-w-2xl px-6 py-3">
-          <CollectBrand suffix="Company Portal" />
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
+          <CollectBrand />
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={async () => {
+              await createClient().auth.signOut();
+              router.push("/login");
+            }}
+          >
+            Sign out
+          </Button>
         </div>
       </header>
 

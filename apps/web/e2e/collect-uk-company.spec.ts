@@ -17,7 +17,7 @@ test.describe("Faira Collect UK company portal", () => {
     await page.getByLabel("Email address").fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await page.waitForURL(/\/collect-uk/, { timeout: 15_000 });
 
     await page.goto("/collect-uk");
     await expect(page.getByText("You aren't part of any company yet.")).toBeVisible({ timeout: 15_000 });
