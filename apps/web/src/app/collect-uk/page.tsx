@@ -7,18 +7,21 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Alert } from "@/components/ui/Alert";
-import { collectUkCompanies, CollectUkCompanyMembership, FulfilmentApiError } from "@/lib/api";
+import { collectUkCompanies, collectUkDriverPortal, CollectUkCompanyMembership, CollectUkDriverProfile, FulfilmentApiError } from "@/lib/api";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 export default function CollectUkHomePage() {
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<CollectUkCompanyMembership[]>([]);
+  const [driver, setDriver] = useState<CollectUkDriverProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        setCompanies(await collectUkCompanies.mine());
+        const [mine, me] = await Promise.all([collectUkCompanies.mine(), collectUkDriverPortal.me()]);
+        setCompanies(mine);
+        setDriver(me);
       } catch (err) {
         setError(err instanceof FulfilmentApiError ? err.message : "Could not load your companies right now.");
       } finally {
@@ -76,6 +79,49 @@ export default function CollectUkHomePage() {
               </Link>
             ))}
           </div>
+        )}
+
+        <div className="mt-8 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-text">Driving for Faira</h2>
+        </div>
+        {!loading && (
+          <Card className="mt-3">
+            {driver?.status === "ACTIVE" && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-text">You&rsquo;re an approved Faira driver.</p>
+                <Link href="/collect-uk/driver">
+                  <Button size="md">Open driver portal</Button>
+                </Link>
+              </div>
+            )}
+            {driver?.status === "APPLIED" && (
+              <p className="text-sm text-muted">
+                Your driver application is being reviewed — we&rsquo;ll be in touch once your insurance
+                documents are checked.{" "}
+                <Link href="/collect-uk/driver" className="cursor-pointer font-medium text-primary underline">
+                  View status
+                </Link>
+              </p>
+            )}
+            {driver?.status === "REJECTED" && (
+              <p className="text-sm text-muted">
+                Your driver application wasn&rsquo;t approved.{" "}
+                <Link href="/collect-uk/driver" className="cursor-pointer font-medium text-primary underline">
+                  See why and reapply
+                </Link>
+              </p>
+            )}
+            {!driver && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted">
+                  Got your own van? Earn from collection routes in your area.
+                </p>
+                <Link href="/collect-uk/drive">
+                  <Button size="md" variant="secondary">Apply to drive</Button>
+                </Link>
+              </div>
+            )}
+          </Card>
         )}
       </main>
     </div>
