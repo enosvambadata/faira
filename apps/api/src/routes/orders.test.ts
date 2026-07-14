@@ -643,6 +643,16 @@ describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
   it('releases escrow (95% to seller, 5% commission) and marks the order COMPLETED', async () => {
     orderFindUniqueMock.mockResolvedValue(fakeOrder({ status: 'PAID' }));
     orderUpdateManyMock.mockResolvedValue({ count: 1 });
+    // releaseEscrowFunds now does the COMPLETED flip + ledger writes in one
+    // interactive transaction; route the callback through the shared mocks.
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: (...a: unknown[]) => orderUpdateManyMock(...a) },
+            escrowLedgerEntry: { create: (...a: unknown[]) => escrowCreateMock(...a) },
+          })
+        : Promise.all(arg as unknown[]),
+    );
 
     const app = createApp();
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);

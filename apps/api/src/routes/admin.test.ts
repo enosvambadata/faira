@@ -635,7 +635,16 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
     orderUpdateManyMock.mockReset().mockResolvedValue({ count: 1 });
     escrowLedgerEntryCreateMock.mockReset();
     paymentDisputeUpdateMock.mockReset();
-    transactionMock.mockReset();
+    // Interactive $transaction(cb) delegates to the shared mocks; array form Promise.all's.
+    transactionMock.mockReset().mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: (...a: unknown[]) => orderUpdateManyMock(...a) },
+            escrowLedgerEntry: { create: (...a: unknown[]) => escrowLedgerEntryCreateMock(...a) },
+            paymentDispute: { update: (...a: unknown[]) => paymentDisputeUpdateMock(...a) },
+          })
+        : Promise.all(arg as unknown[]),
+    );
   });
   afterEach(() => {
     delete process.env.ADMIN_TOKEN;
@@ -700,6 +709,49 @@ describe('POST /api/v1/admin/disputes/:id/resolve', () => {
     expect(escrowLedgerEntryCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE', amount: 95 }) }),
     );
+  });
+
+  it('resolves atomically: the order flip, ledger, and dispute update go through one transaction', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+    const txOrderUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const txEscrowCreate = vi.fn().mockResolvedValue({});
+    const txDisputeUpdate = vi.fn().mockResolvedValue({});
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: txOrderUpdateMany },
+            escrowLedgerEntry: { create: txEscrowCreate },
+            paymentDispute: { update: txDisputeUpdate },
+          })
+        : Promise.all(arg as unknown[]),
+    );
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({ refundAmount: 100 });
+
+    expect(res.status).toBe(200);
+    // Order flip issued on the transaction client, never the auto-committing top-level update.
+    expect(txOrderUpdateMany).toHaveBeenCalledWith({ where: { id: 'order-1', status: 'DISPUTED' }, data: { status: 'REFUNDED' } });
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
+    expect(txDisputeUpdate).toHaveBeenCalled();
+  });
+
+  it('propagates a ledger write failure so a dispute resolution is never half-applied', async () => {
+    paymentDisputeFindUniqueMock.mockResolvedValue(fakeDispute());
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+            escrowLedgerEntry: { create: vi.fn().mockRejectedValue(new Error('ledger write failed')) },
+            paymentDispute: { update: vi.fn().mockResolvedValue({}) },
+          })
+        : Promise.all(arg as unknown[]),
+    );
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/disputes/dispute-1/resolve').set(ADMIN_HEADER).send({ refundAmount: 100 });
+
+    expect(res.status).toBe(500);
   });
 
   it('400s when refundAmount exceeds the order price', async () => {

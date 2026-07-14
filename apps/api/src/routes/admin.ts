@@ -383,46 +383,46 @@ router.post(
     // normal completed sale, same as an undisputed delivery.
     const newOrderStatus = refundAmount > 0 ? 'REFUNDED' : 'COMPLETED';
 
-    const { count } = await prisma.order.updateMany({
-      where: { id: order.id, status: order.status },
-      data: { status: newOrderStatus },
+    const remainder = orderAmount - refundAmount;
+    const resolvedStatus = refundAmount > 0 ? 'RESOLVED_BUYER' : 'RESOLVED_SELLER';
+
+    // The order status flip, the escrow ledger entries, and the dispute update
+    // must all commit together -- a crash between a standalone status update and
+    // a separate ledger write would settle the order while leaving the dispute
+    // OPEN and the refund/release unrecorded, with the status guard blocking any
+    // retry. count===0 means the order changed under us.
+    const applied = await prisma.$transaction(async tx => {
+      const { count } = await tx.order.updateMany({
+        where: { id: order.id, status: order.status },
+        data: { status: newOrderStatus },
+      });
+      if (count === 0) return false;
+
+      if (refundAmount > 0) {
+        await tx.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'REFUND', amount: refundAmount },
+        });
+      }
+      if (remainder > 0) {
+        const { sellerAmount, commissionAmount } = splitCommission(remainder);
+        await tx.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'RELEASE', amount: sellerAmount },
+        });
+        await tx.escrowLedgerEntry.create({
+          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'COMMISSION', amount: commissionAmount },
+        });
+      }
+      await tx.paymentDispute.update({
+        where: { id: dispute.id },
+        data: { status: resolvedStatus, resolutionNotes: parsed.data.notes ?? null, resolvedAt: new Date() },
+      });
+      return true;
     });
-    if (count === 0) {
+
+    if (!applied) {
       next(new ApiError('INVALID_STATE', 'Order changed state before this resolution could be applied', 409));
       return;
     }
-
-    const remainder = orderAmount - refundAmount;
-    const ledgerWrites = [];
-
-    if (refundAmount > 0) {
-      ledgerWrites.push(
-        prisma.escrowLedgerEntry.create({
-          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'REFUND', amount: refundAmount },
-        }),
-      );
-    }
-    if (remainder > 0) {
-      const { sellerAmount, commissionAmount } = splitCommission(remainder);
-      ledgerWrites.push(
-        prisma.escrowLedgerEntry.create({
-          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'RELEASE', amount: sellerAmount },
-        }),
-        prisma.escrowLedgerEntry.create({
-          data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'COMMISSION', amount: commissionAmount },
-        }),
-      );
-    }
-
-    const resolvedStatus = refundAmount > 0 ? 'RESOLVED_BUYER' : 'RESOLVED_SELLER';
-    ledgerWrites.push(
-      prisma.paymentDispute.update({
-        where: { id: dispute.id },
-        data: { status: resolvedStatus, resolutionNotes: parsed.data.notes ?? null, resolvedAt: new Date() },
-      }),
-    );
-
-    await prisma.$transaction(ledgerWrites);
 
     await notifyOrderStatusChange(order.id, newOrderStatus);
 
