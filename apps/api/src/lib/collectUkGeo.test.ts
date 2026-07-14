@@ -65,7 +65,22 @@ describe('geocodePostcode', () => {
     const geo = await geocodePostcode('WV1 1AA');
 
     expect(geo).toEqual({ latitude: 52.585, longitude: -2.134 });
-    expect(fetchMock).toHaveBeenCalledWith('https://api.postcodes.io/postcodes/WV1%201AA');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.postcodes.io/postcodes/WV1%201AA',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('applies an abort timeout so a stalled upstream never hangs the request', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ result: { latitude: 1, longitude: 2 } }),
+    });
+
+    await geocodePostcode('WV1 1AA');
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('returns null on a 404 (unknown postcode)', async () => {
