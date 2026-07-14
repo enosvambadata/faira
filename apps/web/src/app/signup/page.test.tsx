@@ -6,8 +6,8 @@ const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
   // SignupPage reads ?redirect= to route new accounts to the right product
-  // onboarding; no param in these tests exercises the default (fulfilment
-  // onboarding) path.
+  // onboarding; no param in these tests exercises the default path
+  // (the Collect UK home -- the flagship product).
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -58,7 +58,7 @@ describe("SignupPage", () => {
     expect(signupMock).not.toHaveBeenCalled();
   });
 
-  it("signs up, signs in, and redirects to onboarding on success", async () => {
+  it("signs up, signs in, and redirects to the Collect UK home on success", async () => {
     signupMock.mockResolvedValue({ id: "user-1", email: "seller@example.com", phone: null });
     signInWithPasswordMock.mockResolvedValue({ error: null });
 
@@ -69,10 +69,10 @@ describe("SignupPage", () => {
     await userEvent.type(screen.getByLabelText(/confirm password/i), "password123");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(await screen.findByText(/create account/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /create account/i })).toBeInTheDocument();
     expect(signupMock).toHaveBeenCalledWith({ email: "seller@example.com", password: "password123" });
     expect(signInWithPasswordMock).toHaveBeenCalledWith({ email: "seller@example.com", password: "password123" });
-    expect(pushMock).toHaveBeenCalledWith("/onboarding");
+    expect(pushMock).toHaveBeenCalledWith("/collect-uk");
   });
 
   it("shows a clear message when the account already exists", async () => {

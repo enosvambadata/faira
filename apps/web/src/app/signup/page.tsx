@@ -31,9 +31,41 @@ function validate(form: FormState): Partial<Record<keyof FormState, string>> {
   return errors;
 }
 
+// The redirect param says what the visitor is actually here to do -- the
+// page should speak to that journey, not a generic "create an account".
+function signupContext(redirect: string | null): { title: string; subtitle: string; step2: string } {
+  if (redirect?.startsWith("/collect-uk/register")) {
+    return {
+      title: "Register your shipping company",
+      subtitle: "Get a booking link for your customers and let Faira handle your UK collections.",
+      step2: "Company details",
+    };
+  }
+  if (redirect?.startsWith("/collect-uk/drive")) {
+    return {
+      title: "Apply to drive for Faira",
+      subtitle: "Own van, paid collection routes in your area. Have your insurance documents ready.",
+      step2: "Your van & documents",
+    };
+  }
+  if (redirect?.startsWith("/onboarding")) {
+    return {
+      title: "Become a Faira Fulfilment seller",
+      subtitle: "Ship your marketplace orders through Faira's hubs.",
+      step2: "Seller details",
+    };
+  }
+  return {
+    title: "Create your Faira account",
+    subtitle: "Register your shipping company's collections — or apply to drive for Faira.",
+    step2: "Choose your path",
+  };
+}
+
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const context = signupContext(searchParams.get("redirect"));
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -72,10 +104,20 @@ function SignupForm() {
   return (
     <AuthLayout>
       <Card>
-        <h1 className="text-xl font-semibold text-text">Create your account</h1>
-        <p className="mt-1 text-sm text-muted">
-          Just an email and password for now — we&apos;ll collect your details next.
-        </p>
+        <h1 className="text-xl font-semibold text-text">{context.title}</h1>
+        <p className="mt-1 text-sm text-muted">{context.subtitle}</p>
+
+        <ol className="mt-4 flex items-center gap-2 text-xs font-medium">
+          <li className="flex items-center gap-1.5 text-primary">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">1</span>
+            Create account
+          </li>
+          <li aria-hidden="true" className="h-px w-6 bg-border" />
+          <li className="flex items-center gap-1.5 text-muted">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] font-bold">2</span>
+            {context.step2}
+          </li>
+        </ol>
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
           <Field label="Email address" error={errors.email} required>
