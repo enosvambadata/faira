@@ -164,6 +164,29 @@ describe('driver decision notifications', () => {
     expect(sendSmsMock).toHaveBeenCalledWith('+447700900201', expect.stringContaining('GIT certificate expired'));
   });
 
+  it('HTML-escapes the driver name in the approval email', async () => {
+    driverFindUniqueMock.mockResolvedValue({ userId: 'u-1', phone: '+447700900201', fullName: '<img src=x onerror=alert(1)>' });
+
+    await notifyDriverApproved('d-1');
+
+    const html = sendEmailMock.mock.calls[0][2] as string;
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('HTML-escapes the reason in the rejection email but keeps the SMS plaintext', async () => {
+    await notifyDriverRejected('d-1', 'Docs <bad> & "wrong"');
+
+    const html = sendEmailMock.mock.calls[0][2] as string;
+    expect(html).toContain('&lt;bad&gt; &amp; &quot;wrong&quot;');
+    expect(html).not.toContain('<bad>');
+
+    // SMS is plaintext -- it must carry the raw reason, not HTML entities.
+    const sms = sendSmsMock.mock.calls[0][1] as string;
+    expect(sms).toContain('Docs <bad> & "wrong"');
+    expect(sms).not.toContain('&lt;');
+  });
+
   it('still texts when the driver has no account email', async () => {
     getUserByIdMock.mockResolvedValue({ data: { user: null } });
 
