@@ -14,7 +14,8 @@ import { DispatchContext } from "@/lib/dispatchContext";
 import { collectUkDispatch, FulfilmentApiError } from "@/lib/api";
 
 const TABS = [
-  { href: "/collect-uk/dispatch", label: "Queue", exact: true },
+  { href: "/collect-uk/dispatch", label: "Overview", exact: true },
+  { href: "/collect-uk/dispatch/queue", label: "Queue", exact: false },
   { href: "/collect-uk/dispatch/routes", label: "Routes", exact: false },
   { href: "/collect-uk/dispatch/drivers", label: "Drivers", exact: false },
   { href: "/collect-uk/dispatch/companies", label: "Companies", exact: false },

@@ -30,6 +30,10 @@ const companyFindUniqueMock = vi.fn();
 const rateUpsertMock = vi.fn();
 const companyRoleFindFirstMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
+const companyCountMock = vi.fn();
+const driverCountMock = vi.fn();
+const bookingCountMock = vi.fn();
+const bookingAggregateMock = vi.fn();
 
 // Only the network-touching geocoder is mocked -- the distance maths and
 // nearest-neighbour ordering run for real so these tests exercise the
@@ -63,6 +67,7 @@ vi.mock('../prisma', () => ({
     collectUkCompany: {
       findMany: (...args: unknown[]) => companyFindManyMock(...args),
       findUnique: (...args: unknown[]) => companyFindUniqueMock(...args),
+      count: (...args: unknown[]) => companyCountMock(...args),
     },
     collectUkCompanyRate: { upsert: (...args: unknown[]) => rateUpsertMock(...args) },
     collectUkCompanyRole: { findFirst: (...args: unknown[]) => companyRoleFindFirstMock(...args) },
@@ -71,6 +76,7 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => driverFindManyMock(...args),
       findUnique: (...args: unknown[]) => driverFindUniqueMock(...args),
       update: (...args: unknown[]) => driverUpdateMock(...args),
+      count: (...args: unknown[]) => driverCountMock(...args),
     },
     collectUkCollectionRoute: {
       create: (...args: unknown[]) => routeCreateMock(...args),
@@ -83,6 +89,8 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => bookingFindManyMock(...args),
       updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args),
       update: (...args: unknown[]) => bookingUpdateMock(...args),
+      count: (...args: unknown[]) => bookingCountMock(...args),
+      aggregate: (...args: unknown[]) => bookingAggregateMock(...args),
     },
     collectUkCollectionStop: {
       findFirst: (...args: unknown[]) => stopFindFirstMock(...args),
@@ -134,6 +142,10 @@ beforeEach(() => {
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
   geocodePostcodeMock.mockResolvedValue(null);
+  companyCountMock.mockResolvedValue(0);
+  driverCountMock.mockResolvedValue(0);
+  bookingCountMock.mockResolvedValue(0);
+  bookingAggregateMock.mockResolvedValue({ _sum: { chargePence: null } });
   transactionMock.mockImplementation(async (callback: (tx: unknown) => unknown) =>
     callback({
       collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
@@ -145,6 +157,72 @@ beforeEach(() => {
       collectUkCollectionRoute: { update: (...args: unknown[]) => routeUpdateMock(...args) },
     }),
   );
+});
+
+describe('GET /api/v1/admin/collect-uk/overview', () => {
+  it('returns platform KPIs and an 8-week booking trend', async () => {
+    companyCountMock.mockImplementation((args?: { where?: { isActive?: boolean } }) =>
+      Promise.resolve(args?.where?.isActive ? 4 : 5),
+    );
+    driverCountMock.mockImplementation((args?: { where?: { status?: string } }) =>
+      Promise.resolve(args?.where?.status === 'ACTIVE' ? 3 : args?.where?.status === 'APPLIED' ? 2 : 0),
+    );
+    bookingCountMock.mockImplementation((args?: { where?: Record<string, unknown> }) => {
+      const w = args?.where as
+        | { status?: string | { in?: string[] }; createdAt?: unknown }
+        | undefined;
+      if (!w) return Promise.resolve(40); // total, all statuses
+      if (w.status === 'REQUESTED') return Promise.resolve(7); // unscheduled
+      if (w.createdAt) return Promise.resolve(6); // created this week
+      const inList = typeof w.status === 'object' ? w.status?.in ?? [] : [];
+      if (inList.includes('COLLECTED')) return Promise.resolve(25); // collected or later
+      if (inList.includes('HANDED_OVER')) return Promise.resolve(18); // handed over / closed
+      return Promise.resolve(0);
+    });
+    bookingAggregateMock.mockResolvedValue({ _sum: { chargePence: 123400 } });
+    const now = Date.now();
+    bookingFindManyMock.mockResolvedValue([
+      { createdAt: new Date() },
+      { createdAt: new Date() },
+      { createdAt: new Date(now - 21 * 24 * 60 * 60 * 1000) },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/overview').set(ADMIN_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.companies).toEqual({ total: 5, active: 4 });
+    expect(res.body.data.drivers).toEqual({ active: 3, pendingApplications: 2 });
+    expect(res.body.data.bookings).toEqual({ total: 40, thisWeek: 6, unscheduled: 7 });
+    expect(res.body.data.collectionsCompleted).toBe(25);
+    expect(res.body.data.handedOver).toBe(18);
+    expect(res.body.data.revenueBilledPence).toBe(123400);
+    expect(res.body.data.weeklyBookings).toHaveLength(8);
+    // Current ISO week is the last bucket and holds the two "now" bookings.
+    expect(res.body.data.weeklyBookings[7].count).toBe(2);
+    const trendTotal = res.body.data.weeklyBookings.reduce(
+      (sum: number, w: { count: number }) => sum + w.count,
+      0,
+    );
+    expect(trendTotal).toBe(3);
+  });
+
+  it('reports zeroes on an empty platform', async () => {
+    bookingFindManyMock.mockResolvedValue([]);
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/overview').set(ADMIN_HEADER);
+    expect(res.status).toBe(200);
+    expect(res.body.data.companies).toEqual({ total: 0, active: 0 });
+    expect(res.body.data.revenueBilledPence).toBe(0);
+    expect(res.body.data.weeklyBookings).toHaveLength(8);
+    expect(res.body.data.weeklyBookings.every((w: { count: number }) => w.count === 0)).toBe(true);
+  });
+
+  it('requires the admin token', async () => {
+    const app = createApp();
+    const res = await request(app).get('/api/v1/admin/collect-uk/overview');
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('POST /api/v1/admin/collect-uk/drivers', () => {

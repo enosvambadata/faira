@@ -990,7 +990,20 @@ export interface CollectUkAdminRouteDetail {
 
 // Faira-internal dispatch tooling, authenticated with the shared
 // ADMIN_TOKEN (entered on the dispatch page) rather than a user session.
+export interface CollectUkAdminOverview {
+  companies: { total: number; active: number };
+  drivers: { active: number; pendingApplications: number };
+  bookings: { total: number; thisWeek: number; unscheduled: number };
+  collectionsCompleted: number;
+  handedOver: number;
+  revenueBilledPence: number;
+  weeklyBookings: { weekStart: string; count: number }[];
+}
+
 export const collectUkDispatch = {
+  getOverview: (adminToken: string) =>
+    request<CollectUkAdminOverview>("/api/v1/admin/collect-uk/overview", { adminToken }),
+
   listUnscheduled: (adminToken: string) =>
     request<CollectUkUnscheduledBooking[]>("/api/v1/admin/collect-uk/bookings/unscheduled", { adminToken }),
 
