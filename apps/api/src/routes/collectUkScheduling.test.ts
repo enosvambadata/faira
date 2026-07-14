@@ -22,6 +22,8 @@ const auditLogCreateMock = vi.fn();
 const transactionMock = vi.fn();
 const notifyCollectionScheduledMock = vi.fn();
 const notifyRescheduledMock = vi.fn();
+const notifyDriverApprovedMock = vi.fn();
+const notifyDriverRejectedMock = vi.fn();
 const stopDeleteMock = vi.fn();
 const companyFindManyMock = vi.fn();
 const companyFindUniqueMock = vi.fn();
@@ -47,6 +49,8 @@ vi.mock('../services/collectUkNotifications', () => ({
   notifyCollectionScheduled: (...args: unknown[]) => notifyCollectionScheduledMock(...args),
   notifyBookingCancelled: vi.fn(),
   notifyCollectionWillBeRescheduled: (...args: unknown[]) => notifyRescheduledMock(...args),
+  notifyDriverApproved: (...args: unknown[]) => notifyDriverApprovedMock(...args),
+  notifyDriverRejected: (...args: unknown[]) => notifyDriverRejectedMock(...args),
   notifyParcelCollected: vi.fn(),
   notifyUnableToCollect: vi.fn(),
   notifyArrivedAtWarehouse: vi.fn(),
@@ -125,6 +129,8 @@ beforeEach(() => {
   rateUpsertMock.mockResolvedValue({ companyId: 'company-1' });
   companyRoleFindFirstMock.mockResolvedValue(null);
   notifyRescheduledMock.mockResolvedValue(undefined);
+  notifyDriverApprovedMock.mockResolvedValue(undefined);
+  notifyDriverRejectedMock.mockResolvedValue(undefined);
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
   geocodePostcodeMock.mockResolvedValue(null);
@@ -762,6 +768,7 @@ describe('driver application vetting (admin)', () => {
       where: { id: DRIVER_ID },
       data: expect.objectContaining({ status: 'ACTIVE' }),
     });
+    expect(notifyDriverApprovedMock).toHaveBeenCalledWith(DRIVER_ID);
   });
 
   it('rejects a pending application with a reason', async () => {
@@ -778,6 +785,7 @@ describe('driver application vetting (admin)', () => {
       where: { id: DRIVER_ID },
       data: expect.objectContaining({ status: 'REJECTED', reviewNotes: 'Motor insurance is personal cover, not hire & reward' }),
     });
+    expect(notifyDriverRejectedMock).toHaveBeenCalledWith(DRIVER_ID, 'Motor insurance is personal cover, not hire & reward');
   });
 
   it('409s approving a driver who is not a pending applicant', async () => {

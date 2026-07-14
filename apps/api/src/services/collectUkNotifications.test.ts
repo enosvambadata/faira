@@ -1,16 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const bookingFindUniqueMock = vi.fn();
+const driverFindUniqueMock = vi.fn();
 const sendSmsMock = vi.fn();
+const sendEmailMock = vi.fn();
+const getUserByIdMock = vi.fn();
 
 vi.mock('../prisma', () => ({
   prisma: {
     collectUkCollectionBooking: { findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args) },
+    collectUkDriver: { findUnique: (...args: unknown[]) => driverFindUniqueMock(...args) },
   },
 }));
 
 vi.mock('../lib/sms', () => ({
   sendSms: (...args: unknown[]) => sendSmsMock(...args),
+}));
+
+vi.mock('../lib/email', () => ({
+  sendEmail: (...args: unknown[]) => sendEmailMock(...args),
+}));
+
+vi.mock('../supabase', () => ({
+  supabaseAdmin: { auth: { admin: { getUserById: (...args: unknown[]) => getUserByIdMock(...args) } } },
 }));
 
 vi.mock('../lib/collectUkBookingToken', () => ({
@@ -24,6 +36,8 @@ const {
   notifyUnableToCollect,
   notifyArrivedAtWarehouse,
   notifyHandedOver,
+  notifyDriverApproved,
+  notifyDriverRejected,
 } = await import('./collectUkNotifications');
 
 const BOOKING = {
@@ -41,6 +55,9 @@ beforeEach(() => {
   process.env.WEB_APP_URL = 'https://app.example.com';
   bookingFindUniqueMock.mockResolvedValue(BOOKING);
   sendSmsMock.mockResolvedValue(undefined);
+  sendEmailMock.mockResolvedValue(undefined);
+  driverFindUniqueMock.mockResolvedValue({ userId: 'u-1', phone: '+447700900201', fullName: 'Tendai' });
+  getUserByIdMock.mockResolvedValue({ data: { user: { email: 'tendai@example.com' } } });
 });
 
 describe('collectUkNotifications', () => {
@@ -125,5 +142,40 @@ describe('collectUkNotifications', () => {
 
     await expect(notifyParcelCollected('booking-1')).resolves.toBeUndefined();
     expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('driver decision notifications', () => {
+  it('approval emails and texts the driver', async () => {
+    await notifyDriverApproved('d-1');
+
+    expect(sendEmailMock).toHaveBeenCalledWith(
+      'tendai@example.com',
+      expect.stringMatching(/approved/i),
+      expect.stringContaining('driver portal'),
+    );
+    expect(sendSmsMock).toHaveBeenCalledWith('+447700900201', expect.stringMatching(/approved/i));
+  });
+
+  it('rejection includes the reason on both channels', async () => {
+    await notifyDriverRejected('d-1', 'GIT certificate expired');
+
+    expect(sendEmailMock).toHaveBeenCalledWith('tendai@example.com', expect.any(String), expect.stringContaining('GIT certificate expired'));
+    expect(sendSmsMock).toHaveBeenCalledWith('+447700900201', expect.stringContaining('GIT certificate expired'));
+  });
+
+  it('still texts when the driver has no account email', async () => {
+    getUserByIdMock.mockResolvedValue({ data: { user: null } });
+
+    await notifyDriverApproved('d-1');
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).toHaveBeenCalled();
+  });
+
+  it('is best-effort: a lookup failure never throws', async () => {
+    driverFindUniqueMock.mockRejectedValue(new Error('db down'));
+
+    await expect(notifyDriverApproved('d-1')).resolves.toBeUndefined();
   });
 });
