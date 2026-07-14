@@ -8,6 +8,7 @@ import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyCollectionScheduled, notifyCollectionWillBeRescheduled } from '../services/collectUkNotifications';
 import { geocodePostcode, estimatedRoadMiles, orderByNearestNeighbour, GeoPoint } from '../lib/collectUkGeo';
 import { getCollectUkDriverDocViewUrl } from '../lib/cloudinary';
+import { isCompanyMember, COMPANY_BLOCKS_DRIVER } from '../lib/collectUkRoleExclusion';
 
 const router = Router();
 
@@ -40,6 +41,11 @@ router.post('/drivers', requireAdmin, async (req: Request, res: Response, next: 
   const user = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
   if (!user) {
     next(new ApiError('NOT_FOUND', 'User not found', 404));
+    return;
+  }
+
+  if (await isCompanyMember(parsed.data.userId)) {
+    next(new ApiError('ROLE_CONFLICT', COMPANY_BLOCKS_DRIVER, 409));
     return;
   }
 

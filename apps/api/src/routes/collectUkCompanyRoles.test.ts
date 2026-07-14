@@ -8,6 +8,7 @@ const companyRoleFindManyMock = vi.fn();
 const companyRoleFindUniqueMock = vi.fn();
 const companyRoleDeleteMock = vi.fn();
 const auditLogCreateMock = vi.fn();
+const driverFindUniqueMock = vi.fn();
 
 vi.mock('../prisma', () => ({
   prisma: {
@@ -19,6 +20,7 @@ vi.mock('../prisma', () => ({
       findUnique: (...args: unknown[]) => companyRoleFindUniqueMock(...args),
       delete: (...args: unknown[]) => companyRoleDeleteMock(...args),
     },
+    collectUkDriver: { findUnique: (...args: unknown[]) => driverFindUniqueMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
   },
 }));
@@ -36,6 +38,7 @@ beforeEach(() => {
   userFindUniqueMock.mockResolvedValue({ id: USER_ID });
   companyFindUniqueMock.mockResolvedValue({ id: COMPANY_ID });
   auditLogCreateMock.mockResolvedValue({});
+  driverFindUniqueMock.mockResolvedValue(null);
 });
 
 describe('POST /api/v1/admin/collect-uk/company-roles', () => {
@@ -116,5 +119,20 @@ describe('DELETE /api/v1/admin/collect-uk/company-roles/:id', () => {
     const res = await request(app).delete('/api/v1/admin/collect-uk/company-roles/nonexistent').set(ADMIN_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('role exclusion: drivers cannot be granted company roles', () => {
+  it('409s granting a company role to a live driver', async () => {
+    driverFindUniqueMock.mockResolvedValue({ id: 'd-1', status: 'APPLIED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/admin/collect-uk/company-roles')
+      .set(ADMIN_HEADER)
+      .send({ userId: USER_ID, companyId: COMPANY_ID, role: 'DISPATCHER' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ROLE_CONFLICT');
   });
 });

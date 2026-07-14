@@ -13,6 +13,7 @@ import {
   notifyCollectionWeekSet,
 } from '../services/collectUkNotifications';
 import { advanceRouteProgress } from '../services/collectUkRouteProgress';
+import { hasLiveDriverRecord, DRIVER_BLOCKS_COMPANY } from '../lib/collectUkRoleExclusion';
 
 const router = Router();
 
@@ -69,6 +70,11 @@ router.post('/', requireAuth, async (req: CompanyRequest, res: Response, next: N
   const parsed = createCompanySchema.safeParse(req.body);
   if (!parsed.success) {
     next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  if (await hasLiveDriverRecord(req.userId!)) {
+    next(new ApiError('ROLE_CONFLICT', DRIVER_BLOCKS_COMPANY, 409));
     return;
   }
 

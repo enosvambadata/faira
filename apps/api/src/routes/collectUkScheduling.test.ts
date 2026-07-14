@@ -26,6 +26,7 @@ const stopDeleteMock = vi.fn();
 const companyFindManyMock = vi.fn();
 const companyFindUniqueMock = vi.fn();
 const rateUpsertMock = vi.fn();
+const companyRoleFindFirstMock = vi.fn();
 const geocodePostcodeMock = vi.fn();
 
 // Only the network-touching geocoder is mocked -- the distance maths and
@@ -60,6 +61,7 @@ vi.mock('../prisma', () => ({
       findUnique: (...args: unknown[]) => companyFindUniqueMock(...args),
     },
     collectUkCompanyRate: { upsert: (...args: unknown[]) => rateUpsertMock(...args) },
+    collectUkCompanyRole: { findFirst: (...args: unknown[]) => companyRoleFindFirstMock(...args) },
     collectUkDriver: {
       create: (...args: unknown[]) => driverCreateMock(...args),
       findMany: (...args: unknown[]) => driverFindManyMock(...args),
@@ -121,6 +123,7 @@ beforeEach(() => {
   companyFindManyMock.mockResolvedValue([]);
   companyFindUniqueMock.mockResolvedValue({ id: 'company-1', name: 'ABC' });
   rateUpsertMock.mockResolvedValue({ companyId: 'company-1' });
+  companyRoleFindFirstMock.mockResolvedValue(null);
   notifyRescheduledMock.mockResolvedValue(undefined);
   stopUpdateMock.mockResolvedValue({});
   routeUpdateMock.mockResolvedValue({});
@@ -779,5 +782,18 @@ describe('driver application vetting (admin)', () => {
 
     expect(res.status).toBe(409);
     expect(driverUpdateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('role exclusion: company members cannot be made drivers', () => {
+  it('409s admin-creating a driver for a company member', async () => {
+    companyRoleFindFirstMock.mockResolvedValue({ id: 'role-1', role: 'COMPANY_ADMIN' });
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/admin/collect-uk/drivers').set(ADMIN_HEADER).send({ userId: USER_ID });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ROLE_CONFLICT');
+    expect(driverCreateMock).not.toHaveBeenCalled();
   });
 });
