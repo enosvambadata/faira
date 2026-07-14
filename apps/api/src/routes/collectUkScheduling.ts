@@ -690,6 +690,15 @@ router.post(
       next(new ApiError('NOT_FOUND', 'Route not found', 404));
       return;
     }
+    // Stops are only ever assigned while planning. A route becomes
+    // IN_PROGRESS/COMPLETED via driver progress (advanceRouteProgress); a stop
+    // added to an already-COMPLETED route is never swept to AT_WAREHOUSE, so
+    // the parcel would be collected but never handoverable or billable. Same
+    // PLANNED-only guard as /routes/:id/optimise.
+    if (route.status !== 'PLANNED') {
+      next(new ApiError('INVALID_STATE', 'Stops can only be assigned to a route that has not started', 409));
+      return;
+    }
 
     const booking = await prisma.collectUkCollectionBooking.findUnique({ where: { id: parsed.data.bookingId } });
     if (!booking) {
