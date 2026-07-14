@@ -23,9 +23,18 @@ export interface GeoPoint {
 // Best-effort: returns null on any failure (bad postcode, network, API
 // down) -- callers must treat coordinates as optional enrichment, never
 // a prerequisite for taking a booking.
+// A hung (not errored) postcodes.io would otherwise hang the caller
+// indefinitely -- Node's fetch has no default timeout -- and this runs inline
+// in the public booking POST. AbortSignal.timeout makes a stall abort after 3s,
+// which the catch below turns into the same best-effort null as any other
+// failure, so a slow upstream degrades to "no coordinates" instead of a hang.
+const GEOCODE_TIMEOUT_MS = 3000;
+
 export async function geocodePostcode(postcode: string): Promise<GeoPoint | null> {
   try {
-    const res = await fetch(`${POSTCODES_IO}/postcodes/${encodeURIComponent(postcode.trim())}`);
+    const res = await fetch(`${POSTCODES_IO}/postcodes/${encodeURIComponent(postcode.trim())}`, {
+      signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
+    });
     if (!res.ok) return null;
     const json = (await res.json()) as { result?: { latitude?: number; longitude?: number } };
     if (typeof json.result?.latitude !== 'number' || typeof json.result?.longitude !== 'number') return null;
