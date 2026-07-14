@@ -30,6 +30,86 @@ const router = Router();
 
 class BookingTransitionConflict extends Error {}
 
+// Monday 00:00 UTC of the week containing `d`. Bookings, billing and the
+// overview trend all reckon weeks ISO-style (Mon-Sun), matching the weekly
+// billing statements (SCRUM-194); UTC keeps the buckets DST-stable.
+function startOfIsoWeekUtc(d: Date): Date {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date;
+}
+
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+// A collection counts as "completed" once the driver has it in hand --
+// every status at or past COLLECTED (a failed collection is UNABLE_TO_COLLECT,
+// which is deliberately excluded).
+const COLLECTED_OR_LATER = ['COLLECTED', 'AT_WAREHOUSE', 'HANDED_OVER', 'CLOSED'] as const;
+const HANDED_OVER_STATUSES = ['HANDED_OVER', 'CLOSED'] as const;
+const OVERVIEW_TREND_WEEKS = 8;
+
+// The dispatch board's at-a-glance KPIs -- platform size, today's workload,
+// throughput and money -- plus an 8-week booking trend. All derived live
+// from the operational tables; there's no separate analytics store, and at
+// current volumes these counts are cheap. Same admin gate as the rest of
+// dispatch.
+router.get('/overview', requireAdmin, async (_req: Request, res: Response) => {
+  const weekStart = startOfIsoWeekUtc(new Date());
+  const trendStart = new Date(weekStart.getTime() - ONE_WEEK_MS * (OVERVIEW_TREND_WEEKS - 1));
+
+  const [
+    companiesTotal,
+    companiesActive,
+    driversActive,
+    pendingApplications,
+    unscheduled,
+    bookingsTotal,
+    bookingsThisWeek,
+    collectionsCompleted,
+    handedOver,
+    revenue,
+    trendRows,
+  ] = await Promise.all([
+    prisma.collectUkCompany.count(),
+    prisma.collectUkCompany.count({ where: { isActive: true } }),
+    prisma.collectUkDriver.count({ where: { status: 'ACTIVE' } }),
+    prisma.collectUkDriver.count({ where: { status: 'APPLIED' } }),
+    prisma.collectUkCollectionBooking.count({ where: { status: 'REQUESTED' } }),
+    prisma.collectUkCollectionBooking.count(),
+    prisma.collectUkCollectionBooking.count({ where: { createdAt: { gte: weekStart } } }),
+    prisma.collectUkCollectionBooking.count({ where: { status: { in: [...COLLECTED_OR_LATER] } } }),
+    prisma.collectUkCollectionBooking.count({ where: { status: { in: [...HANDED_OVER_STATUSES] } } }),
+    prisma.collectUkCollectionBooking.aggregate({ _sum: { chargePence: true } }),
+    prisma.collectUkCollectionBooking.findMany({
+      where: { createdAt: { gte: trendStart } },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  // Bucket each booking into its ISO week, oldest -> newest. trendStart is
+  // Monday-aligned, so integer week division lands cleanly.
+  const weeklyBookings = Array.from({ length: OVERVIEW_TREND_WEEKS }, (_, i) => ({
+    weekStart: new Date(trendStart.getTime() + ONE_WEEK_MS * i),
+    count: 0,
+  }));
+  for (const row of trendRows) {
+    const idx = Math.floor((row.createdAt.getTime() - trendStart.getTime()) / ONE_WEEK_MS);
+    if (idx >= 0 && idx < weeklyBookings.length) weeklyBookings[idx].count += 1;
+  }
+
+  res.status(200).json({
+    data: {
+      companies: { total: companiesTotal, active: companiesActive },
+      drivers: { active: driversActive, pendingApplications },
+      bookings: { total: bookingsTotal, thisWeek: bookingsThisWeek, unscheduled },
+      collectionsCompleted,
+      handedOver,
+      revenueBilledPence: revenue._sum.chargePence ?? 0,
+      weeklyBookings,
+    },
+  });
+});
+
 const createDriverSchema = z.object({
   userId: z.string().uuid(),
   vehicleReference: z.string().trim().max(100).optional(),

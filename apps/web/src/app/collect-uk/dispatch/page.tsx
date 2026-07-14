@@ -1,55 +1,68 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Select";
-import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useToast } from "@/components/ui/Toast";
-import { describeItems } from "@/lib/collectUkItemLabels";
 import { useDispatchAuth } from "@/lib/dispatchContext";
-import {
-  collectUkDispatch,
-  CollectUkUnscheduledBooking,
-  CollectUkFailedBooking,
-  CollectUkAdminRouteSummary,
-  FulfilmentApiError,
-} from "@/lib/api";
+import { collectUkDispatch, CollectUkAdminOverview, FulfilmentApiError } from "@/lib/api";
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+function formatWeek(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-// The dispatcher's daily work: what needs scheduling, and what failed.
-export default function DispatchQueuePage() {
+function formatMoney(pence: number): string {
+  return `£${(pence / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+// A single headline number. `href` turns it into a shortcut to the tab that
+// acts on it; `highlight` draws the eye when there's work waiting.
+function Stat({
+  label,
+  value,
+  sub,
+  href,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  href?: string;
+  highlight?: boolean;
+}) {
+  const body = (
+    <div
+      className={`flex h-full flex-col rounded-lg border p-4 transition-colors duration-200 ${
+        highlight ? "border-warning/50 bg-warning/5" : "border-border"
+      } ${href ? "cursor-pointer hover:border-primary" : ""}`}
+    >
+      <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
+      <span className="mt-1 text-2xl font-semibold text-text">{value}</span>
+      {sub && <span className="mt-0.5 text-xs text-muted">{sub}</span>}
+    </div>
+  );
+  return href ? <Link href={href}>{body}</Link> : body;
+}
+
+// The dispatcher's at-a-glance dashboard: platform size, the day's workload,
+// throughput, revenue, and how bookings are trending. Read-only — every
+// number links out to the tab that acts on it.
+export default function DispatchOverviewPage() {
   const { token, authFailure } = useDispatchAuth();
-  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [queue, setQueue] = useState<CollectUkUnscheduledBooking[]>([]);
-  const [failed, setFailed] = useState<CollectUkFailedBooking[]>([]);
-  const [routes, setRoutes] = useState<CollectUkAdminRouteSummary[]>([]);
-  const [assignRouteByBooking, setAssignRouteByBooking] = useState<Record<string, string>>({});
-  const [assigningId, setAssigningId] = useState<string | null>(null);
-  const [requeueingId, setRequeueingId] = useState<string | null>(null);
+  const [overview, setOverview] = useState<CollectUkAdminOverview | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [q, f, r] = await Promise.all([
-        collectUkDispatch.listUnscheduled(token),
-        collectUkDispatch.listFailed(token),
-        collectUkDispatch.listRoutes(token),
-      ]);
-      setQueue(q);
-      setFailed(f);
-      setRoutes(r);
+      setOverview(await collectUkDispatch.getOverview(token));
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
-      setLoadError(err instanceof FulfilmentApiError ? err.message : "Could not load the queue right now.");
+      setLoadError(err instanceof FulfilmentApiError ? err.message : "Could not load the overview right now.");
     } finally {
       setLoading(false);
     }
@@ -58,38 +71,6 @@ export default function DispatchQueuePage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const handleAssign = async (bookingId: string) => {
-    const routeId = assignRouteByBooking[bookingId];
-    if (!routeId) return;
-    setAssigningId(bookingId);
-    try {
-      await collectUkDispatch.assignStop(token, routeId, bookingId);
-      toast({ title: "Booking assigned to route", tone: "success" });
-      await load();
-    } catch (err) {
-      if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
-      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not assign this booking", tone: "error" });
-    } finally {
-      setAssigningId(null);
-    }
-  };
-
-  const handleRequeue = async (bookingId: string) => {
-    setRequeueingId(bookingId);
-    try {
-      await collectUkDispatch.requeueBooking(token, bookingId);
-      toast({ title: "Booking returned to the queue", tone: "success" });
-      await load();
-    } catch (err) {
-      if (err instanceof FulfilmentApiError && err.status === 401) return authFailure();
-      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not requeue this booking", tone: "error" });
-    } finally {
-      setRequeueingId(null);
-    }
-  };
-
-  const plannedRoutes = routes.filter(r => r.status === "PLANNED");
 
   if (loading) {
     return (
@@ -100,96 +81,79 @@ export default function DispatchQueuePage() {
     );
   }
   if (loadError) return <Alert tone="error">{loadError}</Alert>;
+  if (!overview) return null;
+
+  const peakWeek = Math.max(1, ...overview.weeklyBookings.map(w => w.count));
 
   return (
     <>
-      <h1 className="text-xl font-semibold text-text">Queue</h1>
+      <h1 className="text-xl font-semibold text-text">Overview</h1>
+      <p className="mt-1 text-sm text-muted">Live snapshot of the Collect UK network.</p>
 
-      <Card className="mt-4">
-        <h2 className="text-base font-semibold text-text">
-          Unscheduled bookings <span className="font-normal text-muted">({queue.length})</span>
-        </h2>
-        {queue.length === 0 && <p className="mt-3 text-sm text-muted">Nothing waiting — all bookings are scheduled.</p>}
-        {queue.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-3">
-            {queue.map(b => (
-              <li key={b.id} className="rounded-md border border-border p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-text">{b.reference}</span>
-                  <span className="text-muted">{b.companyName}</span>
-                </div>
-                <p className="mt-1 text-text">
-                  {b.customerName} — {b.collectionAddress}, {b.collectionPostcode}
-                </p>
-                <p className="text-muted">
-                  {b.collectionWindow
-                    ? `Week ${formatDate(b.collectionWindow.startDate)} – ${formatDate(b.collectionWindow.endDate)}`
-                    : b.preferredDate
-                      ? `Preferred ${formatDate(b.preferredDate)}`
-                      : "No collection week yet"}{" "}
-                  · {b.numberOfParcels} parcel{b.numberOfParcels === 1 ? "" : "s"}
-                  {b.itemTypes.length > 0 && <> · {describeItems(b.itemTypes, b.itemTypeOther, b.vehicleType)}</>}
-                </p>
-                <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <div className="min-w-52 flex-1">
-                    <Select
-                      value={assignRouteByBooking[b.id]}
-                      onValueChange={value => setAssignRouteByBooking(prev => ({ ...prev, [b.id]: value }))}
-                      options={plannedRoutes.map(r => ({
-                        value: r.id,
-                        label: `${formatDate(r.routeDate)} — ${r.driverVehicleReference ?? "van"} (${r.stopCount} stops)`,
-                      }))}
-                      placeholder={plannedRoutes.length === 0 ? "No planned routes — create one on the Routes tab" : "Choose a route"}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="md"
-                    loading={assigningId === b.id}
-                    disabled={!assignRouteByBooking[b.id]}
-                    onClick={() => handleAssign(b.id)}
-                  >
-                    Assign
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Stat
+          label="Companies"
+          value={String(overview.companies.total)}
+          sub={`${overview.companies.active} active`}
+          href="/collect-uk/dispatch/companies"
+        />
+        <Stat
+          label="Active drivers"
+          value={String(overview.drivers.active)}
+          href="/collect-uk/dispatch/drivers"
+        />
+        <Stat
+          label="Applications to review"
+          value={String(overview.drivers.pendingApplications)}
+          sub={overview.drivers.pendingApplications > 0 ? "Needs review" : "All clear"}
+          href="/collect-uk/dispatch/drivers"
+          highlight={overview.drivers.pendingApplications > 0}
+        />
+        <Stat
+          label="Bookings this week"
+          value={String(overview.bookings.thisWeek)}
+          sub={`${overview.bookings.total} all-time`}
+        />
+        <Stat
+          label="Unscheduled"
+          value={String(overview.bookings.unscheduled)}
+          sub={overview.bookings.unscheduled > 0 ? "Waiting to route" : "Queue clear"}
+          href="/collect-uk/dispatch/queue"
+          highlight={overview.bookings.unscheduled > 0}
+        />
+        <Stat label="Collections completed" value={String(overview.collectionsCompleted)} sub={`${overview.handedOver} handed over`} />
+      </div>
+
+      <Card className="mt-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold text-text">Revenue billed</h2>
+          <span className="text-2xl font-semibold text-text">{formatMoney(overview.revenueBilledPence)}</span>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Total charged to companies across every confirmed handover to date.
+        </p>
       </Card>
 
-      {failed.length > 0 && (
-        <Card className="mt-4">
-          <h2 className="text-base font-semibold text-text">
-            Failed collections <span className="font-normal text-muted">({failed.length})</span>
-          </h2>
-          <ul className="mt-3 flex flex-col gap-3">
-            {failed.map(b => (
-              <li key={b.id} className="rounded-md border border-red/30 p-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-text">{b.reference}</span>
-                  <span className="text-muted">{b.companyName}</span>
-                </div>
-                <p className="mt-1 text-text">
-                  {b.customerName} — {b.collectionAddress}, {b.collectionPostcode}
-                </p>
-                {b.failureReason && <p className="text-red">Driver: “{b.failureReason}”</p>}
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    size="md"
-                    variant="secondary"
-                    loading={requeueingId === b.id}
-                    onClick={() => handleRequeue(b.id)}
-                  >
-                    Requeue for collection
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      <Card className="mt-3">
+        <h2 className="text-base font-semibold text-text">Bookings — last 8 weeks</h2>
+        <div className="mt-4 flex items-end justify-between gap-2" style={{ height: "140px" }}>
+          {overview.weeklyBookings.map((w, i) => {
+            const isCurrent = i === overview.weeklyBookings.length - 1;
+            return (
+              <div key={w.weekStart} className="flex flex-1 flex-col items-center justify-end gap-1">
+                <span className="text-xs font-medium text-text">{w.count}</span>
+                <div
+                  className={`w-full rounded-t ${isCurrent ? "bg-primary" : "bg-primary/40"}`}
+                  style={{ height: `${Math.round((w.count / peakWeek) * 100)}%`, minHeight: w.count > 0 ? "4px" : "0" }}
+                  aria-hidden
+                />
+                <span className="text-[10px] text-muted">{formatWeek(w.weekStart)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-xs text-muted">Bookings created per week (Mon–Sun); the last bar is the current week.</p>
+      </Card>
     </>
   );
 }
