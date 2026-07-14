@@ -3,6 +3,7 @@ import { sendSms } from '../lib/sms';
 import { sendEmail } from '../lib/email';
 import { supabaseAdmin } from '../supabase';
 import { generateBookingTrackingToken } from '../lib/collectUkBookingToken';
+import { escapeHtml } from '../lib/escapeHtml';
 import { logger } from '../logger';
 
 function webAppUrl(): string {
@@ -144,7 +145,7 @@ export async function notifyDriverApproved(driverId: string): Promise<void> {
       await sendEmail(
         c.email,
         "You're approved to drive for Faira",
-        `<p>Hi ${name},</p><p>Good news — your application to drive for Faira has been approved. ` +
+        `<p>Hi ${escapeHtml(name)},</p><p>Good news — your application to drive for Faira has been approved. ` +
           `You can now sign in and see your collection routes.</p>` +
           `<p><a href="${portal}">Open your driver portal</a></p><p>— Faira Collect</p>`,
       );
@@ -163,13 +164,15 @@ export async function notifyDriverRejected(driverId: string, reason: string | nu
     if (!c) return;
     const name = c.fullName ?? 'there';
     const reasonText = reason ? ` Reason: ${reason}.` : '';
+    // Escaped copy for the HTML email; reasonText stays raw for the plaintext SMS.
+    const emailReasonText = reason ? ` Reason: ${escapeHtml(reason)}.` : '';
     const apply = `${webAppUrl()}/collect-uk/drive`;
     if (c.email) {
       await sendEmail(
         c.email,
         'Your Faira driver application',
-        `<p>Hi ${name},</p><p>Thanks for applying to drive for Faira. We weren't able to approve your ` +
-          `application this time.${reasonText}</p><p>You can fix the issue and ` +
+        `<p>Hi ${escapeHtml(name)},</p><p>Thanks for applying to drive for Faira. We weren't able to approve your ` +
+          `application this time.${emailReasonText}</p><p>You can fix the issue and ` +
           `<a href="${apply}">apply again</a>.</p><p>— Faira Collect</p>`,
       );
     }
