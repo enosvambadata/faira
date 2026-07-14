@@ -55,14 +55,14 @@ export default function CollectUkHomePage() {
       </header>
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:px-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-text">Your companies</h1>
-          {!isLiveDriver && (
+        {!isLiveDriver && (
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold text-text">Your companies</h1>
             <Link href="/collect-uk/register">
               <Button size="md">Register a company</Button>
             </Link>
-          )}
-        </div>
+          </div>
+        )}
 
         {loading && (
           <Card className="mt-6 flex flex-col gap-3">
@@ -77,13 +77,9 @@ export default function CollectUkHomePage() {
           </div>
         )}
 
-        {!loading && !error && companies.length === 0 && (
+        {!loading && !error && !isLiveDriver && companies.length === 0 && (
           <Card className="mt-6">
-            <p className="text-sm text-muted">
-              {isLiveDriver
-                ? "Driver accounts can't manage a company — drivers serve every company, so the roles stay separate."
-                : "You aren't part of any company yet."}
-            </p>
+            <p className="text-sm text-muted">You aren&apos;t part of any company yet.</p>
           </Card>
         )}
 
@@ -103,10 +99,12 @@ export default function CollectUkHomePage() {
           </div>
         )}
 
-        <div className="mt-8 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-text">Driving for Faira</h2>
-        </div>
-        {!loading && (
+        {!loading && !isCompanyMember && (
+          <div className="mt-8 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-text">Driving for Faira</h2>
+          </div>
+        )}
+        {!loading && !isCompanyMember && (
           <Card className="mt-3">
             {driver?.status === "ACTIVE" && (
               <div className="flex items-center justify-between gap-3">
@@ -133,13 +131,7 @@ export default function CollectUkHomePage() {
                 </Link>
               </p>
             )}
-            {!driver && isCompanyMember && (
-              <p className="text-sm text-muted">
-                Company members can&rsquo;t drive for Faira — drivers serve every company, so the
-                roles stay separate. Use a different account to apply.
-              </p>
-            )}
-            {!driver && !isCompanyMember && (
+            {!driver && (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted">
                   Got your own van? Earn from collection routes in your area.
