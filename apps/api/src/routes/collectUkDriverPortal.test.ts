@@ -10,6 +10,7 @@ const stopFindUniqueMock = vi.fn();
 const stopUpdateManyMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
+const companyRoleFindFirstMock = vi.fn();
 const driverCreateMock = vi.fn();
 const driverUpdateMock = vi.fn();
 const notifyParcelCollectedMock = vi.fn();
@@ -55,6 +56,7 @@ vi.mock('../prisma', () => ({
       findMany: (...args: unknown[]) => stopFindManyMock(...args),
     },
     collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
+    collectUkCompanyRole: { findFirst: (...args: unknown[]) => companyRoleFindFirstMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -121,6 +123,7 @@ beforeEach(() => {
   stopUpdateManyMock.mockResolvedValue({ count: 1 });
   stopCountMock.mockResolvedValue(0);
   stopFindManyMock.mockResolvedValue([]);
+  companyRoleFindFirstMock.mockResolvedValue(null);
   driverCreateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
   driverUpdateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
   notifyParcelCollectedMock.mockResolvedValue(undefined);
@@ -450,5 +453,23 @@ describe('driver portal is gated to ACTIVE drivers', () => {
     const res = await request(app).get('/api/v1/collect-uk/driver/routes').set(AUTH_HEADER);
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('role exclusion: company members cannot apply as drivers', () => {
+  it('409s a company member submitting a driver application', async () => {
+    companyRoleFindFirstMock.mockResolvedValue({ id: 'role-1', companyId: 'c-1', role: 'COMPANY_ADMIN' });
+    driverFindUniqueMock.mockResolvedValue(null);
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send({
+      fullName: 'Conflicted', phone: '+447700900001', basePostcode: 'M1 1AE', county: 'Gtr Manchester',
+      vehicleMakeModel: 'Transit', vehicleReference: 'AB12 CDE',
+      vanPhotoUrl: 'd/van', motorInsuranceUrl: 'd/motor', gitInsuranceUrl: 'd/git', liabilityUrl: 'd/liab',
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ROLE_CONFLICT');
+    expect(driverCreateMock).not.toHaveBeenCalled();
   });
 });

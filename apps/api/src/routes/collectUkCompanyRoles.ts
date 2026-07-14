@@ -5,6 +5,7 @@ import { prisma } from '../prisma';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
+import { hasLiveDriverRecord, DRIVER_BLOCKS_COMPANY } from '../lib/collectUkRoleExclusion';
 
 const router = Router();
 
@@ -38,6 +39,11 @@ router.post('/', requireAdmin, async (req: Request, res: Response, next: NextFun
   }
   if (!company) {
     next(new ApiError('NOT_FOUND', 'Company not found', 404));
+    return;
+  }
+
+  if (await hasLiveDriverRecord(userId)) {
+    next(new ApiError('ROLE_CONFLICT', DRIVER_BLOCKS_COMPANY, 409));
     return;
   }
 

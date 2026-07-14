@@ -22,6 +22,7 @@ const notifyWeekSetMock = vi.fn();
 const stopDeleteMock = vi.fn();
 const windowFindManyMock = vi.fn();
 const rateFindUniqueMock = vi.fn();
+const driverFindUniqueMock = vi.fn();
 const windowCreateMock = vi.fn();
 const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
@@ -78,6 +79,7 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => windowCreateMock(...args),
     },
     collectUkCompanyRate: { findUnique: (...args: unknown[]) => rateFindUniqueMock(...args) },
+    collectUkDriver: { findUnique: (...args: unknown[]) => driverFindUniqueMock(...args) },
     collectUkCollectionRoute: {
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
@@ -120,6 +122,7 @@ beforeEach(() => {
   stopDeleteMock.mockResolvedValue({});
   windowFindManyMock.mockResolvedValue([]);
   rateFindUniqueMock.mockResolvedValue(null);
+  driverFindUniqueMock.mockResolvedValue(null);
   windowCreateMock.mockResolvedValue({ id: 'w-1', companyId: COMPANY_A, startDate: new Date('2099-08-03'), endDate: new Date('2099-08-09') });
   notifyWeekSetMock.mockResolvedValue(undefined);
   stopCountMock.mockResolvedValue(0);
@@ -760,5 +763,36 @@ describe('billing', () => {
     const res = await request(app).get(`/api/v1/collect-uk/companies/${COMPANY_B}/billing`).set(AUTH_HEADER);
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('role exclusion: drivers cannot register companies', () => {
+  it('409s a live driver registering a company', async () => {
+    driverFindUniqueMock.mockResolvedValue({ id: 'd-1', status: 'ACTIVE' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/companies')
+      .set(AUTH_HEADER)
+      .send({ name: 'Conflict Cargo', countriesServed: ['Zimbabwe'] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ROLE_CONFLICT');
+    expect(companyCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a REJECTED driver applicant to register a company', async () => {
+    driverFindUniqueMock.mockResolvedValue({ id: 'd-1', status: 'REJECTED' });
+    companyFindUniqueMock.mockResolvedValue(null);
+    companyCreateMock.mockResolvedValue(COMPANY_A_ROW);
+    companyRoleCreateMock.mockResolvedValue({});
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/companies')
+      .set(AUTH_HEADER)
+      .send({ name: 'ABC Logistics', countriesServed: ['Zimbabwe'] });
+
+    expect(res.status).toBe(201);
   });
 });

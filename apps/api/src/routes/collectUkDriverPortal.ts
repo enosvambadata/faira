@@ -9,6 +9,7 @@ import { advanceRouteProgress } from '../services/collectUkRouteProgress';
 import { signCollectUkProofUpload, signCollectUkDriverDocUpload } from '../lib/cloudinary';
 import { notifyParcelCollected, notifyUnableToCollect, notifyArrivedAtWarehouse } from '../services/collectUkNotifications';
 import { AuthenticatedRequest } from '../middleware/requireAuth';
+import { isCompanyMember, COMPANY_BLOCKS_DRIVER } from '../lib/collectUkRoleExclusion';
 
 const router = Router();
 
@@ -44,6 +45,11 @@ router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Respon
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) {
     next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  if (await isCompanyMember(req.userId!)) {
+    next(new ApiError('ROLE_CONFLICT', COMPANY_BLOCKS_DRIVER, 409));
     return;
   }
 
