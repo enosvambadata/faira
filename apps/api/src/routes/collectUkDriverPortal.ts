@@ -22,25 +22,32 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response) 
   res.status(200).json({ data: driver });
 });
 
+const vehicleSchema = z.object({
+  makeModel: z.string().trim().min(1).max(200),
+  registrationPlate: z.string().trim().min(1).max(30),
+  capacityParcels: z.number().int().positive().max(500).optional(),
+  photoUrl: z.string().trim().min(1).max(500),
+});
+
 const applySchema = z.object({
   fullName: z.string().trim().min(1).max(200),
   phone: z.string().trim().min(5).max(30),
   basePostcode: z.string().trim().min(1).max(20),
   county: z.string().trim().min(1).max(100),
-  vehicleMakeModel: z.string().trim().min(1).max(200),
-  vehicleReference: z.string().trim().min(1).max(100),
-  capacityParcels: z.number().int().positive().max(500).optional(),
-  vanPhotoUrl: z.string().trim().min(1).max(500),
+  drivingLicenceUrl: z.string().trim().min(1).max(500),
   motorInsuranceUrl: z.string().trim().min(1).max(500),
   gitInsuranceUrl: z.string().trim().min(1).max(500),
   liabilityUrl: z.string().trim().min(1).max(500),
+  vehicles: z.array(vehicleSchema).min(1).max(10),
 });
 
-// Own-van driver application. All four documents are required up front:
-// commercial (hire & reward) motor insurance, Goods in Transit and public
-// liability are the legal prerequisites for carrying customers' goods,
-// and Faira verifies them before approving. A REJECTED applicant may
-// resubmit (same row returns to APPLIED for re-review).
+// Own-van driver application. Driver-level documents (driving licence +
+// commercial hire & reward motor insurance, Goods in Transit and public
+// liability) are all required -- the legal prerequisites for carrying
+// customers' goods, verified before approving. Vehicles are a list: a
+// driver with two or more vans registers them all, each with its own
+// plate/capacity/photo. A REJECTED applicant may resubmit (same row
+// returns to APPLIED, vehicles replaced).
 router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const parsed = applySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -59,18 +66,45 @@ router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Respon
     return;
   }
 
-  const data = {
-    ...parsed.data,
+  const { vehicles, ...driverFields } = parsed.data;
+  const primary = vehicles[0];
+  const driverData = {
+    ...driverFields,
     status: 'APPLIED' as const,
     appliedAt: new Date(),
     reviewedAt: null,
     reviewNotes: null,
+    // Primary-vehicle summary (denormalized from vehicles[0]) so the
+    // dispatch board and route displays keep working without a join.
+    vehicleMakeModel: primary.makeModel,
+    vehicleReference: primary.registrationPlate,
+    capacityParcels: primary.capacityParcels ?? 20,
+    vanPhotoUrl: primary.photoUrl,
   };
-  const driver = existing
-    ? await prisma.collectUkDriver.update({ where: { id: existing.id }, data })
-    : await prisma.collectUkDriver.create({ data: { userId: req.userId!, ...data } });
 
-  await recordAuditLog(req.userId!, 'COLLECT_UK_DRIVER_APPLIED', { driverId: driver.id, county: driver.county });
+  const driver = await prisma.$transaction(async tx => {
+    const d = existing
+      ? await tx.collectUkDriver.update({ where: { id: existing.id }, data: driverData })
+      : await tx.collectUkDriver.create({ data: { userId: req.userId!, ...driverData } });
+    // Replace the vehicle list wholesale (matters on resubmit).
+    await tx.collectUkDriverVehicle.deleteMany({ where: { driverId: d.id } });
+    await tx.collectUkDriverVehicle.createMany({
+      data: vehicles.map(v => ({
+        driverId: d.id,
+        makeModel: v.makeModel,
+        registrationPlate: v.registrationPlate,
+        capacityParcels: v.capacityParcels ?? 20,
+        photoUrl: v.photoUrl,
+      })),
+    });
+    return d;
+  });
+
+  await recordAuditLog(req.userId!, 'COLLECT_UK_DRIVER_APPLIED', {
+    driverId: driver.id,
+    county: driver.county,
+    vehicleCount: vehicles.length,
+  });
 
   res.status(201).json({ data: { id: driver.id, status: driver.status } });
 });

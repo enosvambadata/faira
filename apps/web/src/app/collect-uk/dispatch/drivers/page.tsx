@@ -121,7 +121,7 @@ export default function DispatchDriversPage() {
             Applications to review <span className="font-normal text-muted">({applications.length})</span>
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Check all three insurance documents before approving — approval makes the driver routable.
+            Check the licence and all three insurance documents before approving — approval makes the driver routable.
           </p>
           <ul className="mt-3 flex flex-col gap-3">
             {applications.map(a => (
@@ -130,12 +130,38 @@ export default function DispatchDriversPage() {
                   <span className="font-medium text-text">{a.fullName}</span>
                   <span className="text-muted">{a.county} · {a.basePostcode}</span>
                 </div>
-                <p className="mt-1 text-muted">
-                  {a.vehicleMakeModel} · {a.vehicleReference} · capacity {a.capacityParcels} · {a.phone}
-                </p>
+                <p className="mt-1 text-muted">{a.phone}</p>
+
+                <div className="mt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Vehicle{a.vehicles.length === 1 ? "" : "s"} ({a.vehicles.length})
+                  </p>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {a.vehicles.map((v, vi) => (
+                      <li key={vi} className="flex flex-wrap items-center gap-2 text-text">
+                        <span>
+                          {v.makeModel} · <span className="font-mono">{v.registrationPlate}</span> · capacity {v.capacityParcels}
+                        </span>
+                        {v.photo ? (
+                          <a
+                            href={v.photo}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="cursor-pointer font-medium text-primary underline transition-colors duration-200 hover:text-primary-dark"
+                          >
+                            photo
+                          </a>
+                        ) : (
+                          <span className="text-red">photo missing</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
                 <div className="mt-2 flex flex-wrap gap-3 text-sm">
                   {([
-                    ["Van photo", a.documents.vanPhoto],
+                    ["Driving licence", a.documents.drivingLicence],
                     ["Motor insurance", a.documents.motorInsurance],
                     ["Goods in Transit", a.documents.gitInsurance],
                     ["Public liability", a.documents.liability],

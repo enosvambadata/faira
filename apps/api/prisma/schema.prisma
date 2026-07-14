@@ -1508,21 +1508,47 @@ model CollectUkDriver {
   phone             String?
   basePostcode      String?  @map("base_postcode")
   county            String?
-  vehicleMakeModel  String?  @map("vehicle_make_model")
-  vanPhotoUrl       String?  @map("van_photo_url")
-  motorInsuranceUrl String?  @map("motor_insurance_url")
-  gitInsuranceUrl   String?  @map("git_insurance_url")
-  liabilityUrl      String?  @map("liability_url")
+  // vehicleReference/capacityParcels/vanPhotoUrl above are the PRIMARY
+  // vehicle summary -- denormalized from the first CollectUkDriverVehicle
+  // so the dispatch board and route displays (which are driver-keyed, one
+  // van per route) keep working without joining. The full list lives in
+  // vehicles[].
+  vehicleMakeModel   String?  @map("vehicle_make_model")
+  vanPhotoUrl        String?  @map("van_photo_url")
+  drivingLicenceUrl  String?  @map("driving_licence_url")
+  motorInsuranceUrl  String?  @map("motor_insurance_url")
+  gitInsuranceUrl    String?  @map("git_insurance_url")
+  liabilityUrl       String?  @map("liability_url")
   reviewNotes       String?  @map("review_notes")
   appliedAt         DateTime? @map("applied_at")
   reviewedAt        DateTime? @map("reviewed_at")
   createdAt        DateTime              @default(now()) @map("created_at")
 
-  user   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  routes CollectUkCollectionRoute[]
-  stops  CollectUkCollectionStop[]
+  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routes   CollectUkCollectionRoute[]
+  stops    CollectUkCollectionStop[]
+  vehicles CollectUkDriverVehicle[]
 
   @@map("collect_uk_drivers")
+}
+
+// A driver's van(s). A driver can register two or more; each has its own
+// registration plate, capacity and photo. Routes are driver-keyed (one
+// van per round in practice), so the driver row carries a primary-vehicle
+// summary -- these rows are the authoritative full list for review.
+model CollectUkDriverVehicle {
+  id                String   @id @default(uuid()) @db.Uuid
+  driverId          String   @map("driver_id") @db.Uuid
+  makeModel         String   @map("make_model")
+  registrationPlate String   @map("registration_plate")
+  capacityParcels   Int      @default(20) @map("capacity_parcels")
+  photoUrl          String?  @map("photo_url")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  driver CollectUkDriver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@map("collect_uk_driver_vehicles")
 }
 
 enum CollectUkParcelSizeTier {

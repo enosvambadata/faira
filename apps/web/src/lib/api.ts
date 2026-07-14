@@ -788,18 +788,23 @@ export interface CollectUkDriverProfile {
   reviewNotes: string | null;
 }
 
+export interface DriverVehiclePayload {
+  makeModel: string;
+  registrationPlate: string;
+  capacityParcels?: number;
+  photoUrl: string;
+}
+
 export interface DriverApplicationPayload {
   fullName: string;
   phone: string;
   basePostcode: string;
   county: string;
-  vehicleMakeModel: string;
-  vehicleReference: string;
-  capacityParcels?: number;
-  vanPhotoUrl: string;
+  drivingLicenceUrl: string;
   motorInsuranceUrl: string;
   gitInsuranceUrl: string;
   liabilityUrl: string;
+  vehicles: DriverVehiclePayload[];
 }
 
 export interface CollectUkDriverRoute {
@@ -887,12 +892,15 @@ export interface CollectUkDriverApplication {
   phone: string | null;
   county: string | null;
   basePostcode: string | null;
-  vehicleMakeModel: string | null;
-  vehicleReference: string | null;
-  capacityParcels: number;
   appliedAt: string | null;
+  vehicles: {
+    makeModel: string;
+    registrationPlate: string;
+    capacityParcels: number;
+    photo: string | null;
+  }[];
   documents: {
-    vanPhoto: string | null;
+    drivingLicence: string | null;
     motorInsurance: string | null;
     gitInsurance: string | null;
     liability: string | null;
