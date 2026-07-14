@@ -62,10 +62,18 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
   };
 }
 
+// Fulfilment journeys keep the warm brand; everything else (Collect UK is
+// the flagship) gets the navy Collect theme so the signup page matches
+// the page the visitor just came from.
+function isFulfilmentTarget(target: string | null): boolean {
+  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
+}
+
 function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const context = signupContext(searchParams.get("redirect"));
+  const themeClass = isFulfilmentTarget(searchParams.get("redirect")) ? "" : "theme-collect";
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -102,6 +110,7 @@ function SignupForm() {
   };
 
   return (
+    <div className={themeClass}>
     <AuthLayout>
       <Card>
         <h1 className="text-xl font-semibold text-text">{context.title}</h1>
@@ -174,6 +183,7 @@ function SignupForm() {
         </p>
       </Card>
     </AuthLayout>
+    </div>
   );
 }
 

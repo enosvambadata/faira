@@ -119,12 +119,26 @@ function LoginForm() {
   );
 }
 
+function isFulfilmentTarget(target: string | null): boolean {
+  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
+}
+
+function ThemedLogin() {
+  const searchParams = useSearchParams();
+  const themeClass = isFulfilmentTarget(searchParams.get("next")) ? "" : "theme-collect";
+  return (
+    <div className={themeClass}>
+      <AuthLayout>
+        <LoginForm />
+      </AuthLayout>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
-    <AuthLayout>
-      <Suspense>
-        <LoginForm />
-      </Suspense>
-    </AuthLayout>
+    <Suspense>
+      <ThemedLogin />
+    </Suspense>
   );
 }
