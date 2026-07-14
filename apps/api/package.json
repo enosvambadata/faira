@@ -10,7 +10,8 @@
     "lint": "eslint . --ext .ts --max-warnings 0",
     "lint:fix": "eslint . --ext .ts --fix",
     "type-check": "prisma generate && tsc --noEmit",
-    "test": "prisma generate && vitest run"
+    "test": "prisma generate && vitest run",
+    "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -31,6 +31,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', 'vitest.config.ts', 'prisma.config.ts'],
+    ignores: ['node_modules/', 'dist/', 'vitest.config.ts', 'vitest.integration.config.ts', 'prisma.config.ts'],
   },
 ];
