@@ -11,6 +11,23 @@ const DEFAULT_MAX_SIZE_MB = 10;
 
 export type UploadState = "idle" | "uploading" | "success" | "error";
 
+// Matches a file against a standard HTML `accept` string, which mixes
+// three token shapes: exact MIME types (image/png), MIME wildcards
+// (image/*), and file extensions (.pdf). A naive `list.includes(file.type)`
+// silently rejects wildcards and extensions -- which blocked every upload
+// on the driver document form.
+function fileMatchesAccept(file: File, accept: string): boolean {
+  const tokens = accept.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return tokens.some(token => {
+    if (token.startsWith(".")) return name.endsWith(token);
+    if (token.endsWith("/*")) return type.startsWith(token.slice(0, -1)); // "image/" prefix
+    return type === token;
+  });
+}
+
 interface Props {
   label: string;
   hint?: string;
@@ -49,8 +66,7 @@ export function FileUpload({
     const file = files?.[0];
     if (!file) return;
 
-    const acceptedTypes = accept.split(",");
-    if (!acceptedTypes.includes(file.type)) {
+    if (!fileMatchesAccept(file, accept)) {
       setLocalError("That file type isn't accepted. Use a JPG, PNG, or PDF.");
       return;
     }

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { FileUpload, UploadState } from "@/components/ui/FileUpload";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
-import { collectUkDriverPortal, uploadParcelEvidencePhoto, FulfilmentApiError } from "@/lib/api";
+import { collectUkDriverPortal, uploadDriverDocument, FulfilmentApiError } from "@/lib/api";
 
 const DOCS = [
   {
@@ -66,7 +66,7 @@ export default function DriveForFairaPage() {
     setError(null);
     try {
       const params = await collectUkDriverPortal.getApplyUploadParams();
-      const publicId = await uploadParcelEvidencePhoto(params, file);
+      const publicId = await uploadDriverDocument(params, file);
       setDocs(prev => ({ ...prev, [key]: publicId }));
       setDocStates(prev => ({ ...prev, [key]: "success" }));
     } catch (err) {
