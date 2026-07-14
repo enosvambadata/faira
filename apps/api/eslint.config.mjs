@@ -18,6 +18,7 @@ export default [
         console: 'readonly',
         Buffer: 'readonly',
         fetch: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {
