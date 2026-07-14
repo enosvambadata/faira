@@ -19,6 +19,7 @@ export default [
         Buffer: 'readonly',
         fetch: 'readonly',
         AbortSignal: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
     plugins: {
