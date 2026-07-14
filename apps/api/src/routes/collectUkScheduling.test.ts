@@ -409,6 +409,24 @@ describe('POST /api/v1/admin/collect-uk/routes/:id/stops', () => {
     expect(stopCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({ sequenceOrder: 5 }) });
   });
 
+  it('409s and does not transition the booking when the route is not PLANNED', async () => {
+    // A COMPLETED (or IN_PROGRESS) route must not accept new stops -- a stop
+    // added to a finished route is never swept to AT_WAREHOUSE by
+    // advanceRouteProgress, stranding the parcel forever.
+    routeFindUniqueMock.mockResolvedValue({ ...ROUTE, status: 'COMPLETED' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post(`/api/v1/admin/collect-uk/routes/${ROUTE_ID}/stops`)
+      .set(ADMIN_HEADER)
+      .send({ bookingId: BOOKING_ID });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVALID_STATE');
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+    expect(stopCreateMock).not.toHaveBeenCalled();
+  });
+
   it('404s for a nonexistent route', async () => {
     routeFindUniqueMock.mockResolvedValue(null);
 
