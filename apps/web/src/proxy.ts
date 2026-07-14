@@ -16,7 +16,12 @@ const PROTECTED_PREFIXES = [
   "/collect-uk/driver",
   "/collect-uk/drive",
 ];
-const PUBLIC_ONLY_PREFIXES = ["/login", "/signup"];
+// /login is deliberately NOT public-only: an authenticated visitor who
+// clicks "Sign in" wants the sign-in surface (usually to switch
+// accounts) -- silently bouncing them into the previous session's
+// portal hides which account they're in. The login page itself shows a
+// "you're already signed in as X" card with continue/switch options.
+const PUBLIC_ONLY_PREFIXES = ["/signup"];
 
 // The Collect UK "my companies" list needs auth too, but a bare "/collect-uk"
 // prefix would also match the public /collect-uk/book/:slug and

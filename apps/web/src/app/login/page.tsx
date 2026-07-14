@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/layout/AuthLayout";
@@ -18,6 +18,24 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // A visitor with a live session gets an explicit choice (continue as X /
+  // switch account) instead of being silently bounced into the previous
+  // session's portal -- confusing when testing with multiple accounts.
+  const [existingEmail, setExistingEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await createClient().auth.getUser();
+      setExistingEmail(data.user?.email ?? null);
+    })();
+  }, []);
+
+  const destination = searchParams.get("next") || "/dashboard";
+
+  const handleSwitchAccount = async () => {
+    await createClient().auth.signOut();
+    setExistingEmail(null);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -30,11 +48,30 @@ function LoginForm() {
         setError("Incorrect email or password");
         return;
       }
-      router.push(searchParams.get("next") || "/dashboard");
+      router.push(destination);
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (existingEmail) {
+    return (
+      <Card>
+        <h1 className="text-xl font-semibold text-text">You&rsquo;re already signed in</h1>
+        <p className="mt-1 text-sm text-muted">
+          Signed in as <span className="font-medium text-text">{existingEmail}</span>.
+        </p>
+        <div className="mt-5 flex flex-col gap-3">
+          <Button type="button" fullWidth size="lg" onClick={() => router.push(destination)}>
+            Continue
+          </Button>
+          <Button type="button" fullWidth size="lg" variant="secondary" onClick={handleSwitchAccount}>
+            Sign in with a different account
+          </Button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card>
