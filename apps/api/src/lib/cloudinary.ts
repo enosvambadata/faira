@@ -114,8 +114,14 @@ export function signCollectUkDriverDocUpload() {
 }
 
 export function getCollectUkDriverDocViewUrl(publicId: string): string {
+  // Deliver as a web image so the reviewer can always open it: for a JPG
+  // this is a passthrough, and for a PDF certificate Cloudinary renders
+  // the first page (authenticated *image* delivery works; delivering the
+  // raw authenticated PDF 401s). Insurance certificates are typically a
+  // single page; a multi-page doc shows page one.
   return cloudinary.url(publicId, {
     type: 'authenticated',
+    format: 'jpg',
     sign_url: true,
     secure: true,
   });
