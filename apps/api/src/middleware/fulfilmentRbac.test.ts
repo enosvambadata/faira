@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import express, { Response } from 'express';
+import express, { Request, Response, RequestHandler } from 'express';
 import request from 'supertest';
 
 const userRoleFindManyMock = vi.fn();
@@ -31,12 +31,12 @@ function fakeToken(aal: string | null): string {
 // Minimal stand-in for requireAuth — sets req.userId directly rather than
 // re-implementing Supabase token verification, since these tests target
 // the RBAC middleware that runs after requireAuth, not requireAuth itself.
-function fakeAuth(req: any, _res: Response, next: () => void) {
+function fakeAuth(req: Request & { userId?: string }, _res: Response, next: () => void) {
   req.userId = USER_ID;
   next();
 }
 
-function buildApp(...middleware: any[]) {
+function buildApp(...middleware: RequestHandler[]) {
   const app = express();
   app.use(express.json());
   app.get('/protected', fakeAuth, ...middleware, (_req, res) => res.status(200).json({ ok: true }));
