@@ -1,7 +1,13 @@
 import { prisma } from '../prisma';
 import { sendSms } from '../lib/sms';
+import { sendEmail } from '../lib/email';
+import { supabaseAdmin } from '../supabase';
 import { generateBookingTrackingToken } from '../lib/collectUkBookingToken';
 import { logger } from '../logger';
+
+function webAppUrl(): string {
+  return process.env.WEB_APP_URL || 'http://localhost:3100';
+}
 
 // Collect UK customers are guests with no account (per the ADR's guest
 // booking decision) -- SMS to customerContact is the only channel that
@@ -105,4 +111,72 @@ export async function notifyHandedOver(bookingId: string): Promise<void> {
     b =>
       `${b.company.name}: your parcel ${b.reference} has been received and will be shipped to ${b.destinationCountry}.`,
   );
+}
+
+// Driver applicants have a Faira account (email) AND gave a phone on the
+// application, so both channels are used for the approve/reject decision:
+// SMS reaches them today (lib/sms), email activates once a provider is
+// configured (lib/email no-ops until then). Best-effort like everything
+// else here.
+async function driverContact(driverId: string): Promise<{ phone: string | null; fullName: string | null; email: string | null } | null> {
+  const driver = await prisma.collectUkDriver.findUnique({
+    where: { id: driverId },
+    select: { userId: true, phone: true, fullName: true },
+  });
+  if (!driver) return null;
+  let email: string | null = null;
+  try {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(driver.userId);
+    email = data.user?.email ?? null;
+  } catch (err) {
+    logger.error({ err, driverId }, 'could not look up driver email');
+  }
+  return { phone: driver.phone, fullName: driver.fullName, email };
+}
+
+export async function notifyDriverApproved(driverId: string): Promise<void> {
+  try {
+    const c = await driverContact(driverId);
+    if (!c) return;
+    const name = c.fullName ?? 'there';
+    const portal = `${webAppUrl()}/collect-uk/driver`;
+    if (c.email) {
+      await sendEmail(
+        c.email,
+        "You're approved to drive for Faira",
+        `<p>Hi ${name},</p><p>Good news — your application to drive for Faira has been approved. ` +
+          `You can now sign in and see your collection routes.</p>` +
+          `<p><a href="${portal}">Open your driver portal</a></p><p>— Faira Collect</p>`,
+      );
+    }
+    if (c.phone) {
+      await sendSms(c.phone, `Faira: you're approved to drive! Sign in to see your routes: ${portal}`);
+    }
+  } catch (err) {
+    logger.error({ err, driverId }, 'driver-approved notification failed');
+  }
+}
+
+export async function notifyDriverRejected(driverId: string, reason: string | null): Promise<void> {
+  try {
+    const c = await driverContact(driverId);
+    if (!c) return;
+    const name = c.fullName ?? 'there';
+    const reasonText = reason ? ` Reason: ${reason}.` : '';
+    const apply = `${webAppUrl()}/collect-uk/drive`;
+    if (c.email) {
+      await sendEmail(
+        c.email,
+        'Your Faira driver application',
+        `<p>Hi ${name},</p><p>Thanks for applying to drive for Faira. We weren't able to approve your ` +
+          `application this time.${reasonText}</p><p>You can fix the issue and ` +
+          `<a href="${apply}">apply again</a>.</p><p>— Faira Collect</p>`,
+      );
+    }
+    if (c.phone) {
+      await sendSms(c.phone, `Faira: your driver application wasn't approved.${reasonText} Fix it and reapply: ${apply}`);
+    }
+  } catch (err) {
+    logger.error({ err, driverId }, 'driver-rejected notification failed');
+  }
 }

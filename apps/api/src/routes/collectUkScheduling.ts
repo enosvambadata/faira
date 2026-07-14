@@ -5,7 +5,12 @@ import { prisma } from '../prisma';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { ApiError } from '../errors/ApiError';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
-import { notifyCollectionScheduled, notifyCollectionWillBeRescheduled } from '../services/collectUkNotifications';
+import {
+  notifyCollectionScheduled,
+  notifyCollectionWillBeRescheduled,
+  notifyDriverApproved,
+  notifyDriverRejected,
+} from '../services/collectUkNotifications';
 import { geocodePostcode, estimatedRoadMiles, orderByNearestNeighbour, GeoPoint } from '../lib/collectUkGeo';
 import { getCollectUkDriverDocViewUrl } from '../lib/cloudinary';
 import { isCompanyMember, COMPANY_BLOCKS_DRIVER } from '../lib/collectUkRoleExclusion';
@@ -126,6 +131,7 @@ router.post('/drivers/:id/approve', requireAdmin, async (req: Request<{ id: stri
     data: { status: 'ACTIVE', reviewedAt: new Date(), reviewNotes: null },
   });
   await recordAuditLog(driver.userId, 'COLLECT_UK_DRIVER_APPROVED', { driverId: driver.id });
+  await notifyDriverApproved(driver.id);
 
   res.status(200).json({ data: { id: driver.id, status: 'ACTIVE' } });
 });
@@ -154,6 +160,7 @@ router.post('/drivers/:id/reject', requireAdmin, async (req: Request<{ id: strin
     data: { status: 'REJECTED', reviewedAt: new Date(), reviewNotes: parsed.data.reviewNotes },
   });
   await recordAuditLog(driver.userId, 'COLLECT_UK_DRIVER_REJECTED', { driverId: driver.id, reason: parsed.data.reviewNotes });
+  await notifyDriverRejected(driver.id, parsed.data.reviewNotes);
 
   res.status(200).json({ data: { id: driver.id, status: 'REJECTED' } });
 });
