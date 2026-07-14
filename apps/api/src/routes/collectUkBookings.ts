@@ -8,6 +8,7 @@ import { generateBookingTrackingToken, verifyBookingTrackingToken } from '../lib
 import { collectUkBuyerStatus } from '../lib/collectUkBookingStatus';
 import { notifyBookingConfirmed, notifyBookingCancelled } from '../services/collectUkNotifications';
 import { geocodePostcode } from '../lib/collectUkGeo';
+import { phoneSchema } from './auth';
 import { logger } from '../logger';
 
 const router = Router();
@@ -65,7 +66,16 @@ router.get('/book/:companySlug', publicRateLimiter, async (req: Request<{ compan
 const createBookingSchema = z
   .object({
     customerName: z.string().trim().min(1).max(200),
-    customerContact: z.string().trim().min(1).max(50),
+    // SMS is the only channel to guest customers, so the contact MUST be a
+    // real phone -- a name/email/typo would silently swallow every
+    // notification (sendSms is best-effort). Normalise the separators the
+    // booking form invites ("+44 7700 900000") then validate E.164 via auth's
+    // shared phoneSchema, so the stored value is always deliverable.
+    customerContact: z
+      .string()
+      .trim()
+      .transform(s => s.replace(/[\s().-]/g, ''))
+      .pipe(phoneSchema),
     destinationCountry: z.string().trim().min(1).max(100),
     collectionAddress: z.string().trim().min(1).max(300),
     collectionPostcode: z.string().trim().min(1).max(20),

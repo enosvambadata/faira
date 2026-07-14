@@ -149,6 +149,30 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
     expect(notifyBookingConfirmedMock).toHaveBeenCalledWith('booking-1');
   });
 
+  it('400s when customerContact is not a phone number', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, customerContact: 'Jane Smith' });
+
+    expect(res.status).toBe(400);
+    expect(bookingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a spaced phone number and stores it normalized to E.164', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, customerContact: '+44 7700 900000' });
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ customerContact: '+447700900000' }),
+    });
+  });
+
   it('stores the requested number of parcels', async () => {
     bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
 
