@@ -27,6 +27,16 @@ const { releaseEscrowFunds } = await import('./escrowRelease');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  orderUpdateManyMock.mockResolvedValue({ count: 1 });
+  // Interactive $transaction(cb) delegates to the shared mocks; array form Promise.all's.
+  transactionMock.mockImplementation(async (arg: unknown) =>
+    typeof arg === 'function'
+      ? (arg as (tx: unknown) => unknown)({
+          order: { updateMany: (...a: unknown[]) => orderUpdateManyMock(...a) },
+          escrowLedgerEntry: { create: (...a: unknown[]) => escrowCreateMock(...a) },
+        })
+      : Promise.all(arg as unknown[]),
+  );
 });
 
 describe('releaseEscrowFunds', () => {
@@ -55,6 +65,38 @@ describe('releaseEscrowFunds', () => {
     expect(escrowCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: 'COMMISSION', amount: 5, sellerId: 'seller-1' }) }),
     );
+  });
+
+  it('does the COMPLETED flip and the ledger writes in one transaction, not a standalone status commit', async () => {
+    orderFindUniqueMock.mockResolvedValue({ id: 'order-1', status: 'PAID', priceAtPurchase: 100, listing: { sellerId: 'seller-1' } });
+    const txOrderUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const txEscrowCreate = vi.fn().mockResolvedValue({});
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({ order: { updateMany: txOrderUpdateMany }, escrowLedgerEntry: { create: txEscrowCreate } })
+        : Promise.all(arg as unknown[]),
+    );
+
+    await releaseEscrowFunds('order-1');
+
+    // Status flip issued on the transaction client, never the auto-committing top-level update.
+    expect(txOrderUpdateMany).toHaveBeenCalledWith({ where: { id: 'order-1', status: 'PAID' }, data: { status: 'COMPLETED' } });
+    expect(orderUpdateManyMock).not.toHaveBeenCalled();
+    expect(txEscrowCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates a ledger write failure so COMPLETED cannot commit without RELEASE/COMMISSION', async () => {
+    orderFindUniqueMock.mockResolvedValue({ id: 'order-1', status: 'PAID', priceAtPurchase: 100, listing: { sellerId: 'seller-1' } });
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+            escrowLedgerEntry: { create: vi.fn().mockRejectedValue(new Error('ledger write failed')) },
+          })
+        : Promise.all(arg as unknown[]),
+    );
+
+    await expect(releaseEscrowFunds('order-1')).rejects.toThrow();
   });
 
   it('allows releasing directly from SHIPPED', async () => {

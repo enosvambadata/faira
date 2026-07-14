@@ -46,35 +46,31 @@ export async function releaseEscrowFunds(orderId: string) {
     return { released: false, order };
   }
 
-  const { count } = await prisma.order.updateMany({
-    where: { id: order.id, status: order.status },
-    data: { status: 'COMPLETED' },
-  });
-
-  if (count === 0) {
-    return { released: false, order };
-  }
-
   const { sellerAmount, commissionAmount } = splitCommission(Number(order.priceAtPurchase));
 
-  await prisma.$transaction([
-    prisma.escrowLedgerEntry.create({
-      data: {
-        orderId: order.id,
-        sellerId: order.listing.sellerId,
-        type: 'RELEASE',
-        amount: sellerAmount,
-      },
-    }),
-    prisma.escrowLedgerEntry.create({
-      data: {
-        orderId: order.id,
-        sellerId: order.listing.sellerId,
-        type: 'COMMISSION',
-        amount: commissionAmount,
-      },
-    }),
-  ]);
+  // The COMPLETED flip and both ledger entries must commit together: a crash
+  // between a standalone status update and a separate ledger write would leave
+  // a COMPLETED order with the seller never credited, and the status guard
+  // would then block any retry. count===0 means we lost the release race.
+  const released = await prisma.$transaction(async tx => {
+    const { count } = await tx.order.updateMany({
+      where: { id: order.id, status: order.status },
+      data: { status: 'COMPLETED' },
+    });
+    if (count === 0) return false;
+
+    await tx.escrowLedgerEntry.create({
+      data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'RELEASE', amount: sellerAmount },
+    });
+    await tx.escrowLedgerEntry.create({
+      data: { orderId: order.id, sellerId: order.listing.sellerId, type: 'COMMISSION', amount: commissionAmount },
+    });
+    return true;
+  });
+
+  if (!released) {
+    return { released: false, order };
+  }
 
   await notifyOrderStatusChange(order.id, 'COMPLETED');
 

@@ -24,12 +24,41 @@ export async function confirmOrderPayment(orderId: string, paynowReference: stri
   // marking it CONFIRMED with no matching escrow entry.
   if (!pendingPayment || !canTransition(order.status, 'PAID')) return order;
 
-  const { count } = await prisma.order.updateMany({
-    where: { id: order.id, status: 'PENDING' },
-    data: { status: 'PAID' },
+  // The PENDING->PAID flip, the payment confirmation, and the escrow HOLD must
+  // commit together: a crash between a standalone status update and a separate
+  // ledger write would leave a PAID order with no HOLD (money never recorded as
+  // held, so a later release pays out unheld funds). Do all three in one
+  // interactive transaction; count===0 means we lost the confirm race.
+  const confirmed = await prisma.$transaction(async tx => {
+    const { count } = await tx.order.updateMany({
+      where: { id: order.id, status: 'PENDING' },
+      data: { status: 'PAID' },
+    });
+    if (count === 0) return false;
+
+    await tx.payment.update({
+      where: { id: pendingPayment.id },
+      data: {
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        paynowReference: paynowReference ?? pendingPayment.paynowReference,
+      },
+    });
+    await tx.escrowLedgerEntry.create({
+      data: {
+        orderId: order.id,
+        sellerId: order.listing.sellerId,
+        type: 'HOLD',
+        amount: order.priceAtPurchase,
+      },
+    });
+    return true;
   });
 
-  if (count === 0) {
+  if (!confirmed) {
+    // Lost the race: another confirm (webhook vs poll) already flipped the
+    // order to PAID and wrote the HOLD. Just mark this stray pending payment
+    // CONFIRMED -- no ledger effect, so it stays outside the transaction.
     await prisma.payment.update({
       where: { id: pendingPayment.id },
       data: {
@@ -40,25 +69,6 @@ export async function confirmOrderPayment(orderId: string, paynowReference: stri
     });
     return order;
   }
-
-  await prisma.$transaction([
-    prisma.payment.update({
-      where: { id: pendingPayment.id },
-      data: {
-        status: 'CONFIRMED',
-        confirmedAt: new Date(),
-        paynowReference: paynowReference ?? pendingPayment.paynowReference,
-      },
-    }),
-    prisma.escrowLedgerEntry.create({
-      data: {
-        orderId: order.id,
-        sellerId: order.listing.sellerId,
-        type: 'HOLD',
-        amount: order.priceAtPurchase,
-      },
-    }),
-  ]);
 
   await notifyOrderStatusChange(order.id, 'PAID');
 
