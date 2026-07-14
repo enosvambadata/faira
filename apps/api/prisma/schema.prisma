@@ -451,6 +451,9 @@ model Payment {
 
   @@index([orderId])
   @@index([status])
+  // The Paynow result webhook looks a payment up by its poll URL; without this
+  // every webhook full-scans payments (one row per attempt, grows forever).
+  @@index([paynowPollUrl])
   @@map("payments")
 }
 
