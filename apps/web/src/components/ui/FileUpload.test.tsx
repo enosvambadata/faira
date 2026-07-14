@@ -36,6 +36,42 @@ describe("FileUpload", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/file type isn't accepted/i);
   });
 
+  // Regression: the driver document form passes accept="image/*,.pdf",
+  // which the old exact-match validation rejected for every real file
+  // (a JPEG's type is "image/jpeg", not "image/*"; a PDF matches by
+  // extension, not MIME) -- so no driver could upload anything.
+  it("accepts an image via an image/* wildcard", () => {
+    const onSelect = vi.fn();
+    render(<FileUpload label="Doc" accept="image/*,.pdf" state="idle" onSelect={onSelect} />);
+
+    const input = screen.getByLabelText("Doc") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("cert.jpg", "image/jpeg", 1024)] } });
+
+    expect(onSelect).toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("accepts a PDF via a .pdf extension token", () => {
+    const onSelect = vi.fn();
+    render(<FileUpload label="Doc" accept="image/*,.pdf" state="idle" onSelect={onSelect} />);
+
+    const input = screen.getByLabelText("Doc") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("insurance.pdf", "application/pdf", 1024)] } });
+
+    expect(onSelect).toHaveBeenCalled();
+  });
+
+  it("still rejects a disallowed type against a wildcard accept", () => {
+    const onSelect = vi.fn();
+    render(<FileUpload label="Doc" accept="image/*,.pdf" state="idle" onSelect={onSelect} />);
+
+    const input = screen.getByLabelText("Doc") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile("notes.txt", "text/plain", 1024)] } });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/file type isn't accepted/i);
+  });
+
   it("rejects a file over the size limit without calling onSelect", async () => {
     const onSelect = vi.fn();
     render(<FileUpload label="ID document" state="idle" maxSizeMb={1} onSelect={onSelect} />);

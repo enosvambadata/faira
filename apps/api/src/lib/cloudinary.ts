@@ -24,7 +24,12 @@ export async function uploadAvatar(buffer: Buffer, mimetype: string, userId: str
 // the image bytes ourselves.
 function signUpload(folder: string, transformation: string, options: { type?: 'upload' | 'authenticated' } = {}) {
   const timestamp = Math.round(Date.now() / 1000);
-  const paramsToSign: Record<string, string | number> = { timestamp, folder, transformation };
+  // An empty transformation means "store the original untouched" -- used
+  // for document uploads (insurance PDFs) that must not be resized and
+  // aren't always images. It must be omitted from the signed params, not
+  // signed as "", or Cloudinary rejects the signature.
+  const paramsToSign: Record<string, string | number> = { timestamp, folder };
+  if (transformation) paramsToSign.transformation = transformation;
   if (options.type) paramsToSign.type = options.type;
 
   const signature = cloudinary.utils.api_sign_request(
@@ -37,8 +42,8 @@ function signUpload(folder: string, transformation: string, options: { type?: 'u
     timestamp,
     apiKey: process.env.CLOUDINARY_API_KEY || 'placeholder-api-key',
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || 'placeholder-cloud-name',
-    folder: paramsToSign.folder,
-    transformation: paramsToSign.transformation,
+    folder,
+    ...(transformation ? { transformation } : {}),
     ...(options.type ? { type: options.type } : {}),
   };
 }
@@ -101,9 +106,11 @@ export function signCollectUkProofUpload() {
 
 // Driver application documents (van photo, insurance certificates) --
 // authenticated delivery like proof photos: these contain personal and
-// financial details and must never be publicly fetchable.
+// financial details and must never be publicly fetchable. No incoming
+// transformation: certificates are frequently PDFs (which must not be
+// image-resized) and are stored exactly as submitted for review.
 export function signCollectUkDriverDocUpload() {
-  return signUpload('collect-uk-driver-docs', 'w_2000,h_2000,c_limit', { type: 'authenticated' });
+  return signUpload('collect-uk-driver-docs', '', { type: 'authenticated' });
 }
 
 export function getCollectUkDriverDocViewUrl(publicId: string): string {

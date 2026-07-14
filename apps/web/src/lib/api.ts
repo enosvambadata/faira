@@ -351,7 +351,9 @@ export interface CloudinarySignedUpload {
   apiKey: string;
   cloudName: string;
   folder: string;
-  transformation: string;
+  // Omitted for document uploads (stored untouched); present for photo
+  // uploads that get an incoming resize.
+  transformation?: string;
   type: "upload" | "authenticated";
 }
 
@@ -376,7 +378,7 @@ export async function uploadParcelEvidencePhoto(upload: CloudinarySignedUpload, 
   formData.append("timestamp", String(upload.timestamp));
   formData.append("signature", upload.signature);
   formData.append("folder", upload.folder);
-  formData.append("transformation", upload.transformation);
+  if (upload.transformation) formData.append("transformation", upload.transformation);
   formData.append("type", upload.type);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${upload.cloudName}/image/upload`, {
@@ -386,6 +388,31 @@ export async function uploadParcelEvidencePhoto(upload: CloudinarySignedUpload, 
   const json = await res.json();
   if (!res.ok) {
     throw new ApiError("UPLOAD_FAILED", json?.error?.message ?? "Photo upload failed", res.status);
+  }
+  return json.public_id as string;
+}
+
+// Driver documents are a mix of photos and PDFs, so this posts to the
+// `/auto/upload` endpoint (Cloudinary picks the resource type) and never
+// sends an incoming transformation -- certificates are stored as
+// submitted. The signed params must match exactly (no transformation
+// field), or Cloudinary rejects the signature. Returns the public_id.
+export async function uploadDriverDocument(upload: CloudinarySignedUpload, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("api_key", upload.apiKey);
+  formData.append("timestamp", String(upload.timestamp));
+  formData.append("signature", upload.signature);
+  formData.append("folder", upload.folder);
+  formData.append("type", upload.type);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${upload.cloudName}/auto/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new ApiError("UPLOAD_FAILED", json?.error?.message ?? "Document upload failed", res.status);
   }
   return json.public_id as string;
 }
