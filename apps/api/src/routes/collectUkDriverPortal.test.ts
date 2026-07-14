@@ -12,6 +12,8 @@ const stopCountMock = vi.fn();
 const stopFindManyMock = vi.fn();
 const companyRoleFindFirstMock = vi.fn();
 const driverCreateMock = vi.fn();
+const vehicleDeleteManyMock = vi.fn();
+const vehicleCreateManyMock = vi.fn();
 const driverUpdateMock = vi.fn();
 const notifyParcelCollectedMock = vi.fn();
 const notifyUnableToCollectMock = vi.fn();
@@ -57,6 +59,10 @@ vi.mock('../prisma', () => ({
     },
     collectUkCollectionBooking: { updateMany: (...args: unknown[]) => bookingUpdateManyMock(...args) },
     collectUkCompanyRole: { findFirst: (...args: unknown[]) => companyRoleFindFirstMock(...args) },
+    collectUkDriverVehicle: {
+      deleteMany: (...args: unknown[]) => vehicleDeleteManyMock(...args),
+      createMany: (...args: unknown[]) => vehicleCreateManyMock(...args),
+    },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
@@ -109,6 +115,14 @@ function txStub() {
       findUnique: (...args: unknown[]) => routeFindUniqueMock(...args),
       updateMany: (...args: unknown[]) => routeUpdateManyMock(...args),
     },
+    collectUkDriver: {
+      create: (...args: unknown[]) => driverCreateMock(...args),
+      update: (...args: unknown[]) => driverUpdateMock(...args),
+    },
+    collectUkDriverVehicle: {
+      deleteMany: (...args: unknown[]) => vehicleDeleteManyMock(...args),
+      createMany: (...args: unknown[]) => vehicleCreateManyMock(...args),
+    },
   };
 }
 
@@ -125,6 +139,8 @@ beforeEach(() => {
   stopFindManyMock.mockResolvedValue([]);
   companyRoleFindFirstMock.mockResolvedValue(null);
   driverCreateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
+  vehicleDeleteManyMock.mockResolvedValue({ count: 0 });
+  vehicleCreateManyMock.mockResolvedValue({ count: 1 });
   driverUpdateMock.mockResolvedValue({ id: DRIVER_ID, status: 'APPLIED' });
   notifyParcelCollectedMock.mockResolvedValue(undefined);
   notifyUnableToCollectMock.mockResolvedValue(undefined);
@@ -391,12 +407,14 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
     phone: '+447700900001',
     basePostcode: 'M1 1AE',
     county: 'Greater Manchester',
-    vehicleMakeModel: 'Ford Transit LWB',
-    vehicleReference: 'AB12 CDE',
-    vanPhotoUrl: 'collect-uk-driver-docs/van',
+    drivingLicenceUrl: 'collect-uk-driver-docs/licence',
     motorInsuranceUrl: 'collect-uk-driver-docs/motor',
     gitInsuranceUrl: 'collect-uk-driver-docs/git',
     liabilityUrl: 'collect-uk-driver-docs/liability',
+    vehicles: [
+      { makeModel: 'Ford Transit LWB', registrationPlate: 'AB12 CDE', capacityParcels: 30, photoUrl: 'collect-uk-driver-docs/van1' },
+      { makeModel: 'Mercedes Sprinter', registrationPlate: 'CD34 EFG', photoUrl: 'collect-uk-driver-docs/van2' },
+    ],
   };
 
   it('creates an APPLIED driver record with documents', async () => {
@@ -408,8 +426,45 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('APPLIED');
     expect(driverCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({ userId: USER_ID, status: 'APPLIED', gitInsuranceUrl: 'collect-uk-driver-docs/git' }),
+      data: expect.objectContaining({
+        userId: USER_ID,
+        status: 'APPLIED',
+        drivingLicenceUrl: 'collect-uk-driver-docs/licence',
+        gitInsuranceUrl: 'collect-uk-driver-docs/git',
+        vehicleReference: 'AB12 CDE', // primary summary from vehicles[0]
+        vehicleMakeModel: 'Ford Transit LWB',
+        capacityParcels: 30,
+      }),
     });
+    // both vehicles stored
+    expect(vehicleCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ registrationPlate: 'AB12 CDE', capacityParcels: 30 }),
+        expect.objectContaining({ registrationPlate: 'CD34 EFG', capacityParcels: 20 }), // default
+      ],
+    });
+  });
+
+  it('400s when no vehicle is provided', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+    const { vehicles: _v, ...noVehicles } = APPLICATION;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send({ ...noVehicles, vehicles: [] });
+
+    expect(res.status).toBe(400);
+    expect(driverCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('400s when the driving licence is missing', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+    const { drivingLicenceUrl: _l, ...noLicence } = APPLICATION;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(noLicence);
+
+    expect(res.status).toBe(400);
+    expect(driverCreateMock).not.toHaveBeenCalled();
   });
 
   it('409s when the caller already has a live driver record', async () => {
@@ -464,8 +519,8 @@ describe('role exclusion: company members cannot apply as drivers', () => {
     const app = createApp();
     const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send({
       fullName: 'Conflicted', phone: '+447700900001', basePostcode: 'M1 1AE', county: 'Gtr Manchester',
-      vehicleMakeModel: 'Transit', vehicleReference: 'AB12 CDE',
-      vanPhotoUrl: 'd/van', motorInsuranceUrl: 'd/motor', gitInsuranceUrl: 'd/git', liabilityUrl: 'd/liab',
+      drivingLicenceUrl: 'd/licence', motorInsuranceUrl: 'd/motor', gitInsuranceUrl: 'd/git', liabilityUrl: 'd/liab',
+      vehicles: [{ makeModel: 'Transit', registrationPlate: 'AB12 CDE', photoUrl: 'd/van' }],
     });
 
     expect(res.status).toBe(409);

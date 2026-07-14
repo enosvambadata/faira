@@ -725,16 +725,19 @@ describe('driver application vetting (admin)', () => {
     fullName: 'Tendai Driver',
     county: 'Greater Manchester',
     basePostcode: 'M1 1AE',
-    vehicleMakeModel: 'Ford Transit',
     appliedAt: new Date('2026-07-13'),
-    vanPhotoUrl: 'docs/van',
+    drivingLicenceUrl: 'docs/licence',
     motorInsuranceUrl: 'docs/motor',
     gitInsuranceUrl: 'docs/git',
     liabilityUrl: 'docs/liability',
     phone: '+447700900001',
+    vehicles: [
+      { makeModel: 'Ford Transit', registrationPlate: 'AB12 CDE', capacityParcels: 30, photoUrl: 'docs/van1' },
+      { makeModel: 'Merc Sprinter', registrationPlate: 'CD34 EFG', capacityParcels: 20, photoUrl: 'docs/van2' },
+    ],
   };
 
-  it('lists pending applications with signed document view URLs', async () => {
+  it('lists pending applications with signed document + vehicle photo URLs', async () => {
     driverFindManyMock.mockResolvedValue([APPLICANT]);
 
     const app = createApp();
@@ -742,7 +745,10 @@ describe('driver application vetting (admin)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data[0].fullName).toBe('Tendai Driver');
+    expect(res.body.data[0].documents.drivingLicence).toBe('https://signed.example/docs/licence');
     expect(res.body.data[0].documents.gitInsurance).toBe('https://signed.example/docs/git');
+    expect(res.body.data[0].vehicles).toHaveLength(2);
+    expect(res.body.data[0].vehicles[0]).toMatchObject({ registrationPlate: 'AB12 CDE', photo: 'https://signed.example/docs/van1' });
   });
 
   it('approves a pending application to ACTIVE', async () => {

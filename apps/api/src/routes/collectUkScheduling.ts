@@ -79,6 +79,7 @@ router.get('/drivers', requireAdmin, async (_req: Request, res: Response) => {
 router.get('/driver-applications', requireAdmin, async (_req: Request, res: Response) => {
   const applications = await prisma.collectUkDriver.findMany({
     where: { status: 'APPLIED' },
+    include: { vehicles: { orderBy: { createdAt: 'asc' } } },
     orderBy: { appliedAt: 'asc' },
   });
 
@@ -89,12 +90,15 @@ router.get('/driver-applications', requireAdmin, async (_req: Request, res: Resp
       phone: a.phone,
       county: a.county,
       basePostcode: a.basePostcode,
-      vehicleMakeModel: a.vehicleMakeModel,
-      vehicleReference: a.vehicleReference,
-      capacityParcels: a.capacityParcels,
       appliedAt: a.appliedAt,
+      vehicles: a.vehicles.map(v => ({
+        makeModel: v.makeModel,
+        registrationPlate: v.registrationPlate,
+        capacityParcels: v.capacityParcels,
+        photo: v.photoUrl ? getCollectUkDriverDocViewUrl(v.photoUrl) : null,
+      })),
       documents: {
-        vanPhoto: a.vanPhotoUrl ? getCollectUkDriverDocViewUrl(a.vanPhotoUrl) : null,
+        drivingLicence: a.drivingLicenceUrl ? getCollectUkDriverDocViewUrl(a.drivingLicenceUrl) : null,
         motorInsurance: a.motorInsuranceUrl ? getCollectUkDriverDocViewUrl(a.motorInsuranceUrl) : null,
         gitInsurance: a.gitInsuranceUrl ? getCollectUkDriverDocViewUrl(a.gitInsuranceUrl) : null,
         liability: a.liabilityUrl ? getCollectUkDriverDocViewUrl(a.liabilityUrl) : null,
