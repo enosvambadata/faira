@@ -1,6 +1,6 @@
 import { Package } from "@/components/ui/icons";
 
-// Shared Faira Collect brand lockup for portal/driver/public headers so
+// Shared Vamba Collect brand lockup for portal/driver/public headers so
 // every Collect UK surface carries the same mark (design system: navy
 // square + Poppins wordmark, product area as a muted suffix).
 export function CollectBrand({ suffix }: { suffix?: string }) {
@@ -10,7 +10,7 @@ export function CollectBrand({ suffix }: { suffix?: string }) {
         <Package size={17} />
       </span>
       <span className="text-lg font-semibold text-text">
-        Faira Collect
+        Vamba Collect
         {suffix && <span className="font-normal text-muted"> — {suffix}</span>}
       </span>
     </span>

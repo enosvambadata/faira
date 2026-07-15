@@ -152,9 +152,9 @@ export default function DriveForFairaPage() {
       </header>
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:px-6">
-        <h1 className="text-xl font-semibold text-text">Drive for Faira</h1>
+        <h1 className="text-xl font-semibold text-text">Drive for Vamba Collect</h1>
         <p className="mt-1 text-sm text-muted">
-          Got your own van? Faira sends you paid collection routes in your area. We review your
+          Got your own van? Vamba Collect sends you paid collection routes in your area. We review your
           documents before your first route; a valid driving licence and commercial (hire &amp;
           reward), Goods in Transit and public liability cover are required by law for carrying
           customers&rsquo; goods.
@@ -232,7 +232,7 @@ export default function DriveForFairaPage() {
             <div className="mt-2 border-t border-border pt-4">
               <h2 className="text-sm font-semibold text-text">Your documents</h2>
               <p className="mt-1 text-xs text-muted">
-                Photos or scans are fine. Stored securely and only visible to Faira&rsquo;s review team.
+                Photos or scans are fine. Stored securely and only visible to Vamba Collect&rsquo;s review team.
               </p>
               <div className="mt-3 flex flex-col gap-4">
                 {DOCS.map(doc => (

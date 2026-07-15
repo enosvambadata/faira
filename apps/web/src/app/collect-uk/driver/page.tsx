@@ -79,9 +79,9 @@ export default function DriverRoutesPage() {
 
         {!loading && !error && !profile && (
           <Card className="mt-6">
-            <p className="text-sm text-text">You&rsquo;re not registered as a Faira driver yet.</p>
+            <p className="text-sm text-text">You&rsquo;re not registered as a Vamba Collect driver yet.</p>
             <p className="mt-1 text-sm text-muted">
-              Got your own van and insurance? Apply to drive for Faira — you set your base area, we
+              Got your own van and insurance? Apply to drive for Vamba Collect — you set your base area, we
               send you routes.
             </p>
             <Link href="/collect-uk/drive" className="mt-3 inline-block">

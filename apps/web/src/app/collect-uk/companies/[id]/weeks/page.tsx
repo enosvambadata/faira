@@ -77,7 +77,7 @@ export default function CompanyWeeksPage() {
     <Card>
       <h2 className="text-base font-semibold text-text">Collection weeks</h2>
       <p className="mt-1 text-sm text-muted">
-        Tell Faira which days we should collect for you — customers book into your next week and we
+        Tell Vamba Collect which days we should collect for you — customers book into your next week and we
         route the drivers. Declaring a week also picks up every booking that was waiting.
       </p>
 

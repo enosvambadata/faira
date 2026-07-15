@@ -101,14 +101,14 @@ export default function CollectUkHomePage() {
 
         {!loading && !isCompanyMember && (
           <div className="mt-8 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text">Driving for Faira</h2>
+            <h2 className="text-base font-semibold text-text">Driving for Vamba Collect</h2>
           </div>
         )}
         {!loading && !isCompanyMember && (
           <Card className="mt-3">
             {driver?.status === "ACTIVE" && (
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-text">You&rsquo;re an approved Faira driver.</p>
+                <p className="text-sm text-text">You&rsquo;re an approved Vamba Collect driver.</p>
                 <Link href="/collect-uk/driver">
                   <Button size="md">Open driver portal</Button>
                 </Link>

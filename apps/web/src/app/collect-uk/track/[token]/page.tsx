@@ -97,7 +97,7 @@ export default function CollectUkTrackingPage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-dark text-white">
             <Package size={17} />
           </span>
-          <span className="text-lg font-semibold text-text">Faira Collect</span>
+          <span className="text-lg font-semibold text-text">Vamba Collect</span>
         </div>
       </header>
 

@@ -37,13 +37,13 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
   if (redirect?.startsWith("/collect-uk/register")) {
     return {
       title: "Register your shipping company",
-      subtitle: "Get a booking link for your customers and let Faira handle your UK collections.",
+      subtitle: "Get a booking link for your customers and let Vamba Collect handle your UK collections.",
       step2: "Company details",
     };
   }
   if (redirect?.startsWith("/collect-uk/drive")) {
     return {
-      title: "Apply to drive for Faira",
+      title: "Apply to drive for Vamba Collect",
       subtitle: "Own van, paid collection routes in your area. Have your insurance documents ready.",
       step2: "Your van & documents",
     };
@@ -57,7 +57,7 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
   }
   return {
     title: "Create your Faira account",
-    subtitle: "Register your shipping company's collections — or apply to drive for Faira.",
+    subtitle: "Register your shipping company's collections — or apply to drive for Vamba Collect.",
     step2: "Choose your path",
   };
 }

@@ -106,9 +106,9 @@ export default function DispatchLayout({ children }: { children: React.ReactNode
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         {ready && !token && (
           <Card className="mx-auto max-w-md">
-            <h1 className="text-lg font-semibold text-text">Faira dispatch</h1>
+            <h1 className="text-lg font-semibold text-text">Vamba Collect dispatch</h1>
             <p className="mt-1 text-sm text-muted">
-              Internal tool for scheduling collections across every company. Enter the Faira admin token to
+              Internal tool for scheduling collections across every company. Enter the Vamba Collect admin token to
               continue — it stays in this tab only.
             </p>
             <form onSubmit={handleTokenSubmit} className="mt-4 flex flex-col gap-4">
