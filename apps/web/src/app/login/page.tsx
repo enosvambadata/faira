@@ -78,7 +78,7 @@ function LoginForm() {
   return (
     <Card>
       <h1 className="text-xl font-semibold text-text">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">Welcome back to Faira.</p>
+      <p className="mt-1 text-sm text-muted">Welcome back to Vamba Collect.</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
         <Field label="Email address" required>
