@@ -56,7 +56,7 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
     };
   }
   return {
-    title: "Create your Faira account",
+    title: "Create your Vamba Collect account",
     subtitle: "Register your shipping company's collections — or apply to drive for Vamba Collect.",
     step2: "Choose your path",
   };
