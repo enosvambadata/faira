@@ -131,7 +131,7 @@ export default function BookCollectionPage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-dark text-white">
             <Package size={17} />
           </span>
-          <span className="text-lg font-semibold text-text">Faira Collect</span>
+          <span className="text-lg font-semibold text-text">Vamba Collect</span>
         </div>
       </header>
 
@@ -148,7 +148,7 @@ export default function BookCollectionPage() {
         {!loading && company && !confirmation && (
           <>
             <h1 className="text-xl font-semibold text-text">Book a collection with {company.name}</h1>
-            <p className="mt-1 text-sm text-muted">A Faira driver will collect your parcel and deliver it to {company.name}.</p>
+            <p className="mt-1 text-sm text-muted">A Vamba Collect driver will collect your parcel and deliver it to {company.name}.</p>
 
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-muted">
               <span className="inline-flex items-center gap-1.5">
@@ -318,7 +318,7 @@ export default function BookCollectionPage() {
               <p className="text-sm font-semibold text-text">What happens next</p>
               <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 text-sm leading-relaxed text-muted">
                 <li>We&rsquo;ll text you when your collection is scheduled.</li>
-                <li>A Faira driver collects your parcel from your doorstep.</li>
+                <li>A Vamba Collect driver collects your parcel from your doorstep.</li>
                 <li>You&rsquo;re notified the moment it reaches the warehouse.</li>
               </ol>
             </div>

@@ -49,7 +49,7 @@ export default function CompanyBillingPage() {
     <Card>
       <h2 className="text-base font-semibold text-text">Billing</h2>
       <p className="mt-1 text-sm text-muted">
-        What Faira charges you for completed collections — a charge is added each time you confirm a
+        What Vamba Collect charges you for completed collections — a charge is added each time you confirm a
         handover.
       </p>
 
@@ -62,7 +62,7 @@ export default function CompanyBillingPage() {
         </p>
       ) : (
         <p className="mt-3 text-sm text-muted">
-          No rate agreed with Faira yet — completed collections are recorded but not charged.
+          No rate agreed with Vamba Collect yet — completed collections are recorded but not charged.
         </p>
       )}
 

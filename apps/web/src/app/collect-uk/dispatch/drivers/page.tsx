@@ -246,7 +246,7 @@ export default function DispatchDriversPage() {
       <Card className="mt-4">
         <h2 className="text-base font-semibold text-text">Register a driver</h2>
         <form onSubmit={handleCreateDriver} className="mt-3 flex flex-col gap-4">
-          <Field label="User ID" hint="The driver's Faira account id (they must sign up first)" required>
+          <Field label="User ID" hint="The driver's Vamba Collect account id (they must sign up first)" required>
             {p => <Input {...p} value={newDriverUserId} onChange={e => setNewDriverUserId(e.target.value)} />}
           </Field>
           <Field label="Vehicle reference" hint="Optional, e.g. VAN-1">

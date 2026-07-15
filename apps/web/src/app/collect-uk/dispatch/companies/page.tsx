@@ -86,7 +86,7 @@ export default function DispatchCompaniesPage() {
     <>
       <h1 className="text-xl font-semibold text-text">Companies</h1>
       <p className="mt-1 text-sm text-muted">
-        Every company on the platform with the rate Faira charges them. Click a company for its full
+        Every company on the platform with the rate Vamba Collect charges them. Click a company for its full
         booking history.
       </p>
 

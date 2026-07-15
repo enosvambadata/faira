@@ -114,7 +114,7 @@ export async function notifyHandedOver(bookingId: string): Promise<void> {
   );
 }
 
-// Driver applicants have a Faira account (email) AND gave a phone on the
+// Driver applicants have a Vamba Collect account (email) AND gave a phone on the
 // application, so both channels are used for the approve/reject decision:
 // SMS reaches them today (lib/sms), email activates once a provider is
 // configured (lib/email no-ops until then). Best-effort like everything
@@ -144,14 +144,14 @@ export async function notifyDriverApproved(driverId: string): Promise<void> {
     if (c.email) {
       await sendEmail(
         c.email,
-        "You're approved to drive for Faira",
-        `<p>Hi ${escapeHtml(name)},</p><p>Good news — your application to drive for Faira has been approved. ` +
+        "You're approved to drive for Vamba Collect",
+        `<p>Hi ${escapeHtml(name)},</p><p>Good news — your application to drive for Vamba Collect has been approved. ` +
           `You can now sign in and see your collection routes.</p>` +
-          `<p><a href="${portal}">Open your driver portal</a></p><p>— Faira Collect</p>`,
+          `<p><a href="${portal}">Open your driver portal</a></p><p>— Vamba Collect</p>`,
       );
     }
     if (c.phone) {
-      await sendSms(c.phone, `Faira: you're approved to drive! Sign in to see your routes: ${portal}`);
+      await sendSms(c.phone, `Vamba Collect: you're approved to drive! Sign in to see your routes: ${portal}`);
     }
   } catch (err) {
     logger.error({ err, driverId }, 'driver-approved notification failed');
@@ -170,14 +170,14 @@ export async function notifyDriverRejected(driverId: string, reason: string | nu
     if (c.email) {
       await sendEmail(
         c.email,
-        'Your Faira driver application',
-        `<p>Hi ${escapeHtml(name)},</p><p>Thanks for applying to drive for Faira. We weren't able to approve your ` +
+        'Your Vamba Collect driver application',
+        `<p>Hi ${escapeHtml(name)},</p><p>Thanks for applying to drive for Vamba Collect. We weren't able to approve your ` +
           `application this time.${emailReasonText}</p><p>You can fix the issue and ` +
-          `<a href="${apply}">apply again</a>.</p><p>— Faira Collect</p>`,
+          `<a href="${apply}">apply again</a>.</p><p>— Vamba Collect</p>`,
       );
     }
     if (c.phone) {
-      await sendSms(c.phone, `Faira: your driver application wasn't approved.${reasonText} Fix it and reapply: ${apply}`);
+      await sendSms(c.phone, `Vamba Collect: your driver application wasn't approved.${reasonText} Fix it and reapply: ${apply}`);
     }
   } catch (err) {
     logger.error({ err, driverId }, 'driver-rejected notification failed');

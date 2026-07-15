@@ -82,7 +82,7 @@ export default function DispatchCompanyBookingsPage() {
 
       <h1 className="mt-2 text-xl font-semibold text-text">{data.company.name}</h1>
       <p className="mt-1 text-sm text-muted">
-        Full booking history — every status, Faira&rsquo;s view. Booking link slug:{" "}
+        Full booking history — every status, Vamba Collect&rsquo;s view. Booking link slug:{" "}
         <span className="font-mono">{data.company.slug}</span>
       </p>
 

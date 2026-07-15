@@ -3,8 +3,8 @@ import Link from "next/link";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 
 export const metadata: Metadata = {
-  title: "Privacy notice — Faira Collect",
-  description: "How Faira Collect handles your personal information.",
+  title: "Privacy notice — Vamba Collect",
+  description: "How Vamba Collect handles your personal information.",
 };
 
 // Plain-English UK GDPR privacy notice. Static content by design: every
@@ -16,7 +16,7 @@ const SECTIONS: { heading: string; body: React.ReactNode }[] = [
     heading: "Who we are",
     body: (
       <p>
-        Faira Collect is operated by <strong>Vambadata Ltd</strong>, a company registered in the United
+        Vamba Collect is operated by <strong>Vambadata Ltd</strong>, a company registered in the United
         Kingdom (&ldquo;we&rdquo;, &ldquo;us&rdquo;). We are the data controller for the personal
         information described in this notice. You can contact us about anything in this notice at{" "}
         <a href="mailto:enos@vambadata.com" className="text-primary underline">
@@ -160,7 +160,7 @@ export default function PrivacyPage() {
 
       <footer className="border-t border-border bg-white">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-6 py-6 text-sm text-muted">
-          <span>Faira Collect — a Vambadata product</span>
+          <span>Vamba Collect — a Vambadata product</span>
           <Link href="/" className="cursor-pointer transition-colors duration-200 hover:text-primary">
             Home
           </Link>

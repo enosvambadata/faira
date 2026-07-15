@@ -62,7 +62,7 @@ router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
   const existing = await prisma.collectUkDriver.findUnique({ where: { userId: req.userId! } });
   if (existing && existing.status !== 'REJECTED') {
-    next(new ApiError('ALREADY_APPLIED', 'You already have a driver record with Faira', 409));
+    next(new ApiError('ALREADY_APPLIED', 'You already have a driver record with Vamba Collect', 409));
     return;
   }
 

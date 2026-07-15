@@ -23,4 +23,4 @@ export async function isCompanyMember(userId: string): Promise<boolean> {
 export const DRIVER_BLOCKS_COMPANY =
   'Driver accounts cannot manage a shipping company -- drivers serve every company, so the roles must stay separate. Use a different account.';
 export const COMPANY_BLOCKS_DRIVER =
-  "Company members cannot drive for Faira -- drivers serve every company, so the roles must stay separate. Use a different account to apply.";
+  "Company members cannot drive for Vamba Collect -- drivers serve every company, so the roles must stay separate. Use a different account to apply.";

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/icons";
 
 // Landing follows the "Trust & Authority + Conversion" pattern from the
-// Faira Collect UK design system: hero with CTA above the fold, proof
+// Vamba Collect UK design system: hero with CTA above the fold, proof
 // band, how-it-works, audience split, single clear CTA path. Styled links
 // (not <Button> inside <Link>) so no interactive element nests inside an
 // anchor.
@@ -28,7 +28,7 @@ const STEPS = [
   },
   {
     icon: Truck,
-    title: "One Faira driver collects",
+    title: "One Vamba Collect driver collects",
     body: "We pool collections across companies into one efficient round, with photo proof at every doorstep.",
   },
   {
@@ -59,7 +59,7 @@ export default function WelcomePage() {
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-dark text-white">
               <Package size={20} />
             </span>
-            <span className="text-lg font-semibold">Faira Collect</span>
+            <span className="text-lg font-semibold">Vamba Collect</span>
           </span>
           <div className="flex items-center gap-3">
             <Link
@@ -85,13 +85,13 @@ export default function WelcomePage() {
             Built for shipping companies collecting parcels in the UK
           </p>
           <h1 className="mx-auto max-w-3xl text-4xl font-bold leading-tight tracking-tight text-dark sm:text-5xl">
-            Faira Collect
+            Vamba Collect
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-lg font-medium text-primary">
             The shared UK parcel-collection network
           </p>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-muted">
-            Stop running your own vans. One Faira driver collects from all your customers&rsquo;
+            Stop running your own vans. One Vamba Collect driver collects from all your customers&rsquo;
             doorsteps and delivers straight to your warehouse — while they get booking links, SMS
             updates, and live tracking.
           </p>
@@ -105,7 +105,7 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        <section aria-label="Why companies use Faira Collect" className="border-y border-border bg-white">
+        <section aria-label="Why companies use Vamba Collect" className="border-y border-border bg-white">
           <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-8 px-6 py-10 text-center sm:grid-cols-3">
             <div>
               <p className="text-3xl font-bold text-dark">1 driver</p>
@@ -201,10 +201,10 @@ export default function WelcomePage() {
 
       <footer className="border-t border-border bg-white">
         <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-between gap-3 px-6 py-6 text-sm text-muted sm:flex-row">
-          <span>Faira Collect — a Vambadata product</span>
+          <span>Vamba Collect — a Vambadata product</span>
           <div className="flex items-center gap-5">
             <Link href="/collect-uk/drive" className="cursor-pointer transition-colors duration-200 hover:text-primary">
-              Drive for Faira
+              Drive for Vamba Collect
             </Link>
             <Link href="/privacy" className="cursor-pointer transition-colors duration-200 hover:text-primary">
               Privacy
