@@ -68,13 +68,21 @@ const createBookingSchema = z
     customerName: z.string().trim().min(1).max(200),
     // SMS is the only channel to guest customers, so the contact MUST be a
     // real phone -- a name/email/typo would silently swallow every
-    // notification (sendSms is best-effort). Normalise the separators the
-    // booking form invites ("+44 7700 900000") then validate E.164 via auth's
-    // shared phoneSchema, so the stored value is always deliverable.
+    // notification (sendSms is best-effort). Collect UK is UK-domestic, so
+    // accept how UK customers actually type their number -- national "07..."
+    // and spaced/"+44" forms -- normalise to E.164, then validate via auth's
+    // shared phoneSchema so the stored value is always deliverable.
     customerContact: z
       .string()
       .trim()
-      .transform(s => s.replace(/[\s().-]/g, ''))
+      .transform(s => {
+        const d = s.replace(/[\s().-]/g, '');
+        if (d.startsWith('+')) return d;
+        if (d.startsWith('00')) return `+${d.slice(2)}`; // 00 international prefix
+        if (d.startsWith('0')) return `+44${d.slice(1)}`; // UK national -> +44
+        if (d.startsWith('44')) return `+${d}`; // UK, missing the +
+        return d; // anything else -> let phoneSchema reject it
+      })
       .pipe(phoneSchema),
     destinationCountry: z.string().trim().min(1).max(100),
     collectionAddress: z.string().trim().min(1).max(300),
