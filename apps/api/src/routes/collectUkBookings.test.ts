@@ -173,6 +173,20 @@ describe('POST /api/v1/collect-uk/book/:companySlug', () => {
     });
   });
 
+  it('accepts a UK national phone (07...) and stores it normalized to E.164', async () => {
+    bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/collect-uk/book/abc-logistics')
+      .send({ ...VALID_BOOKING_BODY, customerContact: '07459 920895' });
+
+    expect(res.status).toBe(201);
+    expect(bookingCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ customerContact: '+447459920895' }),
+    });
+  });
+
   it('stores the requested number of parcels', async () => {
     bookingCreateMock.mockResolvedValue({ id: 'booking-1', reference: 'FC-abc-logistics-000005' });
 
