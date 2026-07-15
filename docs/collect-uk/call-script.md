@@ -79,133 +79,133 @@ No collection today. → *"You don't offer doorstep pickup — we can be your co
 
 > **Subject: Cheaper doorstep collection for [Company]'s customers**
 >
-> Hi [name], I'm [you] from **Vamba Collect**. We run shared doorstep parcel collection across the UK for shipping companies. Instead of your own van — or a courier — collecting drums/barrels/boxes from customers, we collect on pooled routes for **~£30/stop + £5–18 per parcel**, usually well under your current cost. You keep the shipping; we just handle pickup, with a booking link your customers use directly. Worth a quick call this week? — [you], [phone]
+> Hi [name], I'm [you] from **Vamba Collect**. We run shared doorstep parcel collection across the UK for shipping companies. Instead of your own van — or a courier — collecting drums/barrels/boxes from customers, we collect on pooled routes for **~£30/stop + £5–18 per parcel**, usually well under your current cost. You keep the shipping; we just handle pickup, with a booking link your customers use directly. Worth a quick call this week? — [you], +447459920895
 
 ---
 
 ## Cold emails — ready to send from `enos@vambadata.com`
 
-**Rules:** plain text, **one link, no images** (multiple links or images hurt inbox placement — one clean URL from a warmed mailbox is fine). One email per prospect, **spread over a day or two**, sign as Enos. Keep the opt-out line (UK B2B compliance). Swap `[phone]` for your number. The register link lands new companies on the "Register your shipping company" flow.
+**Rules:** plain text, **one link, no images** (multiple links or images hurt inbox placement — one clean URL from a warmed mailbox is fine). One email per prospect, **spread over a day or two**, sign as Enos. Keep the opt-out line (UK B2B compliance). Swap `+447459920895` for your number. The register link lands new companies on the "Register your shipping company" flow.
 
 ### Africa corridor
 
 **→ Coedma Freight · `info@coedmafreight.com`**
 Subject: A cheaper alternative to DPD for your collections
-> Hi,
-> I saw Coedma uses DPD Local to collect customers' drums and boxes before they ship to Zimbabwe and South Africa. We do that same doorstep collection on shared routes, so it comes in under DPD's per-drum rate — around £30 a stop plus £5–18 per parcel. You keep the shipping; we just handle the pickup, with a booking link your customers use themselves.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not relevant, just say and I won't chase.
-> Enos · Vamba Collect · [phone]
+Hi,
+I saw Coedma uses DPD Local to collect customers' drums and boxes before they ship to Zimbabwe and South Africa. We do that same doorstep collection on shared routes, so it comes in under DPD's per-drum rate — around £30 a stop plus £5–18 per parcel. You keep the shipping; we just handle the pickup, with a booking link your customers use themselves.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not relevant, just say and I won't chase.
+Enos · Vamba Collect · +447459920895
 
 **→ Manc Global · `hello@manclogistics.co.uk`**
 Subject: Cutting the cost of your Ghana collections
-> Hi,
-> I noticed Manc Global runs its own van for customer collections. We run shared collection routes across the UK, so we can pick up drums and boxes from your Ghana-bound customers for about £30 a stop plus £5–18 per parcel — well under a dedicated van and driver, with no vehicle to tie up. You keep the shipping; we handle the pickup via a booking link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just let me know and I'll leave it there.
-> Enos · Vamba Collect · [phone]
+Hi,
+I noticed Manc Global runs its own van for customer collections. We run shared collection routes across the UK, so we can pick up drums and boxes from your Ghana-bound customers for about £30 a stop plus £5–18 per parcel — well under a dedicated van and driver, with no vehicle to tie up. You keep the shipping; we handle the pickup via a booking link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just let me know and I'll leave it there.
+Enos · Vamba Collect · +447459920895
 
 **→ Excess Luggage · `info@excessluggage.co.uk`**
 Subject: Your £35 doorstep collection — done for less
-> Hi,
-> You advertise doorstep collection at £35 for your Zimbabwe shipments. We run shared collection routes, so we can do the same pickup for less — around £30 a stop plus £5–18 per parcel — and you keep the customer and the shipping. They book their own pickup through a link; we bring it to you.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If not relevant, no worries — just say.
-> Enos · Vamba Collect · [phone]
+Hi,
+You advertise doorstep collection at £35 for your Zimbabwe shipments. We run shared collection routes, so we can do the same pickup for less — around £30 a stop plus £5–18 per parcel — and you keep the customer and the shipping. They book their own pickup through a link; we bring it to you.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If not relevant, no worries — just say.
+Enos · Vamba Collect · +447459920895
 
 **→ Apex Cargo · `info@apexcargo.co.uk`**
 Subject: The collection cost behind your nationwide pickups
-> Hi,
-> Apex offers collection across your Africa and Caribbean corridors. That collection leg is real cost — we run shared routes so it lands at about £30 a stop plus £5–18 per parcel, cheaper than running it yourself, across the UK. You keep the shipping; we handle pickup via a booking link your customers use.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not for you, just let me know.
-> Enos · Vamba Collect · [phone]
+Hi,
+Apex offers collection across your Africa and Caribbean corridors. That collection leg is real cost — we run shared routes so it lands at about £30 a stop plus £5–18 per parcel, cheaper than running it yourself, across the UK. You keep the shipping; we handle pickup via a booking link your customers use.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not for you, just let me know.
+Enos · Vamba Collect · +447459920895
 
 **→ Cargo to Africa · `info@cargotoafrica.co.uk`**
 Subject: Doorstep collection for your Africa customers — cheaper
-> Hi,
-> You offer UK collection alongside your door-to-door service across Africa. We run shared collection routes, so we can take that pickup leg off you at around £30 a stop plus £5–18 per parcel — less than doing it in-house. You keep the shipping; customers book their own pickup through a link and we deliver to your warehouse.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just say and I'll stop.
-> Enos · Vamba Collect · [phone]
+Hi,
+You offer UK collection alongside your door-to-door service across Africa. We run shared collection routes, so we can take that pickup leg off you at around £30 a stop plus £5–18 per parcel — less than doing it in-house. You keep the shipping; customers book their own pickup through a link and we deliver to your warehouse.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just say and I'll stop.
+Enos · Vamba Collect · +447459920895
 
 **→ Cargonaija · `info@cargonaija.com`**
 Subject: One flat collection rate instead of postcode fees
-> Hi,
-> You collect UK-wide but charge collection by postcode. We run shared routes, so we can flatten that to one simple rate — around £30 a stop plus £5–18 per parcel — cheaper for your West Africa customers and simpler for you. You keep the shipping; they book their pickup through a link and we bring it in.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not relevant, just let me know.
-> Enos · Vamba Collect · [phone]
+Hi,
+You collect UK-wide but charge collection by postcode. We run shared routes, so we can flatten that to one simple rate — around £30 a stop plus £5–18 per parcel — cheaper for your West Africa customers and simpler for you. You keep the shipping; they book their pickup through a link and we bring it in.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not relevant, just let me know.
+Enos · Vamba Collect · +447459920895
 
 ### Caribbean corridor
 
 **→ West Indies Direct · `info@westindiesdirect.co.uk`**
 Subject: The collection cost inside your barrels
-> Hi,
-> You collect any London postcode 7 days a week, with collection bundled into your barrel price. That pickup is a real cost line — we run shared routes so it lands at about £30 a stop plus £5–18 per parcel, which either widens your margin or lets you undercut on price. You keep the shipping; customers book pickup through a link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just say and I'll leave it.
-> Enos · Vamba Collect · [phone]
+Hi,
+You collect any London postcode 7 days a week, with collection bundled into your barrel price. That pickup is a real cost line — we run shared routes so it lands at about £30 a stop plus £5–18 per parcel, which either widens your margin or lets you undercut on price. You keep the shipping; customers book pickup through a link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just say and I'll leave it.
+Enos · Vamba Collect · +447459920895
 
 **→ Zan Shipping · `winston@zanshippingservices.com`**
 Subject: Cheaper doorstep collection for Zan's customers
-> Hi Winston,
-> You offer nationwide doorstep collection of boxes, crates and drums 7 days a week. We run shared collection routes across the UK, so we can handle those pickups at around £30 a stop plus £5–18 per parcel — less than running them yourself. You keep the shipping; your customers book their own pickup through a link and we deliver to you.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not relevant, just let me know and I won't chase.
-> Enos · Vamba Collect · [phone]
+Hi Winston,
+You offer nationwide doorstep collection of boxes, crates and drums 7 days a week. We run shared collection routes across the UK, so we can handle those pickups at around £30 a stop plus £5–18 per parcel — less than running them yourself. You keep the shipping; your customers book their own pickup through a link and we deliver to you.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not relevant, just let me know and I won't chase.
+Enos · Vamba Collect · +447459920895
 
 **→ Gee Shipping · `info@geeshipping.co.uk`**
 Subject: Taking the collection leg off you (Midlands + North)
-> Hi,
-> Gee offers doorstep collection across London, Birmingham, the Midlands and North for your Caribbean and Ghana shipments. We cover the same ground on shared routes, so we can run those pickups at around £30 a stop plus £5–18 per parcel — cheaper than doing it in-house. You keep the shipping; customers book pickup through a link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just say.
-> Enos · Vamba Collect · [phone]
+Hi,
+Gee offers doorstep collection across London, Birmingham, the Midlands and North for your Caribbean and Ghana shipments. We cover the same ground on shared routes, so we can run those pickups at around £30 a stop plus £5–18 per parcel — cheaper than doing it in-house. You keep the shipping; customers book pickup through a link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just say.
+Enos · Vamba Collect · +447459920895
 
 ### South Asia corridor
 
 **→ Pak Direct Cargo · `info@pakdirectcargo.com`**
 Subject: Reliable van capacity for your next-day collections
-> Hi,
-> You promise next-day collection across London, Birmingham, Manchester and Coventry. That needs reliable van capacity — which is exactly what we are. We run shared collection routes, so we can cover those pickups at around £30 a stop plus £5–18 per parcel. You keep the shipping to Pakistan; we handle the doorstep pickup via a booking link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not relevant, just let me know.
-> Enos · Vamba Collect · [phone]
+Hi,
+You promise next-day collection across London, Birmingham, Manchester and Coventry. That needs reliable van capacity — which is exactly what we are. We run shared collection routes, so we can cover those pickups at around £30 a stop plus £5–18 per parcel. You keep the shipping to Pakistan; we handle the doorstep pickup via a booking link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not relevant, just let me know.
+Enos · Vamba Collect · +447459920895
 
 **→ Cargo Lord · `info@cargolord.com`**
 Subject: Your 4-city collection network, without the vans
-> Hi,
-> Cargo Lord runs door-to-door collection across a Birmingham, Manchester, London and Bolton network. We run shared collection routes, so we can pool those pickups at around £30 a stop plus £5–18 per parcel — cheaper than running your own vehicles. You keep the shipping to Pakistan, India and Europe; customers book pickup through a link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just say and I'll stop.
-> Enos · Vamba Collect · [phone]
+Hi,
+Cargo Lord runs door-to-door collection across a Birmingham, Manchester, London and Bolton network. We run shared collection routes, so we can pool those pickups at around £30 a stop plus £5–18 per parcel — cheaper than running your own vehicles. You keep the shipping to Pakistan, India and Europe; customers book pickup through a link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just say and I'll stop.
+Enos · Vamba Collect · +447459920895
 
 **→ AtoZ India Courier · `info@atozindiacourier.co.uk`**
 Subject: Your "free" collection isn't free — we make it cheap
-> Hi,
-> You offer free doorstep collection, which really means it's baked into your per-kg rate. We run shared collection routes, so we can handle those India-bound pickups at around £30 a stop plus £5–18 per parcel — a real, low cost you can see, instead of eating it. You keep the shipping; customers book pickup through a link.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> If it's not relevant, just let me know.
-> Enos · Vamba Collect · [phone]
+Hi,
+You offer free doorstep collection, which really means it's baked into your per-kg rate. We run shared collection routes, so we can handle those India-bound pickups at around £30 a stop plus £5–18 per parcel — a real, low cost you can see, instead of eating it. You keep the shipping; customers book pickup through a link.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+If it's not relevant, just let me know.
+Enos · Vamba Collect · +447459920895
 
 **→ Speedy Cargo · `info@speedy-cargo.co.uk`  (upsell — you become their collection)**
 Subject: Add doorstep collection without buying vans
-> Hi,
-> You ship to Pakistan but I couldn't see doorstep collection on your site. We can be that for you — you advertise pickup, we do the driving on shared routes at around £30 a stop plus £5–18 per parcel, and you win the customers who'd rather not drive to a drop-off. Your customers book pickup through a link and we deliver to you.
-> Worth a quick look? You can see how it works and register in a couple of minutes here:
-> https://collect.vambadata.com/signup?redirect=/collect-uk/register
-> Not relevant? Just say.
-> Enos · Vamba Collect · [phone]
+Hi,
+You ship to Pakistan but I couldn't see doorstep collection on your site. We can be that for you — you advertise pickup, we do the driving on shared routes at around £30 a stop plus £5–18 per parcel, and you win the customers who'd rather not drive to a drop-off. Your customers book pickup through a link and we deliver to you.
+Worth a quick look? You can see how it works and register in a couple of minutes here:
+https://collect.vambadata.com/signup?redirect=/collect-uk/register
+Not relevant? Just say.
+Enos · Vamba Collect · +447459920895
