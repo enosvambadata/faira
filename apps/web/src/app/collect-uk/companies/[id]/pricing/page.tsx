@@ -9,7 +9,8 @@ import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useCompanyPortal } from "@/lib/companyContext";
-import { collectUkFreight, CollectUkFreightRate, FulfilmentApiError } from "@/lib/api";
+import { whatsappLink } from "@/lib/whatsapp";
+import { collectUkFreight, collectUkPayments, CollectUkFreightRate, CollectUkPayment, FulfilmentApiError } from "@/lib/api";
 
 const money = (pence: number) => `£${(pence / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const toPence = (pounds: string) => Math.round(Number(pounds) * 100);
@@ -34,6 +35,14 @@ export default function CompanyPricingPage() {
   const [qty, setQty] = useState<Record<string, number>>({});
   const [seeding, setSeeding] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Quote -> payment
+  const [custName, setCustName] = useState("");
+  const [custPhone, setCustPhone] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdPayment, setCreatedPayment] = useState<CollectUkPayment | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Add-item form
   const [newCategory, setNewCategory] = useState("");
@@ -73,6 +82,43 @@ export default function CompanyPricingPage() {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Couldn't copy — select and copy the total manually", tone: "error" });
+    }
+  };
+
+  // Turn the current quote straight into a Stripe payment link -- no re-entry.
+  const handleCreateLink = async () => {
+    if (selected.length === 0 || !custName.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    setCreatedPayment(null);
+    try {
+      const payment = await collectUkPayments.create(company.id, {
+        customerName: custName.trim(),
+        customerContact: custPhone.trim() || undefined,
+        description: quoteText.slice(0, 1000),
+        amountPence: totalPence,
+      });
+      setCreatedPayment(payment);
+      if (payment.checkoutUrl) await navigator.clipboard.writeText(payment.checkoutUrl).catch(() => {});
+    } catch (err) {
+      if (err instanceof FulfilmentApiError && err.code === "STRIPE_NOT_CONFIGURED") {
+        setCreateError("Card payments aren't switched on yet. Add your Stripe keys to enable them.");
+      } else {
+        setCreateError(err instanceof FulfilmentApiError ? err.message : "Could not create the payment link.");
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!createdPayment?.checkoutUrl) return;
+    try {
+      await navigator.clipboard.writeText(createdPayment.checkoutUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy the link", tone: "error" });
     }
   };
 
@@ -207,21 +253,71 @@ export default function CompanyPricingPage() {
               ))}
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-              <div className="text-sm text-muted">
-                {selected.length === 0 ? "No items selected" : `${selected.reduce((s, r) => s + qty[r.id], 0)} item(s)`}
-                <span className="ml-3 text-lg font-semibold text-text">{money(totalPence)}</span>
+            <div className="mt-5 border-t border-border pt-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Customer name" hint="For the payment link">
+                  {p => <Input {...p} value={custName} onChange={e => setCustName(e.target.value)} placeholder="Full name" />}
+                </Field>
+                <Field label="Customer WhatsApp" hint="Optional — pre-fills the number">
+                  {p => <Input {...p} value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="07… or +44…" />}
+                </Field>
               </div>
-              <div className="flex gap-2">
-                {selected.length > 0 && (
-                  <Button type="button" size="md" variant="ghost" onClick={() => setQty({})}>
-                    Clear
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-muted">
+                  {selected.length === 0 ? "No items selected" : `${selected.reduce((s, r) => s + qty[r.id], 0)} item(s)`}
+                  <span className="ml-3 text-lg font-semibold text-text">{money(totalPence)}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selected.length > 0 && (
+                    <Button type="button" size="md" variant="ghost" onClick={() => { setQty({}); setCreatedPayment(null); }}>
+                      Clear
+                    </Button>
+                  )}
+                  <Button type="button" size="md" variant="secondary" disabled={selected.length === 0} onClick={handleCopy}>
+                    {copied ? "Copied ✓" : "Copy quote"}
                   </Button>
-                )}
-                <Button type="button" size="md" disabled={selected.length === 0} onClick={handleCopy}>
-                  {copied ? "Copied ✓" : "Copy quote"}
-                </Button>
+                  {selected.length > 0 && (
+                    <a href={whatsappLink(custPhone, quoteText)} target="_blank" rel="noopener noreferrer">
+                      <Button type="button" size="md" variant="secondary">Send on WhatsApp</Button>
+                    </a>
+                  )}
+                  <Button
+                    type="button"
+                    size="md"
+                    loading={creating}
+                    disabled={selected.length === 0 || !custName.trim()}
+                    onClick={handleCreateLink}
+                  >
+                    Create payment link
+                  </Button>
+                </div>
               </div>
+
+              {createError && (
+                <div className="mt-3">
+                  <Alert tone="error">{createError}</Alert>
+                </div>
+              )}
+
+              {createdPayment?.checkoutUrl && (
+                <div className="mt-3 rounded-md border border-green/30 bg-green/10 p-3">
+                  <div className="text-sm font-medium text-green">Payment link ready · {money(createdPayment.amountPence)}</div>
+                  <div className="mt-1 break-all text-xs text-muted">{createdPayment.checkoutUrl}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button type="button" size="md" variant="secondary" onClick={handleCopyLink}>
+                      {linkCopied ? "Copied ✓" : "Copy link"}
+                    </Button>
+                    <a
+                      href={whatsappLink(custPhone, `Here's your Vamba Shipping payment link: ${createdPayment.checkoutUrl}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button type="button" size="md">Send link on WhatsApp</Button>
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 

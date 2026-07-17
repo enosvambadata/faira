@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 import { useCompanyPortal } from "@/lib/companyContext";
+import { whatsappLink } from "@/lib/whatsapp";
 import { collectUkPayments, CollectUkPayment, FulfilmentApiError } from "@/lib/api";
 
 const money = (pence: number) => `£${(pence / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -157,6 +158,15 @@ export default function CompanyPaymentsPage() {
                       <Button type="button" size="md" variant="secondary" onClick={() => copyLink(p)}>
                         {copiedId === p.id ? "Link copied ✓" : "Copy link"}
                       </Button>
+                      <a
+                        href={whatsappLink(p.customerContact, `Here's your Vamba Shipping payment link: ${p.checkoutUrl}`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button type="button" size="md" variant="secondary">
+                          Send on WhatsApp
+                        </Button>
+                      </a>
                       <a href={p.checkoutUrl} target="_blank" rel="noopener noreferrer">
                         <Button type="button" size="md" variant="ghost">
                           Open
