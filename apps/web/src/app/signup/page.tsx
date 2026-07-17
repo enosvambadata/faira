@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { auth, FulfilmentApiError } from "@/lib/api";
-import { createClient } from "@/lib/supabase";
 
 interface FormState {
   email: string;
@@ -70,14 +69,21 @@ function isFulfilmentTarget(target: string | null): boolean {
 }
 
 function SignupForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const context = signupContext(searchParams.get("redirect"));
-  const themeClass = isFulfilmentTarget(searchParams.get("redirect")) ? "" : "theme-collect";
+  const redirect = searchParams.get("redirect");
+  const context = signupContext(redirect);
+  const themeClass = isFulfilmentTarget(redirect) ? "" : "theme-collect";
+  const loginHref = redirect ? `/login?next=${encodeURIComponent(redirect)}` : "/login";
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Set once the account is created: the email we sent the confirm link to.
+  // Presence of this flips the page to the "check your inbox" state -- we
+  // never auto-login, the account isn't usable until the link is clicked.
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -89,15 +95,7 @@ function SignupForm() {
     setSubmitError(null);
     try {
       await auth.signup({ email: form.email.trim(), password: form.password });
-
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
-      if (error) throw error;
-
-      // Collect UK is the flagship: a bare signup lands on its home (register
-      // a company / apply to drive). Fulfilment flows always arrive with an
-      // explicit ?redirect=/onboarding from the /fulfilment welcome page.
-      router.push(searchParams.get("redirect") || "/collect-uk");
+      setSentTo(form.email.trim());
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.code === "ACCOUNT_ALREADY_EXISTS") {
         setSubmitError("An account with this email already exists. Try signing in instead.");
@@ -108,6 +106,50 @@ function SignupForm() {
       setSubmitting(false);
     }
   };
+
+  const handleResend = async () => {
+    if (!sentTo) return;
+    setResending(true);
+    try {
+      await auth.resendConfirmation(sentTo);
+      setResent(true);
+    } catch {
+      // resend is best-effort; the original email may still arrive
+      setResent(true);
+    } finally {
+      setResending(false);
+    }
+  };
+
+  if (sentTo) {
+    return (
+      <div className={themeClass}>
+        <AuthLayout>
+          <Card>
+            <h1 className="text-xl font-semibold text-text">Confirm your email</h1>
+            <p className="mt-2 text-sm text-muted">
+              We&apos;ve sent a confirmation link to <span className="font-medium text-text">{sentTo}</span>. Click it to
+              activate your account, then sign in.
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Can&apos;t find it? Check your spam folder, or resend the link below.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-3">
+              <Link href={loginHref}>
+                <Button type="button" fullWidth size="lg">
+                  Go to sign in
+                </Button>
+              </Link>
+              <Button type="button" fullWidth size="lg" variant="secondary" loading={resending} onClick={handleResend}>
+                {resent ? "Confirmation link resent" : "Resend confirmation link"}
+              </Button>
+            </div>
+          </Card>
+        </AuthLayout>
+      </div>
+    );
+  }
 
   return (
     <div className={themeClass}>
@@ -174,10 +216,7 @@ function SignupForm() {
 
         <p className="mt-5 text-center text-sm text-muted">
           Already have an account?{" "}
-          <Link
-            href={searchParams.get("redirect") ? `/login?next=${encodeURIComponent(searchParams.get("redirect")!)}` : "/login"}
-            className="font-medium text-primary"
-          >
+          <Link href={loginHref} className="font-medium text-primary">
             Sign in
           </Link>
         </p>

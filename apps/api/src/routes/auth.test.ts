@@ -7,6 +7,7 @@ const verifyOtpMock = vi.fn();
 const signInWithPasswordMock = vi.fn();
 const refreshSessionMock = vi.fn();
 const updateUserByIdMock = vi.fn();
+const resendMock = vi.fn();
 
 vi.mock('../supabase', () => ({
   supabaseAdmin: {
@@ -23,6 +24,7 @@ vi.mock('../supabase', () => ({
       verifyOtp: (...args: unknown[]) => verifyOtpMock(...args),
       signInWithPassword: (...args: unknown[]) => signInWithPasswordMock(...args),
       refreshSession: (...args: unknown[]) => refreshSessionMock(...args),
+      resend: (...args: unknown[]) => resendMock(...args),
     },
   },
 }));
@@ -41,10 +43,12 @@ describe('POST /api/v1/auth/signup', () => {
     createUserMock.mockReset();
     signInWithOtpMock.mockReset();
     verifyOtpMock.mockReset();
+    resendMock.mockReset();
     signInWithOtpMock.mockResolvedValue({ data: {}, error: null });
+    resendMock.mockResolvedValue({ data: {}, error: null });
   });
 
-  it('registers a user with email + password', async () => {
+  it('creates the email account UNconfirmed and sends a confirmation email', async () => {
     createUserMock.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'buyer@example.com', phone: null } },
       error: null,
@@ -57,11 +61,32 @@ describe('POST /api/v1/auth/signup', () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({
-      data: { id: 'user-1', email: 'buyer@example.com', phone: null },
+      data: { id: 'user-1', email: 'buyer@example.com', phone: null, confirmationEmailSent: true },
     });
+    // Email ownership must be proven before the account is usable -- creating
+    // it auto-confirmed is exactly the hole that lets a bot mass-register.
     expect(createUserMock).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'buyer@example.com', password: 'longenough1' }),
+      expect.objectContaining({ email: 'buyer@example.com', password: 'longenough1', email_confirm: false }),
     );
+    expect(resendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'signup', email: 'buyer@example.com' }),
+    );
+  });
+
+  it('still creates the account but reports confirmationEmailSent:false if the confirmation email fails', async () => {
+    createUserMock.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'buyer@example.com', phone: null } },
+      error: null,
+    });
+    resendMock.mockResolvedValue({ data: {}, error: { message: 'SMTP unavailable', status: 500 } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/signup')
+      .send({ email: 'buyer@example.com', password: 'longenough1' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.confirmationEmailSent).toBe(false);
   });
 
   it('registers a user with phone only, no password required', async () => {
@@ -169,6 +194,47 @@ describe('POST /api/v1/auth/signup', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('ACCOUNT_ALREADY_EXISTS');
+  });
+});
+
+describe('POST /api/v1/auth/email/resend', () => {
+  beforeEach(() => {
+    resendMock.mockReset();
+    resendMock.mockResolvedValue({ data: {}, error: null });
+  });
+
+  it('resends the signup confirmation email', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/email/resend')
+      .send({ email: 'buyer@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe('Confirmation email sent');
+    expect(resendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'signup', email: 'buyer@example.com' }),
+    );
+  });
+
+  it('rejects an invalid email', async () => {
+    const app = createApp();
+    const res = await request(app).post('/api/v1/auth/email/resend').send({ email: 'not-an-email' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(resendMock).not.toHaveBeenCalled();
+  });
+
+  it('does not leak whether the email exists when Supabase errors', async () => {
+    resendMock.mockResolvedValue({ data: {}, error: { message: 'User not found', status: 400 } });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/auth/email/resend')
+      .send({ email: 'nobody@example.com' });
+
+    // Always 200 so the endpoint can't be used to enumerate registered emails.
+    expect(res.status).toBe(200);
   });
 });
 
