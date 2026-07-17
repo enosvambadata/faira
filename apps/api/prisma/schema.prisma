@@ -1388,6 +1388,7 @@ model CollectUkCompany {
   subscription      CollectUkSubscription?
   collectionWindows CollectUkCollectionWindow[]
   rate              CollectUkCompanyRate?
+  shipments         CollectUkShipment[]
 
   @@map("collect_uk_companies")
 }
@@ -1647,6 +1648,7 @@ model CollectUkCollectionBooking {
   customer         User?                      @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
   collectionWindow CollectUkCollectionWindow? @relation(fields: [collectionWindowId], references: [id], onDelete: SetNull)
   stop             CollectUkCollectionStop?
+  shipmentRecipients CollectUkShipmentRecipient[]
 
   @@index([companyId])
   @@index([status])
@@ -1736,4 +1738,75 @@ model CollectUkSubscription {
   company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("collect_uk_subscriptions")
+}
+
+enum CollectUkShipmentStatus {
+  PREPARING
+  IN_TRANSIT
+  ARRIVED
+  COMPLETED
+  CANCELLED
+}
+
+// A batch of goods leaving the UK on one journey (e.g. "Container to
+// Harare -- Jul"), owned by a company. The company posts milestones once
+// and every recipient on the shipment is auto-notified -- solving the
+// "customers have no idea where their goods are in transit" problem.
+model CollectUkShipment {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  companyId          String                  @map("company_id") @db.Uuid
+  reference          String
+  destinationCountry String?                 @map("destination_country")
+  status             CollectUkShipmentStatus @default(PREPARING)
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+
+  company    CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recipients CollectUkShipmentRecipient[]
+  milestones CollectUkShipmentMilestone[]
+
+  @@index([companyId])
+  @@map("collect_uk_shipments")
+}
+
+// A customer with goods on a shipment. Either linked to a Collect UK
+// collection booking, or added manually by name + phone (so drop-off-only
+// shippers can notify customers who never used our collection at all).
+// Each recipient gets a signed tracking link of their own.
+model CollectUkShipmentRecipient {
+  id              String   @id @default(uuid()) @db.Uuid
+  shipmentId      String   @map("shipment_id") @db.Uuid
+  bookingId       String?  @map("booking_id") @db.Uuid
+  customerName    String   @map("customer_name")
+  customerContact String   @map("customer_contact")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  shipment CollectUkShipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  booking  CollectUkCollectionBooking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([bookingId])
+  @@map("collect_uk_shipment_recipients")
+}
+
+// One transit update posted by the company. `stage` is a free label (from
+// a quick-pick preset or typed custom), with optional location/note. The
+// final "ready for collection" stage also carries the storage address and
+// pickup window. notifiedCount records how many recipients were texted.
+model CollectUkShipmentMilestone {
+  id            String    @id @default(uuid()) @db.Uuid
+  shipmentId    String    @map("shipment_id") @db.Uuid
+  stage         String
+  location      String?
+  note          String?
+  pickupAddress String?   @map("pickup_address")
+  pickupFrom    DateTime? @map("pickup_from") @db.Date
+  pickupTo      DateTime? @map("pickup_to") @db.Date
+  notifiedCount Int       @default(0) @map("notified_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  shipment CollectUkShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@map("collect_uk_shipment_milestones")
 }
