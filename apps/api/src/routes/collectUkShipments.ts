@@ -70,6 +70,42 @@ const milestoneSchema = z.object({
   notify: z.boolean().optional().default(true),
 });
 
+// A manifest line item. The receiver/consignee phone is a destination number
+// (not UK) so it is NOT normalised the way sender contacts are. sender comes
+// from a shipment recipient (copied) or is typed directly.
+const parcelSchema = z
+  .object({
+    recipientId: z.uuid().optional(),
+    senderName: z.string().trim().min(1).max(200).optional(),
+    receiverName: z.string().trim().min(1).max(200),
+    receiverContact: z.string().trim().max(40).optional(),
+    receiverAddress: z.string().trim().max(300).optional(),
+    receiverCity: z.string().trim().max(120).optional(),
+    description: z.string().trim().min(1).max(500),
+    category: z.string().trim().max(120).optional(),
+    pieces: z.number().int().min(1).max(1000).optional().default(1),
+    weightKg: z.number().positive().max(100000).optional(),
+    declaredValuePence: z.number().int().min(0).max(100000000).optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (!d.recipientId && !d.senderName) {
+      ctx.addIssue({ code: 'custom', path: ['senderName'], message: 'Provide a recipientId or a senderName' });
+    }
+  });
+
+const patchParcelSchema = z.object({
+  senderName: z.string().trim().min(1).max(200).optional(),
+  receiverName: z.string().trim().min(1).max(200).optional(),
+  receiverContact: z.string().trim().max(40).nullable().optional(),
+  receiverAddress: z.string().trim().max(300).nullable().optional(),
+  receiverCity: z.string().trim().max(120).nullable().optional(),
+  description: z.string().trim().min(1).max(500).optional(),
+  category: z.string().trim().max(120).nullable().optional(),
+  pieces: z.number().int().min(1).max(1000).optional(),
+  weightKg: z.number().positive().max(100000).nullable().optional(),
+  declaredValuePence: z.number().int().min(0).max(100000000).nullable().optional(),
+});
+
 function shipmentSummary(s: {
   id: string;
   reference: string;
@@ -128,6 +164,51 @@ function milestoneResponse(m: {
     pickupTo: m.pickupTo,
     notifiedCount: m.notifiedCount,
     createdAt: m.createdAt,
+  };
+}
+
+interface ParcelRow {
+  id: string;
+  recipientId: string | null;
+  senderName: string;
+  receiverName: string;
+  receiverContact: string | null;
+  receiverAddress: string | null;
+  receiverCity: string | null;
+  description: string;
+  category: string | null;
+  pieces: number;
+  // Prisma Decimal (or null) -- normalised to a number for the client.
+  weightKg: unknown;
+  declaredValuePence: number | null;
+  createdAt: Date;
+}
+
+function parcelResponse(p: ParcelRow) {
+  return {
+    id: p.id,
+    recipientId: p.recipientId,
+    senderName: p.senderName,
+    receiverName: p.receiverName,
+    receiverContact: p.receiverContact,
+    receiverAddress: p.receiverAddress,
+    receiverCity: p.receiverCity,
+    description: p.description,
+    category: p.category,
+    pieces: p.pieces,
+    weightKg: p.weightKg == null ? null : Number(p.weightKg),
+    declaredValuePence: p.declaredValuePence,
+    createdAt: p.createdAt,
+  };
+}
+
+function manifestSummary(parcels: ParcelRow[], finalizedAt: Date | null) {
+  return {
+    finalizedAt,
+    parcelCount: parcels.length,
+    totalPieces: parcels.reduce((s, p) => s + p.pieces, 0),
+    totalWeightKg: parcels.reduce((s, p) => s + (p.weightKg == null ? 0 : Number(p.weightKg)), 0),
+    totalDeclaredValuePence: parcels.reduce((s, p) => s + (p.declaredValuePence ?? 0), 0),
   };
 }
 
@@ -207,6 +288,7 @@ router.get(
       include: {
         recipients: { orderBy: { createdAt: 'asc' } },
         milestones: { orderBy: { createdAt: 'asc' } },
+        parcels: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!shipment || shipment.companyId !== req.params.id) {
@@ -220,9 +302,12 @@ router.get(
         reference: shipment.reference,
         destinationCountry: shipment.destinationCountry,
         status: shipment.status,
+        manifestFinalizedAt: shipment.manifestFinalizedAt,
         createdAt: shipment.createdAt,
         recipients: shipment.recipients.map(recipientResponse),
         milestones: shipment.milestones.map(milestoneResponse),
+        parcels: shipment.parcels.map(parcelResponse),
+        manifest: manifestSummary(shipment.parcels, shipment.manifestFinalizedAt),
       },
     });
   },
@@ -365,6 +450,187 @@ router.post(
     });
 
     res.status(201).json({ data: milestoneResponse({ ...milestone, notifiedCount }) });
+  },
+);
+
+// --- Manifest: parcel line items -------------------------------------------
+
+router.post(
+  '/:id/shipments/:shipmentId/parcels',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (req: CompanyRequest & { params: { id: string; shipmentId: string } }, res: Response, next: NextFunction) => {
+    const parsed = parcelSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const shipment = await prisma.collectUkShipment.findUnique({ where: { id: req.params.shipmentId } });
+    if (!shipment || shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No such shipment', 404));
+      return;
+    }
+    if (shipment.manifestFinalizedAt) {
+      next(new ApiError('INVALID_STATE', 'This manifest is finalized and can no longer be changed', 409));
+      return;
+    }
+
+    let recipientId: string | null = null;
+    let senderName = parsed.data.senderName;
+    if (parsed.data.recipientId) {
+      const recipient = await prisma.collectUkShipmentRecipient.findUnique({ where: { id: parsed.data.recipientId } });
+      if (!recipient || recipient.shipmentId !== shipment.id) {
+        next(new ApiError('NOT_FOUND', 'No such recipient on this shipment', 404));
+        return;
+      }
+      recipientId = recipient.id;
+      senderName = senderName || recipient.customerName;
+    }
+
+    const parcel = await prisma.collectUkShipmentParcel.create({
+      data: {
+        shipmentId: shipment.id,
+        recipientId,
+        // superRefine guarantees senderName is set when there's no recipient.
+        senderName: senderName!,
+        receiverName: parsed.data.receiverName,
+        receiverContact: parsed.data.receiverContact,
+        receiverAddress: parsed.data.receiverAddress,
+        receiverCity: parsed.data.receiverCity,
+        description: parsed.data.description,
+        category: parsed.data.category,
+        pieces: parsed.data.pieces,
+        weightKg: parsed.data.weightKg,
+        declaredValuePence: parsed.data.declaredValuePence,
+      },
+    });
+    await recordAuditLog(req.userId!, 'COLLECT_UK_SHIPMENT_PARCEL_ADDED', {
+      companyId: req.params.id,
+      shipmentId: shipment.id,
+      parcelId: parcel.id,
+    });
+
+    res.status(201).json({ data: parcelResponse(parcel) });
+  },
+);
+
+router.patch(
+  '/:id/shipments/:shipmentId/parcels/:parcelId',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (
+    req: CompanyRequest & { params: { id: string; shipmentId: string; parcelId: string } },
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const parsed = patchParcelSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const parcel = await prisma.collectUkShipmentParcel.findUnique({
+      where: { id: req.params.parcelId },
+      include: { shipment: true },
+    });
+    if (!parcel || parcel.shipmentId !== req.params.shipmentId || parcel.shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No such parcel', 404));
+      return;
+    }
+    if (parcel.shipment.manifestFinalizedAt) {
+      next(new ApiError('INVALID_STATE', 'This manifest is finalized and can no longer be changed', 409));
+      return;
+    }
+
+    // undefined fields are skipped by Prisma; explicit null clears an optional.
+    const updated = await prisma.collectUkShipmentParcel.update({
+      where: { id: parcel.id },
+      data: {
+        senderName: parsed.data.senderName,
+        receiverName: parsed.data.receiverName,
+        receiverContact: parsed.data.receiverContact,
+        receiverAddress: parsed.data.receiverAddress,
+        receiverCity: parsed.data.receiverCity,
+        description: parsed.data.description,
+        category: parsed.data.category,
+        pieces: parsed.data.pieces,
+        weightKg: parsed.data.weightKg,
+        declaredValuePence: parsed.data.declaredValuePence,
+      },
+    });
+
+    res.status(200).json({ data: parcelResponse(updated) });
+  },
+);
+
+router.delete(
+  '/:id/shipments/:shipmentId/parcels/:parcelId',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (
+    req: CompanyRequest & { params: { id: string; shipmentId: string; parcelId: string } },
+    res: Response,
+    next: NextFunction,
+  ) => {
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const parcel = await prisma.collectUkShipmentParcel.findUnique({
+      where: { id: req.params.parcelId },
+      include: { shipment: true },
+    });
+    if (!parcel || parcel.shipmentId !== req.params.shipmentId || parcel.shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No such parcel', 404));
+      return;
+    }
+    if (parcel.shipment.manifestFinalizedAt) {
+      next(new ApiError('INVALID_STATE', 'This manifest is finalized and can no longer be changed', 409));
+      return;
+    }
+
+    await prisma.collectUkShipmentParcel.delete({ where: { id: parcel.id } });
+    res.status(200).json({ data: { id: parcel.id, deleted: true } });
+  },
+);
+
+// Seal the manifest: once finalized it's the official cargo list, so parcels
+// can no longer change. Requires at least one parcel.
+router.post(
+  '/:id/shipments/:shipmentId/manifest/finalize',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (req: CompanyRequest & { params: { id: string; shipmentId: string } }, res: Response, next: NextFunction) => {
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const shipment = await prisma.collectUkShipment.findUnique({
+      where: { id: req.params.shipmentId },
+      include: { parcels: true },
+    });
+    if (!shipment || shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No such shipment', 404));
+      return;
+    }
+    if (shipment.manifestFinalizedAt) {
+      next(new ApiError('INVALID_STATE', 'This manifest is already finalized', 409));
+      return;
+    }
+    if (shipment.parcels.length === 0) {
+      next(new ApiError('INVALID_STATE', 'Add at least one parcel before finalizing the manifest', 409));
+      return;
+    }
+
+    const updated = await prisma.collectUkShipment.update({
+      where: { id: shipment.id },
+      data: { manifestFinalizedAt: new Date() },
+    });
+    await recordAuditLog(req.userId!, 'COLLECT_UK_SHIPMENT_MANIFEST_FINALIZED', {
+      companyId: req.params.id,
+      shipmentId: shipment.id,
+    });
+
+    res.status(200).json({ data: { finalizedAt: updated.manifestFinalizedAt } });
   },
 );
 

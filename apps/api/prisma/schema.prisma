@@ -1758,15 +1758,48 @@ model CollectUkShipment {
   reference          String
   destinationCountry String?                 @map("destination_country")
   status             CollectUkShipmentStatus @default(PREPARING)
+  // When set, the manifest (parcel list) is sealed -- the official cargo
+  // list the carrier loads against and customs clears against, so parcels
+  // can no longer be added/edited/removed.
+  manifestFinalizedAt DateTime?              @map("manifest_finalized_at")
   createdAt          DateTime                @default(now()) @map("created_at")
   updatedAt          DateTime                @updatedAt @map("updated_at")
 
   company    CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   recipients CollectUkShipmentRecipient[]
   milestones CollectUkShipmentMilestone[]
+  parcels    CollectUkShipmentParcel[]
 
   @@index([companyId])
   @@map("collect_uk_shipments")
+}
+
+// One line on a shipment's manifest -- a physical consignment with a sender
+// (a shipment recipient, or typed manually) and a receiver/consignee at
+// destination. Mirrors Fulfilment's Shipment/ManifestParcel field set.
+// Money is integer pence, matching the rest of Collect UK.
+model CollectUkShipmentParcel {
+  id                 String   @id @default(uuid()) @db.Uuid
+  shipmentId         String   @map("shipment_id") @db.Uuid
+  recipientId        String?  @map("recipient_id") @db.Uuid
+  senderName         String   @map("sender_name")
+  receiverName       String   @map("receiver_name")
+  receiverContact    String?  @map("receiver_contact")
+  receiverAddress    String?  @map("receiver_address")
+  receiverCity       String?  @map("receiver_city")
+  description        String
+  category           String?
+  pieces             Int      @default(1)
+  weightKg           Decimal? @map("weight_kg") @db.Decimal(6, 2)
+  declaredValuePence Int?     @map("declared_value_pence")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  shipment  CollectUkShipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  recipient CollectUkShipmentRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([shipmentId])
+  @@index([recipientId])
+  @@map("collect_uk_shipment_parcels")
 }
 
 // A customer with goods on a shipment. Either linked to a Collect UK
@@ -1783,6 +1816,7 @@ model CollectUkShipmentRecipient {
 
   shipment CollectUkShipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   booking  CollectUkCollectionBooking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  parcels  CollectUkShipmentParcel[]
 
   @@index([shipmentId])
   @@index([bookingId])

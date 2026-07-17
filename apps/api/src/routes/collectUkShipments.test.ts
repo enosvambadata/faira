@@ -17,6 +17,10 @@ const recipientFindUniqueMock = vi.fn();
 const recipientDeleteMock = vi.fn();
 const milestoneCreateMock = vi.fn();
 const milestoneUpdateMock = vi.fn();
+const parcelCreateMock = vi.fn();
+const parcelFindUniqueMock = vi.fn();
+const parcelUpdateMock = vi.fn();
+const parcelDeleteMock = vi.fn();
 const bookingFindUniqueMock = vi.fn();
 const notifyShipmentMilestoneMock = vi.fn();
 
@@ -48,6 +52,12 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => milestoneCreateMock(...args),
       update: (...args: unknown[]) => milestoneUpdateMock(...args),
     },
+    collectUkShipmentParcel: {
+      create: (...args: unknown[]) => parcelCreateMock(...args),
+      findUnique: (...args: unknown[]) => parcelFindUniqueMock(...args),
+      update: (...args: unknown[]) => parcelUpdateMock(...args),
+      delete: (...args: unknown[]) => parcelDeleteMock(...args),
+    },
     collectUkCollectionBooking: { findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
   },
@@ -63,6 +73,7 @@ const COMPANY_B = '22222222-2222-4222-8222-222222222222';
 const SHIPMENT_A = '33333333-3333-4333-8333-333333333333';
 const BOOKING_A = '44444444-4444-4444-8444-444444444444';
 const RECIPIENT_A = '55555555-5555-4555-8555-555555555555';
+const PARCEL_A = '66666666-6666-4666-8666-666666666666';
 
 function milestoneRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -242,6 +253,156 @@ describe('POST /api/v1/collect-uk/companies/:id/shipments/:shipmentId/milestones
 
     expect(res.status).toBe(201);
     expect(shipmentUpdateMock).toHaveBeenCalledWith({ where: { id: SHIPMENT_A }, data: { status: 'ARRIVED' } });
+  });
+});
+
+describe('Shipment manifest (parcels)', () => {
+  function parcelRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: PARCEL_A,
+      recipientId: null,
+      senderName: "Tendai M",
+      receiverName: "Mai Tendai",
+      receiverContact: "+263771234567",
+      receiverAddress: "12 Chatsworth Rd",
+      receiverCity: "Harare",
+      description: "2 drums clothing",
+      category: "DRUM",
+      pieces: 2,
+      weightKg: 40,
+      declaredValuePence: 15000,
+      createdAt: new Date("2026-07-17T00:00:00Z"),
+      ...overrides,
+    };
+  }
+
+  it("adds a manual parcel (typed sender + receiver)", async () => {
+    parcelCreateMock.mockResolvedValue(parcelRow());
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels`)
+      .set(AUTH_HEADER)
+      .send({ senderName: "Tendai M", receiverName: "Mai Tendai", description: "2 drums clothing", pieces: 2 });
+
+    expect(res.status).toBe(201);
+    expect(parcelCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          shipmentId: SHIPMENT_A,
+          recipientId: null,
+          senderName: "Tendai M",
+          receiverName: "Mai Tendai",
+        }),
+      }),
+    );
+  });
+
+  it("copies the sender name from a linked recipient", async () => {
+    recipientFindUniqueMock.mockResolvedValue({ id: RECIPIENT_A, shipmentId: SHIPMENT_A, customerName: "Tendai M" });
+    parcelCreateMock.mockResolvedValue(parcelRow({ recipientId: RECIPIENT_A }));
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels`)
+      .set(AUTH_HEADER)
+      .send({ recipientId: RECIPIENT_A, receiverName: "Mai Tendai", description: "1 box" });
+
+    expect(res.status).toBe(201);
+    expect(parcelCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ recipientId: RECIPIENT_A, senderName: "Tendai M" }) }),
+    );
+  });
+
+  it("rejects a parcel with neither a recipient nor a sender name", async () => {
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels`)
+      .set(AUTH_HEADER)
+      .send({ receiverName: "Mai Tendai", description: "1 box" });
+
+    expect(res.status).toBe(400);
+    expect(parcelCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks adding a parcel once the manifest is finalized", async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: SHIPMENT_A, companyId: COMPANY_A, manifestFinalizedAt: new Date() });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels`)
+      .set(AUTH_HEADER)
+      .send({ senderName: "X", receiverName: "Y", description: "z" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_STATE");
+    expect(parcelCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("deletes a parcel", async () => {
+    parcelFindUniqueMock.mockResolvedValue({
+      id: PARCEL_A,
+      shipmentId: SHIPMENT_A,
+      shipment: { companyId: COMPANY_A, manifestFinalizedAt: null },
+    });
+    parcelDeleteMock.mockResolvedValue({});
+
+    const res = await request(createApp())
+      .delete(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels/${PARCEL_A}`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(parcelDeleteMock).toHaveBeenCalledWith({ where: { id: PARCEL_A } });
+  });
+
+  it("finalizes a manifest that has parcels", async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: SHIPMENT_A,
+      companyId: COMPANY_A,
+      manifestFinalizedAt: null,
+      parcels: [parcelRow()],
+    });
+    shipmentUpdateMock.mockResolvedValue({ manifestFinalizedAt: new Date("2026-07-17T10:00:00Z") });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/manifest/finalize`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.finalizedAt).toBeTruthy();
+    expect(shipmentUpdateMock).toHaveBeenCalled();
+  });
+
+  it("refuses to finalize an empty manifest", async () => {
+    shipmentFindUniqueMock.mockResolvedValue({ id: SHIPMENT_A, companyId: COMPANY_A, manifestFinalizedAt: null, parcels: [] });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/manifest/finalize`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(409);
+    expect(shipmentUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns manifest totals on the shipment detail", async () => {
+    shipmentFindUniqueMock.mockResolvedValue({
+      id: SHIPMENT_A,
+      companyId: COMPANY_A,
+      reference: "Container to Harare",
+      destinationCountry: "Zimbabwe",
+      status: "PREPARING",
+      manifestFinalizedAt: null,
+      createdAt: new Date("2026-07-15T00:00:00Z"),
+      recipients: [],
+      milestones: [],
+      parcels: [parcelRow({ pieces: 2, weightKg: 40, declaredValuePence: 15000 }), parcelRow({ id: "p-2", pieces: 1, weightKg: 5, declaredValuePence: 2500 })],
+    });
+
+    const res = await request(createApp())
+      .get(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.manifest).toEqual(
+      expect.objectContaining({ parcelCount: 2, totalPieces: 3, totalWeightKg: 45, totalDeclaredValuePence: 17500 }),
+    );
+    expect(res.body.data.parcels).toHaveLength(2);
   });
 });
 
