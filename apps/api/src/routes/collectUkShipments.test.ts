@@ -351,6 +351,57 @@ describe('Shipment manifest (parcels)', () => {
     expect(parcelDeleteMock).toHaveBeenCalledWith({ where: { id: PARCEL_A } });
   });
 
+  const loadableParcel = { ...parcelRow(), shipmentId: SHIPMENT_A, loadedAt: null, shipment: { companyId: COMPANY_A } };
+
+  it("marks a parcel loaded onto the shipment (scan-out)", async () => {
+    parcelFindUniqueMock.mockResolvedValue({ ...loadableParcel });
+    parcelUpdateMock.mockResolvedValue({ ...loadableParcel, loadedAt: new Date("2026-07-17T12:00:00Z") });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels/${PARCEL_A}/load`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.alreadyLoaded).toBe(false);
+    expect(res.body.data.loadedAt).toBeTruthy();
+    expect(parcelUpdateMock).toHaveBeenCalled();
+  });
+
+  it("reports alreadyLoaded on a re-scan without touching the row", async () => {
+    parcelFindUniqueMock.mockResolvedValue({ ...loadableParcel, loadedAt: new Date("2026-07-17T11:00:00Z") });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels/${PARCEL_A}/load`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.alreadyLoaded).toBe(true);
+    expect(parcelUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("404s a parcel code that isn't on this shipment", async () => {
+    parcelFindUniqueMock.mockResolvedValue({ ...loadableParcel, shipment: { companyId: COMPANY_B } });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels/${PARCEL_A}/load`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
+    expect(parcelUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("unloads a parcel", async () => {
+    parcelFindUniqueMock.mockResolvedValue({ ...loadableParcel, loadedAt: new Date() });
+    parcelUpdateMock.mockResolvedValue({ ...loadableParcel, loadedAt: null });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/${SHIPMENT_A}/parcels/${PARCEL_A}/unload`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(parcelUpdateMock).toHaveBeenCalledWith({ where: { id: PARCEL_A }, data: { loadedAt: null } });
+  });
+
   it("finalizes a manifest that has parcels", async () => {
     shipmentFindUniqueMock.mockResolvedValue({
       id: SHIPMENT_A,
@@ -391,7 +442,10 @@ describe('Shipment manifest (parcels)', () => {
       createdAt: new Date("2026-07-15T00:00:00Z"),
       recipients: [],
       milestones: [],
-      parcels: [parcelRow({ pieces: 2, weightKg: 40, declaredValuePence: 15000 }), parcelRow({ id: "p-2", pieces: 1, weightKg: 5, declaredValuePence: 2500 })],
+      parcels: [
+        parcelRow({ pieces: 2, weightKg: 40, declaredValuePence: 15000, loadedAt: new Date("2026-07-17T12:00:00Z") }),
+        parcelRow({ id: "p-2", pieces: 1, weightKg: 5, declaredValuePence: 2500, loadedAt: null }),
+      ],
     });
 
     const res = await request(createApp())
@@ -400,7 +454,7 @@ describe('Shipment manifest (parcels)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.manifest).toEqual(
-      expect.objectContaining({ parcelCount: 2, totalPieces: 3, totalWeightKg: 45, totalDeclaredValuePence: 17500 }),
+      expect.objectContaining({ parcelCount: 2, loadedCount: 1, totalPieces: 3, totalWeightKg: 45, totalDeclaredValuePence: 17500 }),
     );
     expect(res.body.data.parcels).toHaveLength(2);
   });
