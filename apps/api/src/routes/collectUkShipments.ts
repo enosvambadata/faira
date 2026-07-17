@@ -279,6 +279,64 @@ router.get(
   },
 );
 
+// Per-corridor analytics. Defined BEFORE '/:id/shipments/:shipmentId' so the
+// literal 'analytics' segment isn't captured as a shipment id. Pilot-scale
+// aggregation in JS (few shipments per company); revisit with SQL if volume grows.
+router.get(
+  '/:id/shipments/analytics',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const shipments = await prisma.collectUkShipment.findMany({
+      where: { companyId: req.params.id },
+      include: { parcels: true },
+    });
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const totals = { shipments: shipments.length, parcels: 0, pieces: 0, totalWeightKg: 0, totalDeclaredValuePence: 0, loaded: 0 };
+    const byDest = new Map<
+      string,
+      { destination: string; shipments: number; parcels: number; pieces: number; totalWeightKg: number; totalDeclaredValuePence: number }
+    >();
+    const byStatus = new Map<string, number>();
+
+    for (const s of shipments) {
+      byStatus.set(s.status, (byStatus.get(s.status) ?? 0) + 1);
+      const dest = s.destinationCountry ?? 'Unspecified';
+      if (!byDest.has(dest)) {
+        byDest.set(dest, { destination: dest, shipments: 0, parcels: 0, pieces: 0, totalWeightKg: 0, totalDeclaredValuePence: 0 });
+      }
+      const d = byDest.get(dest)!;
+      d.shipments += 1;
+      for (const p of s.parcels) {
+        const w = p.weightKg == null ? 0 : Number(p.weightKg);
+        const v = p.declaredValuePence ?? 0;
+        d.parcels += 1;
+        d.pieces += p.pieces;
+        d.totalWeightKg += w;
+        d.totalDeclaredValuePence += v;
+        totals.parcels += 1;
+        totals.pieces += p.pieces;
+        totals.totalWeightKg += w;
+        totals.totalDeclaredValuePence += v;
+        if (p.loadedAt) totals.loaded += 1;
+      }
+    }
+
+    res.status(200).json({
+      data: {
+        totals: { ...totals, totalWeightKg: round2(totals.totalWeightKg) },
+        byDestination: [...byDest.values()]
+          .map(d => ({ ...d, totalWeightKg: round2(d.totalWeightKg) }))
+          .sort((a, b) => b.parcels - a.parcels),
+        byStatus: [...byStatus.entries()].map(([status, count]) => ({ status, count })),
+      },
+    });
+  },
+);
+
 router.get(
   '/:id/shipments/:shipmentId',
   requireAuth,

@@ -786,9 +786,34 @@ export interface PostMilestonePayload {
   notify?: boolean;
 }
 
+export interface CollectUkCorridorRow {
+  destination: string;
+  shipments: number;
+  parcels: number;
+  pieces: number;
+  totalWeightKg: number;
+  totalDeclaredValuePence: number;
+}
+
+export interface CollectUkShipmentAnalytics {
+  totals: {
+    shipments: number;
+    parcels: number;
+    pieces: number;
+    totalWeightKg: number;
+    totalDeclaredValuePence: number;
+    loaded: number;
+  };
+  byDestination: CollectUkCorridorRow[];
+  byStatus: { status: string; count: number }[];
+}
+
 export const collectUkShipments = {
   list: (companyId: string) =>
     request<CollectUkShipmentSummary[]>(`/api/v1/collect-uk/companies/${companyId}/shipments`, { auth: true }),
+
+  analytics: (companyId: string) =>
+    request<CollectUkShipmentAnalytics>(`/api/v1/collect-uk/companies/${companyId}/shipments/analytics`, { auth: true }),
 
   create: (companyId: string, payload: { reference: string; destinationCountry?: string }) =>
     request<{ id: string; reference: string; destinationCountry: string | null; status: CollectUkShipmentStatus; createdAt: string }>(
