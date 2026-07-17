@@ -526,6 +526,97 @@ describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/confirm-hand
   });
 });
 
+describe('POST /api/v1/collect-uk/companies/:id/bookings/receive (scan-in)', () => {
+  const RECEIVE_BOOKING = {
+    id: 'booking-1',
+    companyId: COMPANY_A,
+    status: 'AT_WAREHOUSE',
+    itemTypes: ['DRUM'],
+    parcelSizeTier: 'MEDIUM',
+    numberOfParcels: 2,
+    reference: 'FC-abc-000001',
+    customerName: 'Tendai',
+    destinationCountry: 'Zimbabwe',
+  };
+
+  it('receives an arrived parcel by scanned reference (= handover)', async () => {
+    bookingFindUniqueMock.mockResolvedValue(RECEIVE_BOOKING);
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-abc-000001' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual(
+      expect.objectContaining({ reference: 'FC-abc-000001', customerName: 'Tendai', status: 'HANDED_OVER' }),
+    );
+    expect(bookingUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'booking-1', status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER', chargePence: null },
+    });
+    expect(notifyHandedOverMock).toHaveBeenCalledWith('booking-1');
+  });
+
+  it('reports ALREADY_RECEIVED for a parcel already handed over', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...RECEIVE_BOOKING, status: 'HANDED_OVER' });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-abc-000001' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('ALREADY_RECEIVED');
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a parcel that has not arrived yet', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...RECEIVE_BOOKING, status: 'COLLECTED' });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-abc-000001' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('NOT_ARRIVED');
+  });
+
+  it('404s an unknown reference', async () => {
+    bookingFindUniqueMock.mockResolvedValue(null);
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-nope' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("404s a reference belonging to another company", async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...RECEIVE_BOOKING, companyId: COMPANY_B });
+
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_A}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-abc-000001' });
+
+    expect(res.status).toBe(404);
+    expect(bookingUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('403s scanning into a company you are not assigned to', async () => {
+    const res = await request(createApp())
+      .post(`/api/v1/collect-uk/companies/${COMPANY_B}/bookings/receive`)
+      .set(AUTH_HEADER)
+      .send({ reference: 'FC-abc-000001' });
+
+    expect(res.status).toBe(403);
+    expect(bookingFindUniqueMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/v1/collect-uk/companies/:id/bookings/:bookingId/cancel', () => {
   const BOOKING_ID = 'booking-1';
   const REQUESTED_BOOKING = { id: BOOKING_ID, companyId: COMPANY_A, status: 'REQUESTED', stop: null };
