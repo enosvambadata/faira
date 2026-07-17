@@ -735,12 +735,14 @@ export interface CollectUkShipmentParcel {
   pieces: number;
   weightKg: number | null;
   declaredValuePence: number | null;
+  loadedAt: string | null;
   createdAt: string;
 }
 
 export interface CollectUkManifestSummary {
   finalizedAt: string | null;
   parcelCount: number;
+  loadedCount: number;
   totalPieces: number;
   totalWeightKg: number;
   totalDeclaredValuePence: number;
@@ -837,6 +839,18 @@ export const collectUkShipments = {
   finalizeManifest: (companyId: string, shipmentId: string) =>
     request<{ finalizedAt: string }>(
       `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/manifest/finalize`,
+      { method: "POST", auth: true },
+    ),
+
+  loadParcel: (companyId: string, shipmentId: string, parcelId: string) =>
+    request<CollectUkShipmentParcel & { alreadyLoaded: boolean }>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/parcels/${parcelId}/load`,
+      { method: "POST", auth: true },
+    ),
+
+  unloadParcel: (companyId: string, shipmentId: string, parcelId: string) =>
+    request<CollectUkShipmentParcel>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/parcels/${parcelId}/unload`,
       { method: "POST", auth: true },
     ),
 };
