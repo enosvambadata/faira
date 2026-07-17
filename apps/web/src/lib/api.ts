@@ -670,7 +670,24 @@ export const collectUkCompanies = {
       method: "POST",
       auth: true,
     }),
+
+  // Warehouse scan-in: `reference` comes from a scanned label QR (or typed).
+  receiveByReference: (id: string, reference: string) =>
+    request<CollectUkReceiveResult>(`/api/v1/collect-uk/companies/${id}/bookings/receive`, {
+      method: "POST",
+      body: { reference },
+      auth: true,
+    }),
 };
+
+export interface CollectUkReceiveResult {
+  id: string;
+  reference: string | null;
+  customerName: string;
+  numberOfParcels: number;
+  destinationCountry: string;
+  status: string;
+}
 
 export type CollectUkShipmentStatus = "PREPARING" | "IN_TRANSIT" | "ARRIVED" | "COMPLETED" | "CANCELLED";
 

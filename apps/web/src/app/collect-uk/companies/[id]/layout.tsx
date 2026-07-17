@@ -17,6 +17,7 @@ import { collectUkCompanies, CollectUkCompany, CollectUkCompanyRoleType, Fulfilm
 const TABS = [
   { seg: "", label: "Overview" },
   { seg: "bookings", label: "Bookings" },
+  { seg: "receive", label: "Receive" },
   { seg: "shipments", label: "Shipments" },
   { seg: "weeks", label: "Collection weeks" },
   { seg: "warehouses", label: "Warehouses" },

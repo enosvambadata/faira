@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -92,11 +93,16 @@ export default function RouteLabelsPage() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Deliver to warehouse of</p>
                       <p className="text-lg font-bold text-dark">{label.stop.companyName}</p>
                     </div>
-                    <div className="rounded-md border-2 border-dark px-3 py-1.5 text-center">
-                      <p className="text-lg font-bold leading-tight text-dark">
-                        {label.parcelIndex} of {label.parcelTotal}
-                      </p>
-                      <p className="text-[10px] uppercase tracking-wide text-muted">parcel</p>
+                    <div className="flex items-center gap-3">
+                      {label.stop.bookingReference && (
+                        <QRCodeSVG value={label.stop.bookingReference} size={72} marginSize={0} title={`Scan to receive ${label.stop.bookingReference}`} />
+                      )}
+                      <div className="rounded-md border-2 border-dark px-3 py-1.5 text-center">
+                        <p className="text-lg font-bold leading-tight text-dark">
+                          {label.parcelIndex} of {label.parcelTotal}
+                        </p>
+                        <p className="text-[10px] uppercase tracking-wide text-muted">parcel</p>
+                      </div>
                     </div>
                   </div>
 
