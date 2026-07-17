@@ -208,6 +208,43 @@ export const collectUkFreight = {
     ),
 };
 
+export interface CollectUkPayment {
+  id: string;
+  customerName: string;
+  customerContact: string | null;
+  description: string;
+  amountPence: number;
+  currency: string;
+  status: string;
+  checkoutUrl: string | null;
+  shipmentId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface CollectUkPaymentPayload {
+  customerName: string;
+  customerContact?: string;
+  description: string;
+  amountPence: number;
+  shipmentId?: string;
+}
+
+export const collectUkPayments = {
+  list: (companyId: string) =>
+    request<CollectUkPayment[]>(`/api/v1/collect-uk/companies/${companyId}/payments`, { auth: true }),
+
+  create: (companyId: string, payload: CollectUkPaymentPayload) =>
+    request<CollectUkPayment>(`/api/v1/collect-uk/companies/${companyId}/payments`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  get: (companyId: string, paymentId: string) =>
+    request<CollectUkPayment>(`/api/v1/collect-uk/companies/${companyId}/payments/${paymentId}`, { auth: true }),
+};
+
 export const hubs = {
   list: () => request<Hub[]>("/api/v1/fulfilment/hubs", { auth: true }),
 };
