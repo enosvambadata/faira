@@ -489,6 +489,78 @@ router.post(
   },
 );
 
+const receiveByScanSchema = z.object({ reference: z.string().trim().min(1).max(60) });
+
+// Warehouse scan-in: staff scan a parcel label's QR (which encodes the booking
+// reference) to confirm receipt. This IS the handover -- same billing trigger
+// and charge snapshot as confirm-handover above, just reached by a scanned
+// reference instead of a clicked list. Idempotent-friendly: an already-received
+// parcel returns ALREADY_RECEIVED so the scanner can say so rather than error.
+router.post(
+  '/:id/bookings/receive',
+  requireAuth,
+  requireCompanyRole('COMPANY_ADMIN', 'DISPATCHER'),
+  async (req: CompanyRequest & { params: { id: string } }, res: Response, next: NextFunction) => {
+    const parsed = receiveByScanSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
+      return;
+    }
+    if (!isAssignedToCompany(req, req.params.id)) {
+      await recordAuditLog(req.userId!, 'COLLECT_UK_COMPANY_ASSIGNMENT_DENIED', {
+        targetCompanyId: req.params.id,
+        actualCompanyAssignments: (req.companyRoles ?? []).map(r => r.companyId),
+      });
+      next(new ApiError('FORBIDDEN', 'You are not assigned to this company', 403));
+      return;
+    }
+
+    const booking = await prisma.collectUkCollectionBooking.findUnique({ where: { reference: parsed.data.reference } });
+    if (!booking || booking.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No parcel with that code for your company', 404));
+      return;
+    }
+    if (booking.status === 'HANDED_OVER') {
+      next(new ApiError('ALREADY_RECEIVED', `Already received: ${booking.customerName} (${booking.reference})`, 409));
+      return;
+    }
+    if (booking.status !== 'AT_WAREHOUSE') {
+      next(new ApiError('NOT_ARRIVED', "This parcel hasn't arrived at your warehouse yet", 409));
+      return;
+    }
+
+    const rate = await prisma.collectUkCompanyRate.findUnique({ where: { companyId: req.params.id } });
+    const chargePence = rate && !booking.itemTypes.includes('VEHICLE') ? computeChargePence(rate, booking) : null;
+
+    const updateResult = await prisma.collectUkCollectionBooking.updateMany({
+      where: { id: booking.id, status: 'AT_WAREHOUSE' },
+      data: { status: 'HANDED_OVER', chargePence },
+    });
+    if (updateResult.count === 0) {
+      next(new ApiError('NOT_ARRIVED', "This parcel hasn't arrived at your warehouse yet", 409));
+      return;
+    }
+
+    await recordAuditLog(req.userId!, 'COLLECT_UK_HANDOVER_CONFIRMED', {
+      companyId: req.params.id,
+      bookingId: booking.id,
+      via: 'scan',
+    });
+    await notifyHandedOver(booking.id);
+
+    res.status(200).json({
+      data: {
+        id: booking.id,
+        reference: booking.reference,
+        customerName: booking.customerName,
+        numberOfParcels: booking.numberOfParcels,
+        destinationCountry: booking.destinationCountry,
+        status: 'HANDED_OVER',
+      },
+    });
+  },
+);
+
 // The statement Stripe will invoice from once the account exists: every
 // handed-over booking with its snapshotted charge, grouped by collection
 // week. Vehicles and pre-rate handovers appear as "quoted separately" /
