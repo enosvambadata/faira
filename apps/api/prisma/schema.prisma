@@ -1389,6 +1389,7 @@ model CollectUkCompany {
   collectionWindows CollectUkCollectionWindow[]
   rate              CollectUkCompanyRate?
   shipments         CollectUkShipment[]
+  freightRates      CollectUkFreightRate[]
 
   @@map("collect_uk_companies")
 }
@@ -1738,6 +1739,27 @@ model CollectUkSubscription {
   company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("collect_uk_subscriptions")
+}
+
+// A shipping company's own price list -- what it charges its customers to
+// ship one item to the destination corridor (e.g. a drum, a fridge, a car).
+// Flat per-item rates grouped by category. Distinct from CollectUkCompanyRate,
+// which is what Faira charges the company for the collection leg. Integer pence.
+model CollectUkFreightRate {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  category   String
+  itemName   String   @map("item_name")
+  pricePence Int      @map("price_pence")
+  sortOrder  Int      @default(0) @map("sort_order")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("collect_uk_freight_rates")
 }
 
 enum CollectUkShipmentStatus {
