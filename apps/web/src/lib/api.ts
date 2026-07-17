@@ -672,6 +672,98 @@ export const collectUkCompanies = {
     }),
 };
 
+export type CollectUkShipmentStatus = "PREPARING" | "IN_TRANSIT" | "ARRIVED" | "COMPLETED" | "CANCELLED";
+
+export interface CollectUkShipmentSummary {
+  id: string;
+  reference: string;
+  destinationCountry: string | null;
+  status: CollectUkShipmentStatus;
+  createdAt: string;
+  recipientCount: number;
+  milestoneCount: number;
+  latestStage: string | null;
+}
+
+export interface CollectUkShipmentRecipient {
+  id: string;
+  customerName: string;
+  customerContact: string;
+  bookingId: string | null;
+  createdAt: string;
+}
+
+export interface CollectUkShipmentMilestone {
+  id: string;
+  stage: string;
+  location: string | null;
+  note: string | null;
+  pickupAddress: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  notifiedCount: number;
+  createdAt: string;
+}
+
+export interface CollectUkShipmentDetail {
+  id: string;
+  reference: string;
+  destinationCountry: string | null;
+  status: CollectUkShipmentStatus;
+  createdAt: string;
+  recipients: CollectUkShipmentRecipient[];
+  milestones: CollectUkShipmentMilestone[];
+}
+
+export interface PostMilestonePayload {
+  stage: string;
+  location?: string;
+  note?: string;
+  pickupAddress?: string;
+  pickupFrom?: string;
+  pickupTo?: string;
+  setStatus?: CollectUkShipmentStatus;
+  notify?: boolean;
+}
+
+export const collectUkShipments = {
+  list: (companyId: string) =>
+    request<CollectUkShipmentSummary[]>(`/api/v1/collect-uk/companies/${companyId}/shipments`, { auth: true }),
+
+  create: (companyId: string, payload: { reference: string; destinationCountry?: string }) =>
+    request<{ id: string; reference: string; destinationCountry: string | null; status: CollectUkShipmentStatus; createdAt: string }>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments`,
+      { method: "POST", body: payload, auth: true },
+    ),
+
+  get: (companyId: string, shipmentId: string) =>
+    request<CollectUkShipmentDetail>(`/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}`, { auth: true }),
+
+  addRecipient: (
+    companyId: string,
+    shipmentId: string,
+    payload: { bookingId?: string; customerName?: string; customerContact?: string },
+  ) =>
+    request<CollectUkShipmentRecipient>(`/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/recipients`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  removeRecipient: (companyId: string, shipmentId: string, recipientId: string) =>
+    request<{ id: string; deleted: boolean }>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/recipients/${recipientId}`,
+      { method: "DELETE", auth: true },
+    ),
+
+  postMilestone: (companyId: string, shipmentId: string, payload: PostMilestonePayload) =>
+    request<CollectUkShipmentMilestone>(`/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/milestones`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+};
+
 export interface CollectUkWindowRange {
   startDate: string;
   endDate: string;
