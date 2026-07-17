@@ -460,6 +460,50 @@ describe('Shipment manifest (parcels)', () => {
   });
 });
 
+describe('GET /api/v1/collect-uk/companies/:id/shipments/analytics', () => {
+  it('aggregates parcels by destination and status', async () => {
+    shipmentFindManyMock.mockResolvedValue([
+      {
+        status: 'IN_TRANSIT',
+        destinationCountry: 'Zimbabwe',
+        parcels: [
+          { pieces: 2, weightKg: 40, declaredValuePence: 15000, loadedAt: new Date() },
+          { pieces: 1, weightKg: 5, declaredValuePence: 2500, loadedAt: null },
+        ],
+      },
+      {
+        status: 'PREPARING',
+        destinationCountry: 'Zambia',
+        parcels: [{ pieces: 1, weightKg: 10, declaredValuePence: 5000, loadedAt: null }],
+      },
+    ]);
+
+    const res = await request(createApp())
+      .get(`/api/v1/collect-uk/companies/${COMPANY_A}/shipments/analytics`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.totals).toEqual(
+      expect.objectContaining({ shipments: 2, parcels: 3, pieces: 4, totalWeightKg: 55, totalDeclaredValuePence: 22500, loaded: 1 }),
+    );
+    // Sorted by parcel count desc.
+    expect(res.body.data.byDestination[0]).toEqual(expect.objectContaining({ destination: 'Zimbabwe', shipments: 1, parcels: 2 }));
+    expect(res.body.data.byStatus).toEqual(
+      expect.arrayContaining([
+        { status: 'IN_TRANSIT', count: 1 },
+        { status: 'PREPARING', count: 1 },
+      ]),
+    );
+  });
+
+  it('403s a company you are not assigned to', async () => {
+    const res = await request(createApp())
+      .get(`/api/v1/collect-uk/companies/${COMPANY_B}/shipments/analytics`)
+      .set(AUTH_HEADER);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('GET /api/v1/collect-uk/shipment-tracking/:token', () => {
   it('returns the milestone timeline for a valid recipient token', async () => {
     recipientFindUniqueMock.mockResolvedValue({

@@ -12,7 +12,9 @@ import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ShipmentStatusBadge } from "@/components/collect-uk/ShipmentStatusBadge";
 import { useCompanyPortal } from "@/lib/companyContext";
-import { collectUkShipments, CollectUkShipmentSummary, FulfilmentApiError } from "@/lib/api";
+import { collectUkShipments, CollectUkShipmentSummary, CollectUkShipmentAnalytics, FulfilmentApiError } from "@/lib/api";
+
+const money = (pence: number) => `£${(pence / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function CompanyShipmentsPage() {
   const { company } = useCompanyPortal();
@@ -21,6 +23,7 @@ export default function CompanyShipmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [shipments, setShipments] = useState<CollectUkShipmentSummary[]>([]);
+  const [analytics, setAnalytics] = useState<CollectUkShipmentAnalytics | null>(null);
   const [reference, setReference] = useState("");
   const [destination, setDestination] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
@@ -29,7 +32,12 @@ export default function CompanyShipmentsPage() {
   useEffect(() => {
     (async () => {
       try {
-        setShipments(await collectUkShipments.list(company.id));
+        const [list, an] = await Promise.all([
+          collectUkShipments.list(company.id),
+          collectUkShipments.analytics(company.id).catch(() => null),
+        ]);
+        setShipments(list);
+        setAnalytics(an);
       } catch (err) {
         setError(err instanceof FulfilmentApiError ? err.message : "Could not load shipments right now.");
       } finally {
@@ -61,6 +69,41 @@ export default function CompanyShipmentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {analytics && analytics.totals.shipments > 0 && (
+        <Card>
+          <h2 className="text-base font-semibold text-text">Overview</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Shipments", value: String(analytics.totals.shipments) },
+              { label: "Parcels", value: String(analytics.totals.parcels) },
+              { label: "Weight", value: `${analytics.totals.totalWeightKg} kg` },
+              { label: "Declared value", value: money(analytics.totals.totalDeclaredValuePence) },
+            ].map(stat => (
+              <div key={stat.label} className="rounded-md border border-border p-3">
+                <div className="text-lg font-semibold text-text">{stat.value}</div>
+                <div className="text-xs text-muted">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+          {analytics.byDestination.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">By destination</p>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {analytics.byDestination.map(d => (
+                  <li key={d.destination} className="flex flex-wrap items-center justify-between gap-x-3 text-sm">
+                    <span className="font-medium text-text">{d.destination}</span>
+                    <span className="text-muted">
+                      {d.shipments} shipment{d.shipments === 1 ? "" : "s"} · {d.parcels} parcel{d.parcels === 1 ? "" : "s"} ·{" "}
+                      {d.totalWeightKg} kg · {money(d.totalDeclaredValuePence)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
+
       <Card>
         <h2 className="text-base font-semibold text-text">New shipment</h2>
         <p className="mt-1 text-sm text-muted">
