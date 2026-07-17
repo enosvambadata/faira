@@ -192,6 +192,29 @@ export default function ShipmentDetailPage() {
         </div>
       </Card>
 
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-text">
+              Manifest
+              {shipment.manifestFinalizedAt && (
+                <span className="ml-2 align-middle text-xs font-medium text-green">● Finalized</span>
+              )}
+            </h2>
+            <p className="mt-0.5 text-sm text-muted">
+              {shipment.manifest.parcelCount === 0
+                ? "No parcels on the manifest yet"
+                : `${shipment.manifest.parcelCount} parcel${shipment.manifest.parcelCount === 1 ? "" : "s"} · ${shipment.manifest.totalPieces} pieces · ${shipment.manifest.totalWeightKg} kg`}
+            </p>
+          </div>
+          <Link href={`/collect-uk/companies/${company.id}/shipments/${shipmentId}/manifest`}>
+            <Button variant="secondary" size="md">
+              Open manifest
+            </Button>
+          </Link>
+        </div>
+      </Card>
+
       {/* Post an update */}
       <Card>
         <h2 className="text-base font-semibold text-text">Post a transit update</h2>
