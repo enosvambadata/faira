@@ -181,6 +181,7 @@ interface ParcelRow {
   // Prisma Decimal (or null) -- normalised to a number for the client.
   weightKg: unknown;
   declaredValuePence: number | null;
+  loadedAt: Date | null;
   createdAt: Date;
 }
 
@@ -198,6 +199,7 @@ function parcelResponse(p: ParcelRow) {
     pieces: p.pieces,
     weightKg: p.weightKg == null ? null : Number(p.weightKg),
     declaredValuePence: p.declaredValuePence,
+    loadedAt: p.loadedAt,
     createdAt: p.createdAt,
   };
 }
@@ -206,6 +208,7 @@ function manifestSummary(parcels: ParcelRow[], finalizedAt: Date | null) {
   return {
     finalizedAt,
     parcelCount: parcels.length,
+    loadedCount: parcels.reduce((s, p) => s + (p.loadedAt ? 1 : 0), 0),
     totalPieces: parcels.reduce((s, p) => s + p.pieces, 0),
     totalWeightKg: parcels.reduce((s, p) => s + (p.weightKg == null ? 0 : Number(p.weightKg)), 0),
     totalDeclaredValuePence: parcels.reduce((s, p) => s + (p.declaredValuePence ?? 0), 0),
@@ -631,6 +634,73 @@ router.post(
     });
 
     res.status(200).json({ data: { finalizedAt: updated.manifestFinalizedAt } });
+  },
+);
+
+// --- Load-out: scan parcels onto the container ------------------------------
+
+router.post(
+  '/:id/shipments/:shipmentId/parcels/:parcelId/load',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (
+    req: CompanyRequest & { params: { id: string; shipmentId: string; parcelId: string } },
+    res: Response,
+    next: NextFunction,
+  ) => {
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const parcel = await prisma.collectUkShipmentParcel.findUnique({
+      where: { id: req.params.parcelId },
+      include: { shipment: true },
+    });
+    if (!parcel || parcel.shipmentId !== req.params.shipmentId || parcel.shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No parcel with that code on this shipment', 404));
+      return;
+    }
+
+    // Idempotent: a re-scan of an already-loaded parcel just says so.
+    if (parcel.loadedAt) {
+      res.status(200).json({ data: { ...parcelResponse(parcel), alreadyLoaded: true } });
+      return;
+    }
+
+    const updated = await prisma.collectUkShipmentParcel.update({
+      where: { id: parcel.id },
+      data: { loadedAt: new Date() },
+    });
+    await recordAuditLog(req.userId!, 'COLLECT_UK_SHIPMENT_PARCEL_LOADED', {
+      companyId: req.params.id,
+      shipmentId: req.params.shipmentId,
+      parcelId: parcel.id,
+    });
+
+    res.status(200).json({ data: { ...parcelResponse(updated), alreadyLoaded: false } });
+  },
+);
+
+router.post(
+  '/:id/shipments/:shipmentId/parcels/:parcelId/unload',
+  requireAuth,
+  requireCompanyRole(...ROLES),
+  async (
+    req: CompanyRequest & { params: { id: string; shipmentId: string; parcelId: string } },
+    res: Response,
+    next: NextFunction,
+  ) => {
+    if (await denyIfNotAssigned(req, req.params.id, next)) return;
+
+    const parcel = await prisma.collectUkShipmentParcel.findUnique({
+      where: { id: req.params.parcelId },
+      include: { shipment: true },
+    });
+    if (!parcel || parcel.shipmentId !== req.params.shipmentId || parcel.shipment.companyId !== req.params.id) {
+      next(new ApiError('NOT_FOUND', 'No parcel with that code on this shipment', 404));
+      return;
+    }
+
+    const updated = await prisma.collectUkShipmentParcel.update({ where: { id: parcel.id }, data: { loadedAt: null } });
+    res.status(200).json({ data: parcelResponse(updated) });
   },
 );
 

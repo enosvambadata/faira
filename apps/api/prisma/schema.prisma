@@ -1792,6 +1792,9 @@ model CollectUkShipmentParcel {
   pieces             Int      @default(1)
   weightKg           Decimal? @map("weight_kg") @db.Decimal(6, 2)
   declaredValuePence Int?     @map("declared_value_pence")
+  // Set when the parcel is scanned/marked loaded onto the container. Parcels
+  // on the manifest with a null loadedAt at departure are short-shipped.
+  loadedAt           DateTime? @map("loaded_at")
   createdAt          DateTime @default(now()) @map("created_at")
 
   shipment  CollectUkShipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
