@@ -1390,6 +1390,7 @@ model CollectUkCompany {
   rate              CollectUkCompanyRate?
   shipments         CollectUkShipment[]
   freightRates      CollectUkFreightRate[]
+  payments          CollectUkPayment[]
 
   @@map("collect_uk_companies")
 }
@@ -1791,9 +1792,48 @@ model CollectUkShipment {
   recipients CollectUkShipmentRecipient[]
   milestones CollectUkShipmentMilestone[]
   parcels    CollectUkShipmentParcel[]
+  payments   CollectUkPayment[]
 
   @@index([companyId])
   @@map("collect_uk_shipments")
+}
+
+enum CollectUkPaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FAILED
+  EXPIRED
+}
+
+// A customer payment taken via Stripe (UK, GBP) -- typically a shipping quote
+// turned into a Stripe Checkout link the customer pays on Stripe's hosted page.
+// Standalone (works for any customer, incl. drop-off), optionally tied to a
+// shipment. Amount is integer pence, matching Stripe's minor-unit convention.
+// The checkout.session.completed webhook flips PENDING -> PAID idempotently.
+model CollectUkPayment {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  companyId             String                 @map("company_id") @db.Uuid
+  shipmentId            String?                @map("shipment_id") @db.Uuid
+  customerName          String                 @map("customer_name")
+  customerContact       String?                @map("customer_contact")
+  description           String
+  amountPence           Int                    @map("amount_pence")
+  currency              String                 @default("gbp")
+  status                CollectUkPaymentStatus @default(PENDING)
+  stripeSessionId       String?                @unique @map("stripe_session_id")
+  stripePaymentIntentId String?                @map("stripe_payment_intent_id")
+  checkoutUrl           String?                @map("checkout_url")
+  paidAt                DateTime?              @map("paid_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  company  CollectUkCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shipment CollectUkShipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([status])
+  @@map("collect_uk_payments")
 }
 
 // One line on a shipment's manifest -- a physical consignment with a sender
