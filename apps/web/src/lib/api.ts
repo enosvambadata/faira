@@ -245,6 +245,42 @@ export const collectUkPayments = {
     request<CollectUkPayment>(`/api/v1/collect-uk/companies/${companyId}/payments/${paymentId}`, { auth: true }),
 };
 
+export type CollectUkCompanyRoleName = "COMPANY_ADMIN" | "DISPATCHER";
+
+export interface CollectUkTeamMember {
+  roleId: string;
+  userId: string;
+  email: string | null;
+  role: CollectUkCompanyRoleName;
+  isYou: boolean;
+  createdAt: string;
+}
+
+export const collectUkTeam = {
+  list: (companyId: string) =>
+    request<CollectUkTeamMember[]>(`/api/v1/collect-uk/companies/${companyId}/team`, { auth: true }),
+
+  add: (companyId: string, payload: { email: string; role: CollectUkCompanyRoleName }) =>
+    request<CollectUkTeamMember>(`/api/v1/collect-uk/companies/${companyId}/team`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  changeRole: (companyId: string, roleId: string, role: CollectUkCompanyRoleName) =>
+    request<CollectUkTeamMember>(`/api/v1/collect-uk/companies/${companyId}/team/${roleId}`, {
+      method: "PATCH",
+      body: { role },
+      auth: true,
+    }),
+
+  remove: (companyId: string, roleId: string) =>
+    request<{ roleId: string; deleted: boolean }>(`/api/v1/collect-uk/companies/${companyId}/team/${roleId}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+};
+
 export const hubs = {
   list: () => request<Hub[]>("/api/v1/fulfilment/hubs", { auth: true }),
 };
