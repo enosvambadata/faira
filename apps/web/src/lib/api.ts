@@ -879,6 +879,33 @@ export const collectUkBookings = {
     ),
 };
 
+export interface CollectUkShipmentTrackingMilestone {
+  id: string;
+  stage: string;
+  location: string | null;
+  note: string | null;
+  pickupAddress: string | null;
+  pickupFrom: string | null;
+  pickupTo: string | null;
+  createdAt: string;
+}
+
+export interface CollectUkShipmentTrackingInfo {
+  reference: string;
+  destinationCountry: string | null;
+  companyName: string;
+  status: CollectUkShipmentStatus;
+  customerName: string;
+  milestones: CollectUkShipmentTrackingMilestone[];
+}
+
+// Public and unauthenticated -- the signed recipient token in the link is
+// the only thing gating access, same as booking tracking.
+export const collectUkShipmentTracking = {
+  track: (token: string) =>
+    request<CollectUkShipmentTrackingInfo>(`/api/v1/collect-uk/shipment-tracking/${encodeURIComponent(token)}`),
+};
+
 export interface CollectUkDriverProfile {
   id: string;
   userId: string;
