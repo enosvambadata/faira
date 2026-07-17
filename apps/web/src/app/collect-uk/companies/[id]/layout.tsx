@@ -55,7 +55,7 @@ export default function CompanyPortalLayout({ children }: { children: React.Reac
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-white">
+      <header className="border-b border-border bg-white print:hidden">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-6 py-3">
           <CollectBrand suffix="Company Portal" />
           <div className="flex items-center gap-2">

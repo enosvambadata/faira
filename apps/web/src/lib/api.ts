@@ -705,14 +705,55 @@ export interface CollectUkShipmentMilestone {
   createdAt: string;
 }
 
+export interface CollectUkShipmentParcel {
+  id: string;
+  recipientId: string | null;
+  senderName: string;
+  receiverName: string;
+  receiverContact: string | null;
+  receiverAddress: string | null;
+  receiverCity: string | null;
+  description: string;
+  category: string | null;
+  pieces: number;
+  weightKg: number | null;
+  declaredValuePence: number | null;
+  createdAt: string;
+}
+
+export interface CollectUkManifestSummary {
+  finalizedAt: string | null;
+  parcelCount: number;
+  totalPieces: number;
+  totalWeightKg: number;
+  totalDeclaredValuePence: number;
+}
+
+export interface CollectUkShipmentParcelPayload {
+  recipientId?: string;
+  senderName?: string;
+  receiverName: string;
+  receiverContact?: string;
+  receiverAddress?: string;
+  receiverCity?: string;
+  description: string;
+  category?: string;
+  pieces?: number;
+  weightKg?: number;
+  declaredValuePence?: number;
+}
+
 export interface CollectUkShipmentDetail {
   id: string;
   reference: string;
   destinationCountry: string | null;
   status: CollectUkShipmentStatus;
+  manifestFinalizedAt: string | null;
   createdAt: string;
   recipients: CollectUkShipmentRecipient[];
   milestones: CollectUkShipmentMilestone[];
+  parcels: CollectUkShipmentParcel[];
+  manifest: CollectUkManifestSummary;
 }
 
 export interface PostMilestonePayload {
@@ -762,6 +803,25 @@ export const collectUkShipments = {
       body: payload,
       auth: true,
     }),
+
+  addParcel: (companyId: string, shipmentId: string, payload: CollectUkShipmentParcelPayload) =>
+    request<CollectUkShipmentParcel>(`/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/parcels`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  removeParcel: (companyId: string, shipmentId: string, parcelId: string) =>
+    request<{ id: string; deleted: boolean }>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/parcels/${parcelId}`,
+      { method: "DELETE", auth: true },
+    ),
+
+  finalizeManifest: (companyId: string, shipmentId: string) =>
+    request<{ finalizedAt: string }>(
+      `/api/v1/collect-uk/companies/${companyId}/shipments/${shipmentId}/manifest/finalize`,
+      { method: "POST", auth: true },
+    ),
 };
 
 export interface CollectUkWindowRange {
