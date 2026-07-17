@@ -24,6 +24,7 @@ const TABS = [
   { seg: "weeks", label: "Collection weeks" },
   { seg: "warehouses", label: "Warehouses" },
   { seg: "billing", label: "Billing" },
+  { seg: "team", label: "Team" },
   { seg: "settings", label: "Settings" },
 ];
 
