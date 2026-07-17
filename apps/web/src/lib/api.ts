@@ -161,6 +161,53 @@ export const auth = {
     }),
 };
 
+export interface CollectUkFreightRate {
+  id: string;
+  category: string;
+  itemName: string;
+  pricePence: number;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface CollectUkFreightRatePayload {
+  category: string;
+  itemName: string;
+  pricePence: number;
+  sortOrder?: number;
+}
+
+export const collectUkFreight = {
+  list: (companyId: string) =>
+    request<CollectUkFreightRate[]>(`/api/v1/collect-uk/companies/${companyId}/freight-rates`, { auth: true }),
+
+  seed: (companyId: string) =>
+    request<{ created: number; alreadyPopulated: boolean }>(
+      `/api/v1/collect-uk/companies/${companyId}/freight-rates/seed`,
+      { method: "POST", auth: true },
+    ),
+
+  add: (companyId: string, payload: CollectUkFreightRatePayload) =>
+    request<CollectUkFreightRate>(`/api/v1/collect-uk/companies/${companyId}/freight-rates`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    }),
+
+  update: (companyId: string, rateId: string, payload: Partial<CollectUkFreightRatePayload> & { isActive?: boolean }) =>
+    request<CollectUkFreightRate>(`/api/v1/collect-uk/companies/${companyId}/freight-rates/${rateId}`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    }),
+
+  remove: (companyId: string, rateId: string) =>
+    request<{ id: string; deleted: boolean }>(
+      `/api/v1/collect-uk/companies/${companyId}/freight-rates/${rateId}`,
+      { method: "DELETE", auth: true },
+    ),
+};
+
 export const hubs = {
   list: () => request<Hub[]>("/api/v1/fulfilment/hubs", { auth: true }),
 };

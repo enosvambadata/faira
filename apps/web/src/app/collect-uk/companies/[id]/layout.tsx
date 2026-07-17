@@ -19,6 +19,7 @@ const TABS = [
   { seg: "bookings", label: "Bookings" },
   { seg: "receive", label: "Receive" },
   { seg: "shipments", label: "Shipments" },
+  { seg: "pricing", label: "Pricing" },
   { seg: "weeks", label: "Collection weeks" },
   { seg: "warehouses", label: "Warehouses" },
   { seg: "billing", label: "Billing" },
