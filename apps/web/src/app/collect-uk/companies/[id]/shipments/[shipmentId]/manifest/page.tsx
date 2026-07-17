@@ -26,6 +26,7 @@ function recompute(parcels: CollectUkShipmentParcel[], finalizedAt: string | nul
   return {
     finalizedAt,
     parcelCount: parcels.length,
+    loadedCount: parcels.reduce((s, p) => s + (p.loadedAt ? 1 : 0), 0),
     totalPieces: parcels.reduce((s, p) => s + p.pieces, 0),
     totalWeightKg: parcels.reduce((s, p) => s + (p.weightKg ?? 0), 0),
     totalDeclaredValuePence: parcels.reduce((s, p) => s + (p.declaredValuePence ?? 0), 0),
@@ -149,6 +150,21 @@ export default function ShipmentManifestPage() {
     }
   };
 
+  const handleToggleLoad = async (parcel: CollectUkShipmentParcel) => {
+    try {
+      const updated = parcel.loadedAt
+        ? await collectUkShipments.unloadParcel(company.id, shipmentId, parcel.id)
+        : await collectUkShipments.loadParcel(company.id, shipmentId, parcel.id);
+      setShipment(prev => {
+        if (!prev) return prev;
+        const parcels = prev.parcels.map(p => (p.id === parcel.id ? { ...p, loadedAt: updated.loadedAt } : p));
+        return { ...prev, parcels, manifest: recompute(parcels, prev.manifestFinalizedAt) };
+      });
+    } catch (err) {
+      toast({ title: err instanceof FulfilmentApiError ? err.message : "Could not update load status", tone: "error" });
+    }
+  };
+
   const handleFinalize = async () => {
     if (!shipment) return;
     if (!window.confirm("Finalize this manifest? Parcels can't be changed afterwards.")) return;
@@ -199,6 +215,16 @@ export default function ShipmentManifestPage() {
         <Button type="button" variant="secondary" size="md" onClick={() => downloadCsv(shipment)}>
           Download CSV
         </Button>
+        <Link href={`/collect-uk/companies/${company.id}/shipments/${shipmentId}/labels`}>
+          <Button type="button" variant="secondary" size="md" disabled={shipment.parcels.length === 0}>
+            Shipping labels
+          </Button>
+        </Link>
+        <Link href={`/collect-uk/companies/${company.id}/shipments/${shipmentId}/load`}>
+          <Button type="button" variant="secondary" size="md" disabled={shipment.parcels.length === 0}>
+            Load parcels
+          </Button>
+        </Link>
         {!finalized && (
           <Button type="button" size="md" loading={finalizing} disabled={shipment.parcels.length === 0} onClick={handleFinalize}>
             Finalize manifest
@@ -228,6 +254,14 @@ export default function ShipmentManifestPage() {
 
         <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
           <span><span className="text-muted">Parcels:</span> <b className="text-text">{shipment.manifest.parcelCount}</b></span>
+          {shipment.parcels.length > 0 && (
+            <span>
+              <span className="text-muted">Loaded:</span>{" "}
+              <b className={shipment.manifest.loadedCount === shipment.manifest.parcelCount ? "text-green" : "text-warning"}>
+                {shipment.manifest.loadedCount} / {shipment.manifest.parcelCount}
+              </b>
+            </span>
+          )}
           <span><span className="text-muted">Pieces:</span> <b className="text-text">{shipment.manifest.totalPieces}</b></span>
           <span><span className="text-muted">Weight:</span> <b className="text-text">{shipment.manifest.totalWeightKg} kg</b></span>
           <span><span className="text-muted">Declared value:</span> <b className="text-text">{money(shipment.manifest.totalDeclaredValuePence)}</b></span>
@@ -253,7 +287,12 @@ export default function ShipmentManifestPage() {
               <tbody>
                 {shipment.parcels.map((p, i) => (
                   <tr key={p.id} className="border-b border-border align-top">
-                    <td className="py-2 pr-2 text-muted tabular-nums">{i + 1}</td>
+                    <td className="py-2 pr-2 tabular-nums">
+                      <span className={p.loadedAt ? "font-medium text-green" : "text-muted"}>
+                        {i + 1}
+                        {p.loadedAt ? " ●" : ""}
+                      </span>
+                    </td>
                     <td className="py-2 pr-2 text-text">{p.senderName}</td>
                     <td className="py-2 pr-2 text-text">
                       {p.receiverName}
@@ -272,11 +311,20 @@ export default function ShipmentManifestPage() {
                     <td className="py-2 pr-2 text-right tabular-nums">{p.weightKg ?? "—"}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{money(p.declaredValuePence)}</td>
                     <td className="py-2 text-right print:hidden">
-                      {!finalized && (
-                        <button type="button" onClick={() => handleRemove(p)} className="text-xs font-medium text-red hover:underline">
-                          Remove
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLoad(p)}
+                          className={`text-xs font-medium hover:underline ${p.loadedAt ? "text-green" : "text-primary"}`}
+                        >
+                          {p.loadedAt ? "Loaded ✓" : "Load"}
                         </button>
-                      )}
+                        {!finalized && (
+                          <button type="button" onClick={() => handleRemove(p)} className="text-xs font-medium text-red hover:underline">
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
