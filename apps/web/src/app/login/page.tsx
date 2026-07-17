@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { createClient } from "@/lib/supabase";
+import { auth } from "@/lib/api";
 
 function LoginForm() {
   const router = useRouter();
@@ -18,6 +19,10 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Supabase rejects password login for an unconfirmed email -- surface a
+  // resend affordance rather than a misleading "incorrect password".
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [resent, setResent] = useState(false);
   // A visitor with a live session gets an explicit choice (continue as X /
   // switch account) instead of being silently bounced into the previous
   // session's portal -- confusing when testing with multiple accounts.
@@ -43,16 +48,33 @@ function LoginForm() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setUnconfirmed(false);
     try {
       const supabase = createClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) {
-        setError("Incorrect email or password");
+        // Supabase returns code "email_not_confirmed" when the account exists
+        // but the confirm link hasn't been clicked yet.
+        if (signInError.code === "email_not_confirmed") {
+          setUnconfirmed(true);
+        } else {
+          setError("Incorrect email or password");
+        }
         return;
       }
       router.push(destination);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    try {
+      await auth.resendConfirmation(email.trim());
+    } catch {
+      // best-effort
+    } finally {
+      setResent(true);
     }
   };
 
@@ -100,6 +122,15 @@ function LoginForm() {
         </Field>
 
         {error && <Alert tone="error">{error}</Alert>}
+
+        {unconfirmed && (
+          <Alert tone="warning">
+            Please confirm your email first — check your inbox for the link.{" "}
+            <button type="button" onClick={handleResend} className="font-medium underline">
+              {resent ? "Link resent" : "Resend it"}
+            </button>
+          </Alert>
+        )}
 
         <Button type="submit" fullWidth size="lg" loading={submitting}>
           Sign in

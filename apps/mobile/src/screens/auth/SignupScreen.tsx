@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AuthStackParamList, RootStackParamList } from '@/navigation/types';
+import { AuthStackParamList } from '@/navigation/types';
 import { colors, textStyles } from '@/theme';
 import { auth, ApiError } from '@/lib/api';
-import { resolvePostAuthRoute } from '@/lib/postAuthRoute';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
 
@@ -19,6 +18,9 @@ export default function SignupScreen() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Set once an email account is created: we no longer auto-login, the
+  // account is unconfirmed until the emailed link is clicked.
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const canSubmit = mode === 'phone' ? phone.length > 0 : email.length > 0 && password.length >= 8;
 
@@ -33,18 +35,27 @@ export default function SignupScreen() {
       }
 
       await auth.signup({ email: email.trim(), password });
-      await auth.loginAndSave({ email: email.trim(), password });
-      const route = await resolvePostAuthRoute();
-      navigation.getParent<NativeStackNavigationProp<RootStackParamList>>()?.reset({
-        index: 0,
-        routes: [{ name: route }],
-      });
+      setSentTo(email.trim());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (sentTo) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Confirm your email</Text>
+        <Text style={styles.confirmBody}>
+          We&apos;ve sent a confirmation link to {sentTo}. Tap it to activate your account, then log in.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Login')}>
+          <Text style={styles.buttonText}>Go to log in</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -139,6 +150,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   error: { ...textStyles.caption, color: colors.red },
+  confirmBody: { ...textStyles.body, color: colors.muted, textAlign: 'center', marginBottom: 12 },
   button: {
     backgroundColor: colors.primary,
     borderRadius: 12,

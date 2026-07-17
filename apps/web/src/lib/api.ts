@@ -138,16 +138,26 @@ export interface SignedUpload {
 
 export const auth = {
   // Reuses the existing Express endpoint (not the Supabase browser client's
-  // own signUp) specifically because it creates the account through
-  // supabaseAdmin.auth.admin.createUser with email_confirm: true — the same
-  // auto-confirmed rule the mobile app's signup already relies on. Login,
-  // by contrast, goes straight through the browser Supabase client (see
-  // signup/page.tsx and login/page.tsx) so @supabase/ssr's cookie-based
-  // session sync stays correct.
+  // own signUp) so account creation stays server-controlled. The account is
+  // created UNconfirmed and Supabase emails a confirm link — the caller must
+  // not auto-login, it shows a "check your inbox" screen (see signup/page.tsx).
+  // Login goes straight through the browser Supabase client so @supabase/ssr's
+  // cookie-based session sync stays correct.
   signup: (payload: { email: string; password: string }) =>
-    request<{ id: string; email: string | null; phone: string | null }>("/api/v1/auth/signup", {
+    request<{
+      id: string;
+      email: string | null;
+      phone: string | null;
+      confirmationEmailSent?: boolean;
+    }>("/api/v1/auth/signup", {
       method: "POST",
       body: payload,
+    }),
+
+  resendConfirmation: (email: string) =>
+    request<{ message: string }>("/api/v1/auth/email/resend", {
+      method: "POST",
+      body: { email },
     }),
 };
 

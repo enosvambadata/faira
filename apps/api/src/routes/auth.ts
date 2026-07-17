@@ -89,10 +89,12 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     email,
     phone,
     password,
-    // Email accounts are auto-confirmed since there's no email confirmation
-    // flow yet (only phone gets OTP-verified, see SCRUM-24). Revisit if/when
-    // email ownership needs to be proven before login.
-    email_confirm: true,
+    // Email ownership is proven via a confirmation link before the account
+    // can log in -- creating it auto-confirmed is exactly the hole that lets
+    // a bot mass-register fake companies. Requires "Confirm email" enabled on
+    // the Supabase project (see docs/collect-uk/email-verification.md).
+    // Phone stays OTP-verified via signInWithOtp below (SCRUM-24).
+    email_confirm: false,
     phone_confirm: false,
   });
 
@@ -114,14 +116,47 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     }
   }
 
+  // Best-effort, mirroring the OTP path: a mail outage must not fail the
+  // signup -- the account exists and the user can resend from the
+  // "check your inbox" screen.
+  let confirmationEmailSent = true;
+  if (email) {
+    const { error: mailError } = await supabasePublic.auth.resend({ type: 'signup', email });
+    if (mailError) {
+      confirmationEmailSent = false;
+      logger.error({ err: mailError }, 'Failed to send signup confirmation email');
+    }
+  }
+
   res.status(201).json({
     data: {
       id: data.user.id,
       email: data.user.email || null,
       phone: data.user.phone || null,
       otpSent: phone ? otpSent : undefined,
+      confirmationEmailSent: email ? confirmationEmailSent : undefined,
     },
   });
+});
+
+const emailResendSchema = z.object({ email: z.email() });
+
+// Resend the signup confirmation link. Always 200 (even when Supabase reports
+// the address is unknown or already confirmed) so the endpoint can't be used
+// to enumerate which emails are registered.
+router.post('/email/resend', async (req: Request, res: Response, next: NextFunction) => {
+  const parsed = emailResendSchema.safeParse(req.body);
+  if (!parsed.success) {
+    next(new ApiError('VALIDATION_ERROR', 'Invalid resend payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  const { error } = await supabasePublic.auth.resend({ type: 'signup', email: parsed.data.email });
+  if (error) {
+    logger.warn({ err: error }, 'Confirmation email resend reported an error');
+  }
+
+  res.status(200).json({ data: { message: 'Confirmation email sent' } });
 });
 
 router.post('/otp/resend', async (req: Request, res: Response, next: NextFunction) => {
