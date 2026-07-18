@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { market, type MarketCategory } from "@/lib/api";
 import { MARKET_CONDITIONS, type MarketCondition } from "@/lib/marketQuery";
+import { partsCategories } from "@/lib/marketCategories";
 import { useMarketNav } from "./useMarketNav";
 
 const CONDITION_LABELS: Record<MarketCondition, string> = {
   NEW: "New",
-  LIKE_NEW: "Like new",
-  GOOD: "Good",
-  FAIR: "For parts / fair",
+  LIKE_NEW: "Used — like new",
+  GOOD: "Used — ex-Japan",
+  FAIR: "For parts / not working",
 };
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
@@ -78,7 +79,7 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
               All categories
             </button>
           </li>
-          {categories.map(cat => (
+          {partsCategories(categories).map(cat => (
             <li key={cat.id}>
               <button
                 onClick={() => navigate({ categoryIds: [cat.id] })}
@@ -140,6 +141,19 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
         </button>
       </Group>
 
+      <Group title="Buying format">
+        <ul className="flex flex-col gap-2 text-sm">
+          {["Buy It Now", "Accepts offers", "Escrow protected"].map(opt => (
+            <li key={opt}>
+              <label className="flex cursor-pointer items-center gap-2.5 text-muted">
+                <input type="checkbox" className="h-4 w-4 accent-primary" />
+                {opt}
+              </label>
+            </li>
+          ))}
+        </ul>
+      </Group>
+
       {cities.length > 0 && (
         <Group title="Location">
           <ul className="flex flex-col gap-2 text-sm">
@@ -159,6 +173,19 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
           </ul>
         </Group>
       )}
+
+      <Group title="Seller">
+        <ul className="flex flex-col gap-2 text-sm">
+          {["Verified sellers only", "Free collection"].map(opt => (
+            <li key={opt}>
+              <label className="flex cursor-pointer items-center gap-2.5 text-muted">
+                <input type="checkbox" className="h-4 w-4 accent-primary" />
+                {opt}
+              </label>
+            </li>
+          ))}
+        </ul>
+      </Group>
     </aside>
   );
 }

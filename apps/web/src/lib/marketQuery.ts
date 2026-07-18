@@ -25,6 +25,9 @@ export interface MarketBrowseParams {
   // Annotate (garage vehicle): keep all results but flag which ones fit.
   fitFor?: string;
   fitYear?: number;
+  // Display-only label for the garage vehicle (e.g. "Toyota Vitz") so cards
+  // can say "Fits your Vitz". Carried in the URL; the API ignores it.
+  fitLabel?: string;
 }
 
 function csv(value: string | null): string[] {
@@ -56,6 +59,7 @@ export function parseMarketParams(sp: { get(key: string): string | null }): Mark
     year: num(sp.get("year")),
     fitFor: sp.get("fitFor") || undefined,
     fitYear: num(sp.get("fitYear")),
+    fitLabel: sp.get("fitLabel") || undefined,
   };
 }
 
@@ -75,6 +79,7 @@ export function buildMarketQuery(p: MarketBrowseParams): string {
   if (p.year !== undefined) sp.set("year", String(p.year));
   if (p.fitFor) sp.set("fitFor", p.fitFor);
   if (p.fitYear !== undefined) sp.set("fitYear", String(p.fitYear));
+  if (p.fitLabel) sp.set("fitLabel", p.fitLabel);
   const s = sp.toString();
   return s ? `?${s}` : "";
 }

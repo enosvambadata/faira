@@ -11,7 +11,7 @@ function formatPrice(price: string): string {
 
 // eBay-style product card: photo-forward, condition badge, fitment pill, bold
 // price, trust signals. Dense so a grid of them scans quickly.
-export function ListingCard({ listing }: { listing: MarketListingSummary }) {
+export function ListingCard({ listing, fitVehicle }: { listing: MarketListingSummary; fitVehicle?: string }) {
   const isNew = listing.condition === "NEW";
   // Defensive: an old/cached API response (mid-deploy) may omit seller.
   const seller = listing.seller ?? { name: null, rating: null, ratingCount: 0, verified: false };
@@ -59,7 +59,7 @@ export function ListingCard({ listing }: { listing: MarketListingSummary }) {
               listing.fits ? "bg-primary-light text-green" : "bg-light text-muted"
             }`}
           >
-            {listing.fits ? "✓ Fits your car" : "Check fit"}
+            {listing.fits ? `✓ Fits your ${fitVehicle ?? "car"}` : `Check fit${fitVehicle ? ` for your ${fitVehicle}` : ""}`}
           </span>
         )}
 
