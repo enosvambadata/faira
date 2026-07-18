@@ -1,4 +1,5 @@
 import { createClient } from "./supabase";
+import { buildMarketQuery, type MarketBrowseParams } from "./marketQuery";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const supabase = createClient();
@@ -65,6 +66,38 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   return json.data as T;
+}
+
+// Like request(), but returns the whole response envelope rather than just
+// `data` — for list endpoints that carry pagination metadata alongside it
+// (e.g. the marketplace browse: { data, hasMore, total }).
+async function requestRaw<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+
+  if (options.auth) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  }
+
+  let body: BodyInit | undefined;
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(`${API_URL}${path}`, { method: options.method ?? "GET", headers, body });
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = json?.error ?? {};
+    throw new ApiError(err.code ?? "UNKNOWN_ERROR", err.message ?? "Something went wrong", res.status, err.details ?? null);
+  }
+
+  return json as T;
 }
 
 export interface OnboardingDraft {
@@ -1445,3 +1478,82 @@ export const collectUkDispatch = {
 };
 
 export { ApiError as FulfilmentApiError };
+
+// ---------------------------------------------------------------------------
+// Faira Market — the consumer auto-parts storefront (public browse + detail).
+// Buying/garage/watchlist are auth-gated and come in a later slice.
+// ---------------------------------------------------------------------------
+
+export interface MarketCategory {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string | null;
+  parentId: string | null;
+}
+
+export interface MarketVehicleMake {
+  id: string;
+  name: string;
+}
+
+export interface MarketVehicleModel {
+  id: string;
+  name: string;
+}
+
+export interface MarketListingSummary {
+  id: string;
+  title: string;
+  price: string;
+  city: string;
+  imageUrls: string[];
+  createdAt: string;
+}
+
+export interface MarketBrowseResult {
+  data: MarketListingSummary[];
+  hasMore: boolean;
+  total: number;
+}
+
+export interface MarketListingSeller {
+  id: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  city: string | null;
+  isVerified: boolean;
+}
+
+export interface MarketListingDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  price: string;
+  condition: string;
+  city: string;
+  imageUrls: string[];
+  deliveryOptions: string[];
+  status: string;
+  attributes: Record<string, string>;
+  category: { id: string; name: string; slug: string } | null;
+  seller: MarketListingSeller;
+  createdAt: string;
+}
+
+export const market = {
+  categories: (parentId?: string) =>
+    request<MarketCategory[]>(`/api/v1/categories${parentId ? `?parentId=${encodeURIComponent(parentId)}` : ""}`),
+
+  makes: () => request<MarketVehicleMake[]>("/api/v1/vehicles/makes"),
+
+  models: (makeId: string) =>
+    request<MarketVehicleModel[]>(`/api/v1/vehicles/makes/${encodeURIComponent(makeId)}/models`),
+
+  browse: (params: MarketBrowseParams) =>
+    requestRaw<MarketBrowseResult>(`/api/v1/listings${buildMarketQuery(params)}`),
+
+  get: (id: string) => request<MarketListingDetail>(`/api/v1/listings/${encodeURIComponent(id)}`),
+
+  filterOptions: () => request<{ cities: string[]; sizes: string[] }>("/api/v1/listings/filter-options"),
+};
