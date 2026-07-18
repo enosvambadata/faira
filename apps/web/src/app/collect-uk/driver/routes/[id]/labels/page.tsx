@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { collectUkDriverPortal, CollectUkDriverRouteDetail, FulfilmentApiError } from "@/lib/api";
 import { describeItems } from "@/lib/collectUkItemLabels";
+import { PaperModeToggle, ThermalLabelStyle, PaperMode } from "@/components/collect-uk/LabelPrint";
 
 // Printable parcel labels for a route -- one label per physical parcel
 // per stop ("Parcel i of N"), printed by the driver before departure so
@@ -20,6 +21,7 @@ export default function RouteLabelsPage() {
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState<CollectUkDriverRouteDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paper, setPaper] = useState<PaperMode>("a4");
 
   useEffect(() => {
     (async () => {
@@ -50,9 +52,10 @@ export default function RouteLabelsPage() {
           .label-card { break-inside: avoid; }
         }
       `}</style>
+      <ThermalLabelStyle active={paper === "label"} />
 
       <header className="no-print border-b border-border bg-white">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 px-6 py-3">
           <Link
             href={`/collect-uk/driver/routes/${id}`}
             className="cursor-pointer text-sm font-medium text-muted transition-colors duration-200 hover:text-primary"
@@ -60,9 +63,12 @@ export default function RouteLabelsPage() {
             &larr; Back to route
           </Link>
           {route && labels.length > 0 && (
-            <Button type="button" size="md" onClick={() => window.print()}>
-              Print {labels.length} label{labels.length === 1 ? "" : "s"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <PaperModeToggle mode={paper} onChange={setPaper} />
+              <Button type="button" size="md" onClick={() => window.print()}>
+                Print {labels.length} label{labels.length === 1 ? "" : "s"}
+              </Button>
+            </div>
           )}
         </div>
       </header>

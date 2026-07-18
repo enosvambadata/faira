@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useCompanyPortal } from "@/lib/companyContext";
+import { PaperModeToggle, ThermalLabelStyle, PaperMode } from "@/components/collect-uk/LabelPrint";
 import { collectUkShipments, CollectUkShipmentDetail, FulfilmentApiError } from "@/lib/api";
 
 const money = (pence: number | null) => (pence == null ? null : `£${(pence / 100).toFixed(2)}`);
@@ -22,6 +23,7 @@ export default function ShipmentLabelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [shipment, setShipment] = useState<CollectUkShipmentDetail | null>(null);
+  const [paper, setPaper] = useState<PaperMode>("a4");
 
   useEffect(() => {
     (async () => {
@@ -42,8 +44,9 @@ export default function ShipmentLabelsPage() {
   return (
     <div className="flex flex-col gap-4">
       <style>{`@media print { .no-print { display: none !important; } .label-card { break-inside: avoid; } }`}</style>
+      <ThermalLabelStyle active={paper === "label"} />
 
-      <div className="flex items-center justify-between no-print">
+      <div className="flex flex-wrap items-center justify-between gap-3 no-print">
         <Link
           href={`/collect-uk/companies/${company.id}/shipments/${shipmentId}/manifest`}
           className="text-sm font-medium text-muted hover:text-primary"
@@ -51,9 +54,12 @@ export default function ShipmentLabelsPage() {
           ← Back to manifest
         </Link>
         {shipment.parcels.length > 0 && (
-          <Button type="button" size="md" onClick={() => window.print()}>
-            Print {shipment.parcels.length} label{shipment.parcels.length === 1 ? "" : "s"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <PaperModeToggle mode={paper} onChange={setPaper} />
+            <Button type="button" size="md" onClick={() => window.print()}>
+              Print {shipment.parcels.length} label{shipment.parcels.length === 1 ? "" : "s"}
+            </Button>
+          </div>
         )}
       </div>
 
