@@ -106,14 +106,23 @@ export function MarketChrome() {
     await signOutFromMarket();
   };
 
+  // The active garage vehicle drives the fits annotation (fitFor), so the grid
+  // shows every part but marks which fit. The separate "only show parts that
+  // fit" toggle layers on the actual fitment filter (modelId).
   const activeVehicle = useMemo(() => {
-    if (!params.modelId) return null;
-    const saved = garageVehicles.find(v => v.modelId === params.modelId);
-    const modelName = saved?.model ?? models.find(m => m.id === params.modelId)?.name;
+    if (!params.fitFor) return null;
+    const saved = garageVehicles.find(v => v.modelId === params.fitFor);
+    const modelName = saved?.model ?? models.find(m => m.id === params.fitFor)?.name;
     const makeName = saved?.make ?? makes.find(m => m.id === makeId)?.name;
     const label = [makeName, modelName].filter(Boolean).join(" ");
-    return `${label || "your vehicle"}${params.year ? ` · ${params.year}` : ""}`;
-  }, [params.modelId, params.year, models, makes, makeId, garageVehicles]);
+    return `${label || "your vehicle"}${params.fitYear ? ` · ${params.fitYear}` : ""}`;
+  }, [params.fitFor, params.fitYear, models, makes, makeId, garageVehicles]);
+
+  const onlyFits = !!params.modelId;
+  const toggleOnlyFits = () => {
+    if (onlyFits) navigate({ modelId: undefined, year: undefined });
+    else navigate({ modelId: params.fitFor, year: params.fitYear });
+  };
 
   // Whether the currently selected make/model is already saved (avoids
   // offering "Save" for a vehicle that's already in the garage).
@@ -126,14 +135,14 @@ export function MarketChrome() {
 
   const applyGarage = () => {
     if (!modelId) return;
-    navigate({ modelId, year: year ? Number(year) : undefined });
+    navigate({ fitFor: modelId, fitYear: year ? Number(year) : undefined });
   };
 
   const clearGarage = () => {
     setMakeId(undefined);
     setModelId(undefined);
     setYear(undefined);
-    navigate({ modelId: undefined, year: undefined });
+    navigate({ fitFor: undefined, fitYear: undefined, modelId: undefined, year: undefined });
   };
 
   const activeCategory = params.categoryIds?.[0];
@@ -207,10 +216,26 @@ export function MarketChrome() {
           </span>
 
           {activeVehicle ? (
-            <span className="flex items-center gap-2 rounded-full border border-green bg-white px-3 py-1 text-sm font-medium text-green">
-              ✓ Showing parts for {activeVehicle}
-              <button onClick={clearGarage} className="font-semibold underline-offset-2 hover:underline">Clear</button>
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex items-center gap-2 rounded-full border border-green bg-white px-3 py-1 text-sm font-medium text-green">
+                🚗 {activeVehicle}
+                <button onClick={clearGarage} className="font-semibold underline-offset-2 hover:underline">Change</button>
+              </span>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+                Only show parts that fit
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={onlyFits}
+                  onClick={toggleOnlyFits}
+                  className={`relative h-5 w-9 rounded-full transition-colors ${onlyFits ? "bg-green" : "bg-border"}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${onlyFits ? "translate-x-4" : "translate-x-0.5"}`}
+                  />
+                </button>
+              </label>
+            </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <div className="w-36">
@@ -244,7 +269,7 @@ export function MarketChrome() {
           {signedIn && garageVehicles.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               {garageVehicles.map(v => {
-                const isActive = params.modelId === v.modelId;
+                const isActive = params.fitFor === v.modelId;
                 return (
                   <span
                     key={v.id}
@@ -253,7 +278,7 @@ export function MarketChrome() {
                     }`}
                   >
                     <button
-                      onClick={() => navigate({ modelId: v.modelId, year: v.year ?? undefined })}
+                      onClick={() => navigate({ fitFor: v.modelId, fitYear: v.year ?? undefined })}
                       className="hover:text-primary"
                     >
                       {v.make} {v.model}

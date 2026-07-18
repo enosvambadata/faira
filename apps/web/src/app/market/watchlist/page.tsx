@@ -83,9 +83,12 @@ export default function WatchlistPage() {
                 id: item.id,
                 title: item.title,
                 price: item.price,
+                condition: "GOOD",
                 city: item.city,
                 imageUrls: item.imageUrls,
                 createdAt: item.savedAt,
+                universalFit: false,
+                seller: { name: null, rating: null, ratingCount: 0, verified: false },
               }}
             />
           ))}

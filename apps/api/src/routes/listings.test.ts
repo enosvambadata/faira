@@ -475,7 +475,7 @@ describe('GET /api/v1/listings', () => {
             { attributes: { some: { key: 'brand', value: { contains: 'nike', mode: 'insensitive' } } } },
           ],
         }),
-        include: { attributes: true },
+        include: expect.objectContaining({ attributes: true }),
       }),
     );
   });
@@ -701,6 +701,59 @@ describe('GET /api/v1/listings — vehicle fitment filter', () => {
         where: expect.objectContaining({ AND: expect.any(Array), OR: expect.any(Array) }),
       }),
     );
+  });
+});
+
+describe('GET /api/v1/listings — enriched card fields', () => {
+  const MODEL_ID = 'a3f1c2d4-1111-4222-8333-444455556666';
+
+  beforeEach(() => {
+    listingFindManyMock.mockReset();
+    listingCountMock.mockReset();
+    listingCountMock.mockResolvedValue(1);
+  });
+
+  it('returns condition and the seller rating/verified badge on each card', async () => {
+    listingFindManyMock.mockResolvedValue([
+      {
+        ...fakeListing(),
+        condition: 'GOOD',
+        universalFit: false,
+        seller: { displayName: 'MorganAutoSpares', sellerProfile: { ratingAvg: '4.9', ratingCount: 312, isVerified: true } },
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/listings');
+
+    expect(res.status).toBe(200);
+    const card = res.body.data[0];
+    expect(card.condition).toBe('GOOD');
+    expect(card.seller).toEqual({ name: 'MorganAutoSpares', rating: 4.9, ratingCount: 312, verified: true });
+    expect(card.fits).toBeUndefined(); // no garage vehicle supplied
+  });
+
+  it('annotates a fits flag against a garage vehicle (fitFor) without filtering anything out', async () => {
+    listingFindManyMock.mockResolvedValue([
+      { ...fakeListing({ id: 'fits' }), condition: 'NEW', universalFit: false, seller: null, fitments: [{ modelId: MODEL_ID, yearFrom: 2002, yearTo: 2010 }] },
+      { ...fakeListing({ id: 'nofit' }), condition: 'NEW', universalFit: false, seller: null, fitments: [{ modelId: 'other-model', yearFrom: null, yearTo: null }] },
+      { ...fakeListing({ id: 'universal' }), condition: 'NEW', universalFit: true, seller: null, fitments: [] },
+    ]);
+    listingCountMock.mockResolvedValue(3);
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/listings?fitFor=${MODEL_ID}&fitYear=2005`);
+
+    const fitsById = Object.fromEntries(res.body.data.map((c: { id: string; fits: boolean }) => [c.id, c.fits]));
+    expect(fitsById.fits).toBe(true);
+    expect(fitsById.nofit).toBe(false);
+    expect(fitsById.universal).toBe(true);
+    expect(res.body.data).toHaveLength(3); // fitFor annotates, never filters
+
+    // fitFor must NOT add a fitment filter to the where clause
+    const where = listingFindManyMock.mock.calls[0][0].where;
+    expect(where.AND).toBeUndefined();
+    expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ include: expect.objectContaining({ fitments: true }) }));
   });
 });
 

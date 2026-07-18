@@ -1506,9 +1506,15 @@ export interface MarketListingSummary {
   id: string;
   title: string;
   price: string;
+  condition: string;
   city: string;
   imageUrls: string[];
   createdAt: string;
+  universalFit: boolean;
+  seller: { name: string | null; rating: number | null; ratingCount: number; verified: boolean };
+  // Present only when browsing with a garage vehicle (fitFor): does this part
+  // fit it? Undefined means "no vehicle selected", so show no fit pill.
+  fits?: boolean;
 }
 
 export interface MarketBrowseResult {

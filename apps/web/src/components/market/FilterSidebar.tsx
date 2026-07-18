@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { type MarketCategory } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { market, type MarketCategory } from "@/lib/api";
 import { MARKET_CONDITIONS, type MarketCondition } from "@/lib/marketQuery";
 import { useMarketNav } from "./useMarketNav";
 
@@ -25,12 +25,36 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
   const { params, navigate } = useMarketNav();
   const [min, setMin] = useState(params.minPrice?.toString() ?? "");
   const [max, setMax] = useState(params.maxPrice?.toString() ?? "");
+  const [cities, setCities] = useState<string[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    const load = async () => {
+      try {
+        const opts = await market.filterOptions();
+        if (!ignore) setCities(opts.cities);
+      } catch {
+        /* leave location filter empty on failure */
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const toggleCondition = (c: MarketCondition) => {
     const set = new Set(params.conditions ?? []);
     if (set.has(c)) set.delete(c);
     else set.add(c);
     navigate({ conditions: [...set] });
+  };
+
+  const toggleCity = (city: string) => {
+    const set = new Set(params.cities ?? []);
+    if (set.has(city)) set.delete(city);
+    else set.add(city);
+    navigate({ cities: [...set] });
   };
 
   const applyPrice = () => {
@@ -115,6 +139,26 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
           Apply
         </button>
       </Group>
+
+      {cities.length > 0 && (
+        <Group title="Location">
+          <ul className="flex flex-col gap-2 text-sm">
+            {cities.map(city => (
+              <li key={city}>
+                <label className="flex cursor-pointer items-center gap-2.5 text-muted">
+                  <input
+                    type="checkbox"
+                    checked={params.cities?.includes(city) ?? false}
+                    onChange={() => toggleCity(city)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  {city}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </Group>
+      )}
     </aside>
   );
 }
