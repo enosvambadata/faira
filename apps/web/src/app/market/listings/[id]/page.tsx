@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { market, ApiError, type MarketListingDetail } from "@/lib/api";
+import { market, marketMessages, ApiError, type MarketListingDetail } from "@/lib/api";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ShieldIcon } from "@/components/market/icons";
 import { Check } from "@/components/ui/icons";
+import { useMarketAuth } from "@/components/market/useMarketAuth";
 
 const CONDITION_LABELS: Record<string, string> = {
   NEW: "New",
@@ -23,10 +24,28 @@ function formatPrice(price: string): string {
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const { userId, signedIn } = useMarketAuth();
   const [listing, setListing] = useState<MarketListingDetail | null>(null);
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const messageSeller = async () => {
+    if (!signedIn) {
+      router.push(`/login?next=/market/listings/${id}`);
+      return;
+    }
+    setStarting(true);
+    try {
+      const conv = await marketMessages.start(id);
+      router.push(`/market/messages/${conv.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't start a conversation.");
+      setStarting(false);
+    }
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -159,9 +178,15 @@ export default function ListingDetailPage() {
                   </p>
                   {listing.seller.city && <p className="text-sm text-muted">{listing.seller.city}</p>}
                 </div>
-                <button disabled className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-muted opacity-60">
-                  Message
-                </button>
+                {listing.seller.id !== userId && (
+                  <button
+                    onClick={messageSeller}
+                    disabled={starting}
+                    className="rounded-md border border-primary px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary-light disabled:opacity-50"
+                  >
+                    {starting ? "…" : "Message"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -59,3 +59,9 @@ export const StarIcon = ({ filled = true, ...p }: P & { filled?: boolean }) => (
     <path d="m12 3 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17.8 6.8 19l1-5.8L3.5 9.2l5.9-.9L12 3Z" />
   </svg>
 );
+
+export const MessageIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M21 11.5a8.4 8.4 0 0 1-11.7 7.7L4 21l1.8-5.3A8.4 8.4 0 1 1 21 11.5Z" />
+  </svg>
+);
