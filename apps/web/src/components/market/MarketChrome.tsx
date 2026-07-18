@@ -10,6 +10,7 @@ import {
   type MarketVehicleModel,
   type MarketGarageVehicle,
 } from "@/lib/api";
+import { partsCategories } from "@/lib/marketCategories";
 import { Select } from "@/components/ui/Select";
 import { useMarketNav } from "./useMarketNav";
 import { useMarketAuth, signOutFromMarket } from "./useMarketAuth";
@@ -135,17 +136,19 @@ export function MarketChrome() {
 
   const applyGarage = () => {
     if (!modelId) return;
-    navigate({ fitFor: modelId, fitYear: year ? Number(year) : undefined });
+    const label = models.find(m => m.id === modelId)?.name;
+    navigate({ fitFor: modelId, fitYear: year ? Number(year) : undefined, fitLabel: label });
   };
 
   const clearGarage = () => {
     setMakeId(undefined);
     setModelId(undefined);
     setYear(undefined);
-    navigate({ fitFor: undefined, fitYear: undefined, modelId: undefined, year: undefined });
+    navigate({ fitFor: undefined, fitYear: undefined, fitLabel: undefined, modelId: undefined, year: undefined });
   };
 
   const activeCategory = params.categoryIds?.[0];
+  const partCats = partsCategories(categories);
 
   return (
     <div className="border-b border-border bg-white">
@@ -278,7 +281,7 @@ export function MarketChrome() {
                     }`}
                   >
                     <button
-                      onClick={() => navigate({ fitFor: v.modelId, fitYear: v.year ?? undefined })}
+                      onClick={() => navigate({ fitFor: v.modelId, fitYear: v.year ?? undefined, fitLabel: v.model })}
                       className="hover:text-primary"
                     >
                       {v.make} {v.model}
@@ -315,7 +318,7 @@ export function MarketChrome() {
         >
           All categories
         </button>
-        {categories.map(cat => (
+        {partCats.map(cat => (
           <button
             key={cat.id}
             onClick={() => navigate({ categoryIds: [cat.id] })}

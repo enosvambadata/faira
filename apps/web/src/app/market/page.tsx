@@ -118,7 +118,7 @@ function Browse() {
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
                 {result.data.map(listing => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <ListingCard key={listing.id} listing={listing} fitVehicle={params.fitLabel} />
                 ))}
               </div>
 
