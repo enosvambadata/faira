@@ -77,7 +77,7 @@ export default function HubOpsArrivalPage() {
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:px-6">
         <h1 className="text-xl font-semibold text-text">Scan parcels in on arrival</h1>
         <p className="mt-1 text-sm text-muted">
-          Scan each parcel as it arrives at this hub. The buyer is notified with a collection code as soon as it's scanned in.
+          Scan each parcel as it arrives at this hub. The buyer is notified with a collection code as soon as it&apos;s scanned in.
         </p>
 
         <Card className="mt-6">
