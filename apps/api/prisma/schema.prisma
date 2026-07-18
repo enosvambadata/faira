@@ -120,25 +120,25 @@ enum ReportReason {
 // Prisma doesn't own the auth schema — the FK to auth.users is added by hand
 // in the migration SQL instead of being generated from this model.
 model User {
-  id                         String   @id @db.Uuid
-  displayName                String?  @map("display_name")
-  avatarUrl                  String?  @map("avatar_url")
-  city                       String?
-  expoPushToken              String?  @map("expo_push_token")
-  pushNotificationsEnabled   Boolean  @default(true) @map("push_notifications_enabled")
-  emailNotificationsEnabled  Boolean  @default(true) @map("email_notifications_enabled")
-  createdAt                  DateTime @default(now()) @map("created_at")
-  updatedAt                  DateTime @updatedAt @map("updated_at")
+  id                        String   @id @db.Uuid
+  displayName               String?  @map("display_name")
+  avatarUrl                 String?  @map("avatar_url")
+  city                      String?
+  expoPushToken             String?  @map("expo_push_token")
+  pushNotificationsEnabled  Boolean  @default(true) @map("push_notifications_enabled")
+  emailNotificationsEnabled Boolean  @default(true) @map("email_notifications_enabled")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
 
   sellerProfile         SellerProfile?
   listings              Listing[]
-  ordersAsBuyer         Order[]        @relation("BuyerOrders")
+  ordersAsBuyer         Order[]                  @relation("BuyerOrders")
   wishlistItems         WishlistItem[]
-  conversationsAsBuyer  Conversation[] @relation("BuyerConversations")
-  conversationsAsSeller Conversation[] @relation("SellerConversations")
+  conversationsAsBuyer  Conversation[]           @relation("BuyerConversations")
+  conversationsAsSeller Conversation[]           @relation("SellerConversations")
   sentMessages          Message[]
-  following             Follow[]       @relation("Following")
-  followers             Follow[]       @relation("Followers")
+  following             Follow[]                 @relation("Following")
+  followers             Follow[]                 @relation("Followers")
   verificationRequests  VerificationRequest[]
   deletionRequests      AccountDeletionRequest[]
   auditLogs             AuditLog[]
@@ -149,22 +149,23 @@ model User {
   reviewsReceived       Review[]                 @relation("ReviewsReceived")
   reviewFlagsRaised     ReviewFlag[]
   reportsRaised         Report[]
+  garage                GarageVehicle[]
 
   // --- Faira Fulfilment (SCRUM-128) ---
-  fulfilmentRoles              UserRole[]
-  shipmentsAsSeller             Shipment[]           @relation("ShipmentSeller")
-  trackingEventsActed           TrackingEvent[]
-  parcelEvidenceCaptured        ParcelEvidence[]
-  parcelSealsApplied            ParcelSeal[]
-  transportRunsOperated         TransportRun[]
-  manifestsFinalized            TransportManifest[]
-  sellerSettlements             SellerSettlement[]
-  collectionEventsVerified      CollectionEvent[]
-  returnRequestsRequested       ReturnRequest[]
-  returnEventsActed             ReturnEvent[]
-  fulfilmentDisputesRaised      Dispute[]
-  supportTicketsRaised          SupportTicket[]
-  fulfilmentSellerProfile       FulfilmentSellerProfile?
+  fulfilmentRoles                UserRole[]
+  shipmentsAsSeller              Shipment[]                      @relation("ShipmentSeller")
+  trackingEventsActed            TrackingEvent[]
+  parcelEvidenceCaptured         ParcelEvidence[]
+  parcelSealsApplied             ParcelSeal[]
+  transportRunsOperated          TransportRun[]
+  manifestsFinalized             TransportManifest[]
+  sellerSettlements              SellerSettlement[]
+  collectionEventsVerified       CollectionEvent[]
+  returnRequestsRequested        ReturnRequest[]
+  returnEventsActed              ReturnEvent[]
+  fulfilmentDisputesRaised       Dispute[]
+  supportTicketsRaised           SupportTicket[]
+  fulfilmentSellerProfile        FulfilmentSellerProfile?
   fulfilmentVerificationRequests FulfilmentVerificationRequest[]
 
   // --- Faira Collect UK (SCRUM-177) ---
@@ -173,8 +174,8 @@ model User {
   // reusing one table for both risks exactly the kind of role-check
   // mistake the Fulfilment ADR flagged when explaining why Marketplace
   // and Fulfilment auth were kept apart. See docs/collect-uk/01-architecture-decision-record.md.
-  companyRoles              CollectUkCompanyRole[]
-  driverProfile             CollectUkDriver?
+  companyRoles                 CollectUkCompanyRole[]
+  driverProfile                CollectUkDriver?
   collectionBookingsAsCustomer CollectUkCollectionBooking[]
 
   @@map("users")
@@ -184,12 +185,12 @@ model User {
 // doesn't block requesting again later) — only application logic (not a
 // unique constraint) enforces "at most one PENDING request per user".
 model AccountDeletionRequest {
-  id           String                 @id @default(uuid()) @db.Uuid
-  userId       String                 @map("user_id") @db.Uuid
-  status       DeletionRequestStatus  @default(PENDING)
-  requestedAt  DateTime               @default(now()) @map("requested_at")
-  scheduledFor DateTime               @map("scheduled_for")
-  processedAt  DateTime?              @map("processed_at")
+  id           String                @id @default(uuid()) @db.Uuid
+  userId       String                @map("user_id") @db.Uuid
+  status       DeletionRequestStatus @default(PENDING)
+  requestedAt  DateTime              @default(now()) @map("requested_at")
+  scheduledFor DateTime              @map("scheduled_for")
+  processedAt  DateTime?             @map("processed_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -218,14 +219,14 @@ model AuditLog {
 // Resubmission is allowed after a rejection, so a seller can have more
 // than one row here — only the most recent one is shown to them.
 model VerificationRequest {
-  id              String              @id @default(uuid()) @db.Uuid
-  sellerId        String              @map("seller_id") @db.Uuid
-  idDocumentUrl   String              @map("id_document_url")
-  selfieUrl       String              @map("selfie_url")
-  status          VerificationStatus  @default(PENDING)
-  rejectionReason String?             @map("rejection_reason")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  reviewedAt      DateTime?           @map("reviewed_at")
+  id              String             @id @default(uuid()) @db.Uuid
+  sellerId        String             @map("seller_id") @db.Uuid
+  idDocumentUrl   String             @map("id_document_url")
+  selfieUrl       String             @map("selfie_url")
+  status          VerificationStatus @default(PENDING)
+  rejectionReason String?            @map("rejection_reason")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  reviewedAt      DateTime?          @map("reviewed_at")
 
   seller User @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
@@ -282,33 +283,38 @@ model Category {
 }
 
 model Listing {
-  id              String           @id @default(uuid()) @db.Uuid
-  sellerId        String           @map("seller_id") @db.Uuid
-  categoryId      String           @map("category_id") @db.Uuid
-  title           String
-  description     String?
-  price           Decimal          @db.Decimal(10, 2)
-  condition       ListingCondition
-  city            String
-  imageUrls       String[]         @map("image_urls")
-  deliveryOptions String[]         @map("delivery_options")
+  id                           String           @id @default(uuid()) @db.Uuid
+  sellerId                     String           @map("seller_id") @db.Uuid
+  categoryId                   String           @map("category_id") @db.Uuid
+  title                        String
+  description                  String?
+  price                        Decimal          @db.Decimal(10, 2)
+  condition                    ListingCondition
+  city                         String
+  imageUrls                    String[]         @map("image_urls")
+  deliveryOptions              String[]         @map("delivery_options")
   // Drives delivery fee calculation (SCRUM-64) — defaulted to LIGHT so
   // existing rows stay valid, but the sell flow requires an explicit
   // choice for new listings.
-  weightTier      WeightTier       @default(LIGHT) @map("weight_tier")
-  status          ListingStatus    @default(ACTIVE)
-  deletedAt       DateTime?        @map("deleted_at")
+  weightTier                   WeightTier       @default(LIGHT) @map("weight_tier")
+  // Auto-parts fitment: a listing either fits specific vehicles (via
+  // ListingFitment rows) or is a fit-anything item (universalFit=true, e.g.
+  // tools, generic oil). See docs/marketplace/00-vehicle-fitment-spec.md.
+  universalFit                 Boolean          @default(false) @map("universal_fit")
+  status                       ListingStatus    @default(ACTIVE)
+  deletedAt                    DateTime?        @map("deleted_at")
   // The exact declaration text the seller agreed to and when — stored
   // verbatim (not just a boolean) so the audit trail survives the legal
   // text itself changing later.
-  legalSourcingDeclarationText String?   @map("legal_sourcing_declaration_text")
-  legalSourcingDeclaredAt      DateTime? @map("legal_sourcing_declared_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  legalSourcingDeclarationText String?          @map("legal_sourcing_declaration_text")
+  legalSourcingDeclaredAt      DateTime?        @map("legal_sourcing_declared_at")
+  createdAt                    DateTime         @default(now()) @map("created_at")
+  updatedAt                    DateTime         @updatedAt @map("updated_at")
 
   seller        User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   category      Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   attributes    ListingAttribute[]
+  fitments      ListingFitment[]
   orders        Order[]
   wishlistedBy  WishlistItem[]
   conversations Conversation[]
@@ -395,27 +401,86 @@ model ListingAttribute {
   @@map("listing_attributes")
 }
 
+// Curated vehicle reference for the auto-parts fitment filter. Seeded from
+// apps/api/src/data/vehicleCatalogue.ts (Zimbabwe ex-Japan fleet). Curated,
+// not free-text, so make/model stay canonical and the filter actually works.
+model VehicleMake {
+  id     String         @id @default(uuid()) @db.Uuid
+  name   String         @unique
+  models VehicleModel[]
+
+  @@map("vehicle_makes")
+}
+
+model VehicleModel {
+  id       String           @id @default(uuid()) @db.Uuid
+  makeId   String           @map("make_id") @db.Uuid
+  name     String
+  make     VehicleMake      @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  fitments ListingFitment[]
+  garaged  GarageVehicle[]
+
+  @@unique([makeId, name])
+  @@index([makeId])
+  @@map("vehicle_models")
+}
+
+// One part fits many vehicles, each over an (optionally open-ended) year
+// range: yearFrom/yearTo null means "any year that side". A listing is valid
+// with >=1 fitment row OR universalFit=true (enforced in the sell flow).
+model ListingFitment {
+  id        String  @id @default(uuid()) @db.Uuid
+  listingId String  @map("listing_id") @db.Uuid
+  modelId   String  @map("model_id") @db.Uuid
+  yearFrom  Int?    @map("year_from")
+  yearTo    Int?    @map("year_to")
+  note      String?
+
+  listing Listing      @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  model   VehicleModel @relation(fields: [modelId], references: [id], onDelete: Restrict)
+
+  @@index([listingId])
+  @@index([modelId])
+  @@map("listing_fitments")
+}
+
+// A buyer's saved vehicle ("My Garage") — powers the "fits my car" filter so
+// the vehicle only has to be entered once.
+model GarageVehicle {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  modelId   String   @map("model_id") @db.Uuid
+  year      Int?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model VehicleModel @relation(fields: [modelId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("garage_vehicles")
+}
+
 model Order {
-  id              String      @id @default(uuid()) @db.Uuid
-  listingId       String      @map("listing_id") @db.Uuid
-  buyerId         String      @map("buyer_id") @db.Uuid
-  priceAtPurchase Decimal     @map("price_at_purchase") @db.Decimal(10, 2)
+  id                         String          @id @default(uuid()) @db.Uuid
+  listingId                  String          @map("listing_id") @db.Uuid
+  buyerId                    String          @map("buyer_id") @db.Uuid
+  priceAtPurchase            Decimal         @map("price_at_purchase") @db.Decimal(10, 2)
   // The option the buyer picked at checkout (SCRUM-59) — one of the
   // seller's listing.deliveryOptions at the time of purchase.
-  deliveryOption  String      @map("delivery_option")
-  status          OrderStatus @default(PENDING)
+  deliveryOption             String          @map("delivery_option")
+  status                     OrderStatus     @default(PENDING)
   // Tracks the 5-day no-response auto-release window (SCRUM-55) — nullable
   // so "reminder not yet sent" is representable without a sentinel date.
-  deliveryReminderDay3SentAt DateTime? @map("delivery_reminder_day3_sent_at")
-  deliveryReminderDay4SentAt DateTime? @map("delivery_reminder_day4_sent_at")
+  deliveryReminderDay3SentAt DateTime?       @map("delivery_reminder_day3_sent_at")
+  deliveryReminderDay4SentAt DateTime?       @map("delivery_reminder_day4_sent_at")
   // Fulfillment details the seller fills in when shipping (SCRUM-61) —
   // distinct from deliveryOption, which the buyer picked at checkout.
   // trackingReference only applies to COURIER/POSTAL, not MEETUP.
-  shippingMethod    ShippingMethod? @map("shipping_method")
-  trackingReference String?         @map("tracking_reference")
-  shippedAt         DateTime?       @map("shipped_at")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  shippingMethod             ShippingMethod? @map("shipping_method")
+  trackingReference          String?         @map("tracking_reference")
+  shippedAt                  DateTime?       @map("shipped_at")
+  createdAt                  DateTime        @default(now()) @map("created_at")
+  updatedAt                  DateTime        @updatedAt @map("updated_at")
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Restrict)
   buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
@@ -562,9 +627,9 @@ model Review {
   comment    String?
   createdAt  DateTime @default(now()) @map("created_at")
 
-  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  reviewer User  @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
-  reviewee User  @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  order    Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewer User        @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee User        @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
   flag     ReviewFlag?
 
   @@unique([orderId, reviewerId])
@@ -671,30 +736,30 @@ model UserRole {
 }
 
 model Hub {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String
   // Short human-readable code used in shipment references (FF-{code}-######),
   // e.g. "HRE" for Harare — never guessable-sequential on its own since it's
   // paired with a per-hub counter, not a global one.
-  code         String   @unique
-  city         String
-  address      String
-  openingHours String   @map("opening_hours")
-  isActive     Boolean  @default(true) @map("is_active")
+  code                 String   @unique
+  city                 String
+  address              String
+  openingHours         String   @map("opening_hours")
+  isActive             Boolean  @default(true) @map("is_active")
   // Atomically incremented (single UPDATE ... RETURNING) each time a
   // shipment confirms with this hub as origin — the source of the
   // sequence number in that shipment's reference. Never read-then-written
   // separately; see services/shipmentReference.ts.
-  nextShipmentSequence Int @default(1) @map("next_shipment_sequence")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  nextShipmentSequence Int      @default(1) @map("next_shipment_sequence")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  staffRoles        UserRole[]
-  shipmentsAsOrigin Shipment[]       @relation("OriginHub")
-  shipmentsAsDest   Shipment[]       @relation("DestinationHub")
-  routesAsOrigin    TransportRoute[] @relation("RouteOrigin")
-  routesAsDest      TransportRoute[] @relation("RouteDestination")
-  trackingEvents    TrackingEvent[]
+  staffRoles         UserRole[]
+  shipmentsAsOrigin  Shipment[]                @relation("OriginHub")
+  shipmentsAsDest    Shipment[]                @relation("DestinationHub")
+  routesAsOrigin     TransportRoute[]          @relation("RouteOrigin")
+  routesAsDest       TransportRoute[]          @relation("RouteDestination")
+  trackingEvents     TrackingEvent[]
   preferredBySellers FulfilmentSellerProfile[]
 
   @@unique([name])
@@ -918,17 +983,17 @@ enum TransportRunStatus {
 }
 
 model TransportRun {
-  id                 String              @id @default(uuid()) @db.Uuid
-  routeId            String              @map("route_id") @db.Uuid
-  providerId         String?             @map("provider_id") @db.Uuid
-  operatorUserId     String?             @map("operator_user_id") @db.Uuid
-  vehicleReference   String?             @map("vehicle_reference")
-  scheduledDeparture DateTime            @map("scheduled_departure")
-  scheduledArrival   DateTime            @map("scheduled_arrival")
-  actualDeparture    DateTime?           @map("actual_departure")
-  actualArrival      DateTime?           @map("actual_arrival")
-  status             TransportRunStatus  @default(SCHEDULED)
-  createdAt          DateTime            @default(now()) @map("created_at")
+  id                 String             @id @default(uuid()) @db.Uuid
+  routeId            String             @map("route_id") @db.Uuid
+  providerId         String?            @map("provider_id") @db.Uuid
+  operatorUserId     String?            @map("operator_user_id") @db.Uuid
+  vehicleReference   String?            @map("vehicle_reference")
+  scheduledDeparture DateTime           @map("scheduled_departure")
+  scheduledArrival   DateTime           @map("scheduled_arrival")
+  actualDeparture    DateTime?          @map("actual_departure")
+  actualArrival      DateTime?          @map("actual_arrival")
+  status             TransportRunStatus @default(SCHEDULED)
+  createdAt          DateTime           @default(now()) @map("created_at")
 
   route     TransportRoute      @relation(fields: [routeId], references: [id], onDelete: Restrict)
   provider  TransportProvider?  @relation(fields: [providerId], references: [id], onDelete: SetNull)
@@ -1008,14 +1073,14 @@ enum FulfilmentPaymentStatus {
 }
 
 model FulfilmentPayment {
-  id                String                   @id @default(uuid()) @db.Uuid
-  shipmentId        String                   @unique @map("shipment_id") @db.Uuid
+  id                String                  @id @default(uuid()) @db.Uuid
+  shipmentId        String                  @unique @map("shipment_id") @db.Uuid
   method            FulfilmentPaymentMethod
-  status            FulfilmentPaymentStatus  @default(PENDING)
-  amount            Decimal                  @db.Decimal(10, 2)
-  providerReference String?                  @map("provider_reference")
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  confirmedAt       DateTime?                @map("confirmed_at")
+  status            FulfilmentPaymentStatus @default(PENDING)
+  amount            Decimal                 @db.Decimal(10, 2)
+  providerReference String?                 @map("provider_reference")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  confirmedAt       DateTime?               @map("confirmed_at")
 
   shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
@@ -1088,16 +1153,16 @@ model CollectionCode {
 // The proof-of-collection record itself (SCRUM-146) — immutable once
 // created, one per COLLECTED shipment.
 model CollectionEvent {
-  id               String   @id @default(uuid()) @db.Uuid
-  shipmentId       String   @unique @map("shipment_id") @db.Uuid
-  verifiedById     String   @map("verified_by_id") @db.Uuid
-  idCheckPerformed Boolean  @default(false) @map("id_check_performed")
+  id                    String   @id @default(uuid()) @db.Uuid
+  shipmentId            String   @unique @map("shipment_id") @db.Uuid
+  verifiedById          String   @map("verified_by_id") @db.Uuid
+  idCheckPerformed      Boolean  @default(false) @map("id_check_performed")
   // Set only when a high-value parcel's ID check was skipped via a
   // supervisor override -- required by SCRUM-145's server-side enforcement
   // whenever idCheckPerformed is false above the configured value threshold.
-  idCheckOverrideReason String? @map("id_check_override_reason")
-  proofImageUrl    String?  @map("proof_image_url")
-  createdAt        DateTime @default(now()) @map("created_at")
+  idCheckOverrideReason String?  @map("id_check_override_reason")
+  proofImageUrl         String?  @map("proof_image_url")
+  createdAt             DateTime @default(now()) @map("created_at")
 
   shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   verifiedBy User     @relation(fields: [verifiedById], references: [id], onDelete: Restrict)
@@ -1369,22 +1434,22 @@ model FulfilmentVerificationRequest {
 // The tenant. One Company per subscribing shipping company; customers
 // choose a Company when booking, never see Faira's internal operations.
 model CollectUkCompany {
-  id              String   @id @default(uuid()) @db.Uuid
-  name            String
-  slug            String   @unique
-  countriesServed String[] @map("countries_served")
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  slug                String   @unique
+  countriesServed     String[] @map("countries_served")
   // White-label: what the company's own customers see on public pages.
   // brandName falls back to name; logoUrl is an image URL (upload TBD).
-  brandName       String?  @map("brand_name")
-  logoUrl         String?  @map("logo_url")
-  isActive        Boolean  @default(true) @map("is_active")
+  brandName           String?  @map("brand_name")
+  logoUrl             String?  @map("logo_url")
+  isActive            Boolean  @default(true) @map("is_active")
   // Atomically incremented each time a booking is created for this
   // company -- mirrors Hub.nextShipmentSequence's pattern, giving each
   // booking reference a short, human-readable, per-company sequence
   // rather than a raw UUID.
-  nextBookingSequence Int  @default(1) @map("next_booking_sequence")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  nextBookingSequence Int      @default(1) @map("next_booking_sequence")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   warehouses        CollectUkCompanyWarehouse[]
   roles             CollectUkCompanyRole[]
@@ -1456,7 +1521,7 @@ model CollectUkCompanyWarehouse {
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  company  CollectUkCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company  CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   bookings CollectUkCollectionBooking[]
 
   @@index([companyId])
@@ -1474,11 +1539,11 @@ enum CollectUkCompanyRoleType {
 // dimensions, and one table serving both risks a role-check mistake
 // leaking one tenant's data to another.
 model CollectUkCompanyRole {
-  id        String                    @id @default(uuid()) @db.Uuid
-  userId    String                    @map("user_id") @db.Uuid
-  companyId String                    @map("company_id") @db.Uuid
+  id        String                   @id @default(uuid()) @db.Uuid
+  userId    String                   @map("user_id") @db.Uuid
+  companyId String                   @map("company_id") @db.Uuid
   role      CollectUkCompanyRoleType
-  createdAt DateTime                  @default(now()) @map("created_at")
+  createdAt DateTime                 @default(now()) @map("created_at")
 
   user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -1503,39 +1568,39 @@ enum CollectUkDriverStatus {
 // hence no companyId here at all; a driver's assignment to a given
 // collection is via CollectUkCollectionStop, not a fixed company relation.
 model CollectUkDriver {
-  id               String                @id @default(uuid()) @db.Uuid
-  userId           String                @unique @map("user_id") @db.Uuid
-  vehicleReference String?               @map("vehicle_reference")
-  capacityParcels  Int                   @default(20) @map("capacity_parcels")
-  status           CollectUkDriverStatus @default(ACTIVE)
+  id                String                @id @default(uuid()) @db.Uuid
+  userId            String                @unique @map("user_id") @db.Uuid
+  vehicleReference  String?               @map("vehicle_reference")
+  capacityParcels   Int                   @default(20) @map("capacity_parcels")
+  status            CollectUkDriverStatus @default(ACTIVE)
   // Own-van driver application (self-serve via /collect-uk/drive).
   // Insurance documents are Cloudinary public IDs in the authenticated
   // collect-uk-driver-docs folder -- commercial (hire & reward) motor
   // insurance, Goods in Transit, and public liability are the legal
   // prerequisites for carrying customers' goods; Faira verifies them
   // before approving. Null on legacy admin-created drivers.
-  fullName          String?  @map("full_name")
+  fullName          String?               @map("full_name")
   phone             String?
-  basePostcode      String?  @map("base_postcode")
+  basePostcode      String?               @map("base_postcode")
   county            String?
   // vehicleReference/capacityParcels/vanPhotoUrl above are the PRIMARY
   // vehicle summary -- denormalized from the first CollectUkDriverVehicle
   // so the dispatch board and route displays (which are driver-keyed, one
   // van per route) keep working without joining. The full list lives in
   // vehicles[].
-  vehicleMakeModel   String?  @map("vehicle_make_model")
-  vanPhotoUrl        String?  @map("van_photo_url")
-  drivingLicenceUrl  String?  @map("driving_licence_url")
-  motorInsuranceUrl  String?  @map("motor_insurance_url")
-  gitInsuranceUrl    String?  @map("git_insurance_url")
-  liabilityUrl       String?  @map("liability_url")
-  motUrl             String?  @map("mot_url")
-  reviewNotes       String?  @map("review_notes")
-  appliedAt         DateTime? @map("applied_at")
-  reviewedAt        DateTime? @map("reviewed_at")
-  createdAt        DateTime              @default(now()) @map("created_at")
+  vehicleMakeModel  String?               @map("vehicle_make_model")
+  vanPhotoUrl       String?               @map("van_photo_url")
+  drivingLicenceUrl String?               @map("driving_licence_url")
+  motorInsuranceUrl String?               @map("motor_insurance_url")
+  gitInsuranceUrl   String?               @map("git_insurance_url")
+  liabilityUrl      String?               @map("liability_url")
+  motUrl            String?               @map("mot_url")
+  reviewNotes       String?               @map("review_notes")
+  appliedAt         DateTime?             @map("applied_at")
+  reviewedAt        DateTime?             @map("reviewed_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
 
-  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   routes   CollectUkCollectionRoute[]
   stops    CollectUkCollectionStop[]
   vehicles CollectUkDriverVehicle[]
@@ -1610,32 +1675,32 @@ enum CollectUkVehicleType {
 // since guest bookings (no Faira account) are an explicit user type in
 // the steering doc.
 model CollectUkCollectionBooking {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  reference           String?                  @unique
-  companyId           String                   @map("company_id") @db.Uuid
-  warehouseId         String                   @map("warehouse_id") @db.Uuid
-  customerUserId      String?                  @map("customer_user_id") @db.Uuid
-  customerName        String                   @map("customer_name")
-  customerContact     String                   @map("customer_contact")
-  destinationCountry  String                   @map("destination_country")
-  collectionAddress   String                   @map("collection_address")
-  collectionPostcode  String                   @map("collection_postcode")
+  id                  String                  @id @default(uuid()) @db.Uuid
+  reference           String?                 @unique
+  companyId           String                  @map("company_id") @db.Uuid
+  warehouseId         String                  @map("warehouse_id") @db.Uuid
+  customerUserId      String?                 @map("customer_user_id") @db.Uuid
+  customerName        String                  @map("customer_name")
+  customerContact     String                  @map("customer_contact")
+  destinationCountry  String                  @map("destination_country")
+  collectionAddress   String                  @map("collection_address")
+  collectionPostcode  String                  @map("collection_postcode")
   // Legacy (pre-window bookings only) -- customers no longer pick dates;
   // bookings attach to the company's next collection window instead.
-  preferredDate       DateTime?                @map("preferred_date")
-  collectionWindowId  String?                  @map("collection_window_id") @db.Uuid
-  parcelSizeTier      CollectUkParcelSizeTier  @map("parcel_size_tier")
+  preferredDate       DateTime?               @map("preferred_date")
+  collectionWindowId  String?                 @map("collection_window_id") @db.Uuid
+  parcelSizeTier      CollectUkParcelSizeTier @map("parcel_size_tier")
   // One booking can be several physical boxes -- each gets a printed
   // "i of N" label so none go missing between doorstep and warehouse.
-  numberOfParcels     Int                      @default(1) @map("number_of_parcels")
+  numberOfParcels     Int                     @default(1) @map("number_of_parcels")
   // What's being sent (customer ticks at booking); empty for bookings
   // that predate item types. OTHER requires itemTypeOther, VEHICLE
   // requires vehicleType -- enforced at the API layer.
-  itemTypes           CollectUkItemType[]      @default([]) @map("item_types")
-  itemTypeOther       String?                  @map("item_type_other")
-  vehicleType         CollectUkVehicleType?    @map("vehicle_type")
-  parcelWeightKg      Decimal?                 @map("parcel_weight_kg") @db.Decimal(6, 2)
-  specialInstructions String?                  @map("special_instructions")
+  itemTypes           CollectUkItemType[]     @default([]) @map("item_types")
+  itemTypeOther       String?                 @map("item_type_other")
+  vehicleType         CollectUkVehicleType?   @map("vehicle_type")
+  parcelWeightKg      Decimal?                @map("parcel_weight_kg") @db.Decimal(6, 2)
+  specialInstructions String?                 @map("special_instructions")
   // Geocoded from collectionPostcode at booking time (postcodes.io),
   // best-effort -- null means geocoding failed/unavailable and the route
   // optimiser will retry before ordering stops.
@@ -1643,18 +1708,18 @@ model CollectUkCollectionBooking {
   // written when the company confirms handover (accepting the work =
   // accepting the charge). Null: handed over before rates existed, no
   // rate configured, or a vehicle booking (quoted separately).
-  chargePence         Int?                     @map("charge_pence")
-  collectionLatitude  Float?                   @map("collection_latitude")
-  collectionLongitude Float?                   @map("collection_longitude")
-  status              CollectUkBookingStatus   @default(REQUESTED)
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  chargePence         Int?                    @map("charge_pence")
+  collectionLatitude  Float?                  @map("collection_latitude")
+  collectionLongitude Float?                  @map("collection_longitude")
+  status              CollectUkBookingStatus  @default(REQUESTED)
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
-  company          CollectUkCompany           @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  warehouse        CollectUkCompanyWarehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  customer         User?                      @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
-  collectionWindow CollectUkCollectionWindow? @relation(fields: [collectionWindowId], references: [id], onDelete: SetNull)
-  stop             CollectUkCollectionStop?
+  company            CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouse          CollectUkCompanyWarehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  customer           User?                        @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
+  collectionWindow   CollectUkCollectionWindow?   @relation(fields: [collectionWindowId], references: [id], onDelete: SetNull)
+  stop               CollectUkCollectionStop?
   shipmentRecipients CollectUkShipmentRecipient[]
 
   @@index([companyId])
@@ -1672,15 +1737,15 @@ enum CollectUkRouteStatus {
 // not a reuse of Fulfilment's TransportRun (fixed two-hub freight runs).
 // See the reuse assessment for why these aren't the same shape.
 model CollectUkCollectionRoute {
-  id                 String                @id @default(uuid()) @db.Uuid
-  driverId           String                @map("driver_id") @db.Uuid
-  routeDate          DateTime              @map("route_date") @db.Date
-  status             CollectUkRouteStatus  @default(PLANNED)
+  id                 String               @id @default(uuid()) @db.Uuid
+  driverId           String               @map("driver_id") @db.Uuid
+  routeDate          DateTime             @map("route_date") @db.Date
+  status             CollectUkRouteStatus @default(PLANNED)
   // Estimated road miles across the ordered stop sequence (haversine x
   // road factor), written by the optimise endpoint -- the input for
   // driver pay and per-collection pricing, not a turn-by-turn figure.
-  totalDistanceMiles Float?                @map("total_distance_miles")
-  createdAt          DateTime              @default(now()) @map("created_at")
+  totalDistanceMiles Float?               @map("total_distance_miles")
+  createdAt          DateTime             @default(now()) @map("created_at")
 
   driver CollectUkDriver           @relation(fields: [driverId], references: [id], onDelete: Restrict)
   stops  CollectUkCollectionStop[]
@@ -1700,20 +1765,20 @@ enum CollectUkStopStatus {
 // pointing at the same booking only after the old stop is resolved, not
 // by allowing two simultaneous stops for one booking).
 model CollectUkCollectionStop {
-  id            String               @id @default(uuid()) @db.Uuid
-  routeId       String               @map("route_id") @db.Uuid
-  bookingId     String               @unique @map("booking_id") @db.Uuid
-  driverId      String               @map("driver_id") @db.Uuid
-  sequenceOrder Int                  @map("sequence_order")
+  id                        String              @id @default(uuid()) @db.Uuid
+  routeId                   String              @map("route_id") @db.Uuid
+  bookingId                 String              @unique @map("booking_id") @db.Uuid
+  driverId                  String              @map("driver_id") @db.Uuid
+  sequenceOrder             Int                 @map("sequence_order")
   // Estimated road miles from the previous stop in sequence (first stop:
   // from the route's start postcode if one was given to the optimiser).
-  distanceFromPreviousMiles Float?   @map("distance_from_previous_miles")
-  status        CollectUkStopStatus  @default(PENDING)
-  proofPhotoUrl String?              @map("proof_photo_url")
-  signatureUrl  String?              @map("signature_url")
-  failureReason String?              @map("failure_reason")
-  completedAt   DateTime?            @map("completed_at")
-  createdAt     DateTime             @default(now()) @map("created_at")
+  distanceFromPreviousMiles Float?              @map("distance_from_previous_miles")
+  status                    CollectUkStopStatus @default(PENDING)
+  proofPhotoUrl             String?             @map("proof_photo_url")
+  signatureUrl              String?             @map("signature_url")
+  failureReason             String?             @map("failure_reason")
+  completedAt               DateTime?           @map("completed_at")
+  createdAt                 DateTime            @default(now()) @map("created_at")
 
   route   CollectUkCollectionRoute   @relation(fields: [routeId], references: [id], onDelete: Cascade)
   booking CollectUkCollectionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -1733,14 +1798,14 @@ enum CollectUkSubscriptionStatus {
 // providerReference holds the future Stripe subscription id once the
 // Payments epic (SCRUM-168) picks a provider -- see the reuse assessment.
 model CollectUkSubscription {
-  id                String                       @id @default(uuid()) @db.Uuid
-  companyId         String                       @unique @map("company_id") @db.Uuid
-  status            CollectUkSubscriptionStatus  @default(TRIALING)
-  planName          String                       @map("plan_name")
-  providerReference String?                      @map("provider_reference")
-  currentPeriodEnd  DateTime?                    @map("current_period_end")
-  createdAt         DateTime                     @default(now()) @map("created_at")
-  updatedAt         DateTime                     @updatedAt @map("updated_at")
+  id                String                      @id @default(uuid()) @db.Uuid
+  companyId         String                      @unique @map("company_id") @db.Uuid
+  status            CollectUkSubscriptionStatus @default(TRIALING)
+  planName          String                      @map("plan_name")
+  providerReference String?                     @map("provider_reference")
+  currentPeriodEnd  DateTime?                   @map("current_period_end")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
 
   company CollectUkCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1781,17 +1846,17 @@ enum CollectUkShipmentStatus {
 // and every recipient on the shipment is auto-notified -- solving the
 // "customers have no idea where their goods are in transit" problem.
 model CollectUkShipment {
-  id                 String                  @id @default(uuid()) @db.Uuid
-  companyId          String                  @map("company_id") @db.Uuid
-  reference          String
-  destinationCountry String?                 @map("destination_country")
-  status             CollectUkShipmentStatus @default(PREPARING)
+  id                  String                  @id @default(uuid()) @db.Uuid
+  companyId           String                  @map("company_id") @db.Uuid
+  reference           String
+  destinationCountry  String?                 @map("destination_country")
+  status              CollectUkShipmentStatus @default(PREPARING)
   // When set, the manifest (parcel list) is sealed -- the official cargo
   // list the carrier loads against and customs clears against, so parcels
   // can no longer be added/edited/removed.
-  manifestFinalizedAt DateTime?              @map("manifest_finalized_at")
-  createdAt          DateTime                @default(now()) @map("created_at")
-  updatedAt          DateTime                @updatedAt @map("updated_at")
+  manifestFinalizedAt DateTime?               @map("manifest_finalized_at")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
   company    CollectUkCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   recipients CollectUkShipmentRecipient[]
@@ -1846,23 +1911,23 @@ model CollectUkPayment {
 // destination. Mirrors Fulfilment's Shipment/ManifestParcel field set.
 // Money is integer pence, matching the rest of Collect UK.
 model CollectUkShipmentParcel {
-  id                 String   @id @default(uuid()) @db.Uuid
-  shipmentId         String   @map("shipment_id") @db.Uuid
-  recipientId        String?  @map("recipient_id") @db.Uuid
-  senderName         String   @map("sender_name")
-  receiverName       String   @map("receiver_name")
-  receiverContact    String?  @map("receiver_contact")
-  receiverAddress    String?  @map("receiver_address")
-  receiverCity       String?  @map("receiver_city")
+  id                 String    @id @default(uuid()) @db.Uuid
+  shipmentId         String    @map("shipment_id") @db.Uuid
+  recipientId        String?   @map("recipient_id") @db.Uuid
+  senderName         String    @map("sender_name")
+  receiverName       String    @map("receiver_name")
+  receiverContact    String?   @map("receiver_contact")
+  receiverAddress    String?   @map("receiver_address")
+  receiverCity       String?   @map("receiver_city")
   description        String
   category           String?
-  pieces             Int      @default(1)
-  weightKg           Decimal? @map("weight_kg") @db.Decimal(6, 2)
-  declaredValuePence Int?     @map("declared_value_pence")
+  pieces             Int       @default(1)
+  weightKg           Decimal?  @map("weight_kg") @db.Decimal(6, 2)
+  declaredValuePence Int?      @map("declared_value_pence")
   // Set when the parcel is scanned/marked loaded onto the container. Parcels
   // on the manifest with a null loadedAt at departure are short-shipped.
   loadedAt           DateTime? @map("loaded_at")
-  createdAt          DateTime @default(now()) @map("created_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   shipment  CollectUkShipment           @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   recipient CollectUkShipmentRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)

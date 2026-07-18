@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { SYSTEM_CONFIG_KEYS } from '../src/lib/systemConfigKeys';
+import { VEHICLE_CATALOGUE, VEHICLE_MODEL_COUNT } from '../src/data/vehicleCatalogue';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -479,12 +480,36 @@ async function seedSystemConfiguration(): Promise<number> {
   return entries.length;
 }
 
+// Curated vehicle reference for the auto-parts fitment filter (see
+// docs/marketplace/00-vehicle-fitment-spec.md). Upserted so re-running the
+// seed is idempotent and adding models later just tops up the table.
+async function seedVehicleCatalogue(): Promise<{ makes: number; models: number }> {
+  for (const { make, models } of VEHICLE_CATALOGUE) {
+    const makeRow = await prisma.vehicleMake.upsert({
+      where: { name: make },
+      update: {},
+      create: { name: make },
+    });
+    for (const model of models) {
+      await prisma.vehicleModel.upsert({
+        where: { makeId_name: { makeId: makeRow.id, name: model } },
+        update: {},
+        create: { makeId: makeRow.id, name: model },
+      });
+    }
+  }
+  return { makes: VEHICLE_CATALOGUE.length, models: VEHICLE_MODEL_COUNT };
+}
+
 async function main() {
   let total = 0;
   for (const topLevel of TAXONOMY) {
     total += await upsertNode(topLevel, null);
   }
   console.log(`Seeded ${total} categories across ${TAXONOMY.length} top-level branches.`);
+
+  const vehicles = await seedVehicleCatalogue();
+  console.log(`Seeded ${vehicles.makes} vehicle makes and ${vehicles.models} models.`);
 
   const feeRateCount = await seedDeliveryFeeRates();
   console.log(`Seeded ${feeRateCount} delivery fee rates across ${ZIMBABWE_CITIES.length} cities.`);

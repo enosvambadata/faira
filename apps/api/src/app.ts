@@ -8,6 +8,8 @@ import webhooksRouter from './routes/webhooks';
 import profileRouter from './routes/profile';
 import listingsRouter from './routes/listings';
 import categoriesRouter from './routes/categories';
+import vehiclesRouter from './routes/vehicles';
+import garageRouter from './routes/garage';
 import wishlistRouter from './routes/wishlist';
 import conversationsRouter from './routes/conversations';
 import sellersRouter from './routes/sellers';
@@ -71,6 +73,8 @@ export function createApp(): Express {
   app.use('/api/v1/profile', profileRouter);
   app.use('/api/v1/listings', listingsRouter);
   app.use('/api/v1/categories', categoriesRouter);
+  app.use('/api/v1/vehicles', vehiclesRouter);
+  app.use('/api/v1/garage', garageRouter);
   app.use('/api/v1/wishlist', wishlistRouter);
   app.use('/api/v1/conversations', conversationsRouter);
   app.use('/api/v1/sellers', sellersRouter);
