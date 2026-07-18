@@ -141,19 +141,6 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
         </button>
       </Group>
 
-      <Group title="Buying format">
-        <ul className="flex flex-col gap-2 text-sm">
-          {["Buy It Now", "Accepts offers", "Escrow protected"].map(opt => (
-            <li key={opt}>
-              <label className="flex cursor-pointer items-center gap-2.5 text-muted">
-                <input type="checkbox" className="h-4 w-4 accent-primary" />
-                {opt}
-              </label>
-            </li>
-          ))}
-        </ul>
-      </Group>
-
       {cities.length > 0 && (
         <Group title="Location">
           <ul className="flex flex-col gap-2 text-sm">
@@ -175,16 +162,15 @@ export function FilterSidebar({ categories }: { categories: MarketCategory[] }) 
       )}
 
       <Group title="Seller">
-        <ul className="flex flex-col gap-2 text-sm">
-          {["Verified sellers only", "Free collection"].map(opt => (
-            <li key={opt}>
-              <label className="flex cursor-pointer items-center gap-2.5 text-muted">
-                <input type="checkbox" className="h-4 w-4 accent-primary" />
-                {opt}
-              </label>
-            </li>
-          ))}
-        </ul>
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-muted">
+          <input
+            type="checkbox"
+            checked={params.verifiedOnly ?? false}
+            onChange={e => navigate({ verifiedOnly: e.target.checked || undefined })}
+            className="h-4 w-4 accent-primary"
+          />
+          Verified sellers only
+        </label>
       </Group>
     </aside>
   );
