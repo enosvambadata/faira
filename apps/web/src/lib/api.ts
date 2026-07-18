@@ -1643,9 +1643,12 @@ export interface MarketWatchlistItem {
   id: string;
   title: string;
   price: string;
+  condition: string;
   city: string;
   imageUrls: string[];
   status: string;
+  universalFit: boolean;
+  seller: { name: string | null; rating: number | null; ratingCount: number; verified: boolean };
   savedAt: string;
 }
 
