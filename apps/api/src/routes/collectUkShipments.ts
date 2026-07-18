@@ -792,7 +792,8 @@ trackingRouter.get(
       data: {
         reference: recipient.shipment.reference,
         destinationCountry: recipient.shipment.destinationCountry,
-        companyName: recipient.shipment.company.name,
+        companyName: recipient.shipment.company.brandName || recipient.shipment.company.name,
+        companyLogoUrl: recipient.shipment.company.logoUrl,
         status: recipient.shipment.status,
         customerName: recipient.customerName,
         milestones: recipient.shipment.milestones.map(milestoneResponse),

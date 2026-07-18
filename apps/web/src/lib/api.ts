@@ -708,6 +708,8 @@ export interface CollectUkCompany {
   name: string;
   slug: string;
   countriesServed: string[];
+  brandName: string | null;
+  logoUrl: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -748,7 +750,7 @@ export const collectUkCompanies = {
 
   get: (id: string) => request<CollectUkCompany>(`/api/v1/collect-uk/companies/${id}`, { auth: true }),
 
-  update: (id: string, payload: Partial<CreateCollectUkCompanyPayload>) =>
+  update: (id: string, payload: Partial<CreateCollectUkCompanyPayload> & { brandName?: string | null; logoUrl?: string | null }) =>
     request<CollectUkCompany>(`/api/v1/collect-uk/companies/${id}`, { method: "PATCH", body: payload, auth: true }),
 
   listWarehouses: (id: string) =>
@@ -1040,6 +1042,7 @@ export interface CollectUkCompanyWindow {
 export interface CollectUkBookingCompany {
   id: string;
   name: string;
+  logoUrl: string | null;
   countriesServed: string[];
   nextWindow: CollectUkWindowRange | null;
 }
@@ -1090,6 +1093,7 @@ export interface CollectUkBookingTrackingInfo {
   reference: string;
   status: string;
   companyName: string;
+  companyLogoUrl: string | null;
   destinationCountry: string;
   collectionAddress: string;
   collectionPostcode: string;
@@ -1130,6 +1134,7 @@ export interface CollectUkShipmentTrackingInfo {
   reference: string;
   destinationCountry: string | null;
   companyName: string;
+  companyLogoUrl: string | null;
   status: CollectUkShipmentStatus;
   customerName: string;
   milestones: CollectUkShipmentTrackingMilestone[];

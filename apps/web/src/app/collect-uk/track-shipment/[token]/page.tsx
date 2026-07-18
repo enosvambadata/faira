@@ -5,8 +5,9 @@ import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Package, Check } from "@/components/ui/icons";
+import { Check } from "@/components/ui/icons";
 import { ShipmentStatusBadge } from "@/components/collect-uk/ShipmentStatusBadge";
+import { CustomerBrand, PoweredByVamba } from "@/components/collect-uk/CustomerBrand";
 import { collectUkShipmentTracking, CollectUkShipmentTrackingInfo, FulfilmentApiError } from "@/lib/api";
 
 function formatDate(iso: string): string {
@@ -51,11 +52,8 @@ export default function CollectUkShipmentTrackingPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-white">
-        <div className="mx-auto flex max-w-2xl items-center gap-2.5 px-6 py-3.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-dark text-white">
-            <Package size={17} />
-          </span>
-          <span className="text-lg font-semibold text-text">Vamba Collect</span>
+        <div className="mx-auto flex max-w-2xl items-center px-6 py-3.5">
+          <CustomerBrand name={info?.companyName} logoUrl={info?.companyLogoUrl} />
         </div>
       </header>
 
@@ -142,6 +140,7 @@ export default function CollectUkShipmentTrackingPage() {
             </Card>
           </>
         )}
+        <PoweredByVamba />
       </main>
     </div>
   );

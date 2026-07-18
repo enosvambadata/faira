@@ -22,6 +22,7 @@ export async function createCheckoutSession(params: {
   currency: string;
   description: string;
   customerName: string;
+  brandName: string;
   successUrl: string;
   cancelUrl: string;
   metadata: Record<string, string>;
@@ -34,7 +35,7 @@ export async function createCheckoutSession(params: {
         price_data: {
           currency: params.currency,
           product_data: {
-            name: `Vamba Shipping — ${params.customerName}`.slice(0, 250),
+            name: `${params.brandName} — ${params.customerName}`.slice(0, 250),
             description: params.description.slice(0, 500),
           },
           unit_amount: params.amountPence,

@@ -56,7 +56,8 @@ router.get('/book/:companySlug', publicRateLimiter, async (req: Request<{ compan
   res.status(200).json({
     data: {
       id: company.id,
-      name: company.name,
+      name: company.brandName || company.name,
+      logoUrl: company.logoUrl,
       countriesServed: company.countriesServed,
       nextWindow: nextWindow ? { startDate: nextWindow.startDate, endDate: nextWindow.endDate } : null,
     },
@@ -197,7 +198,8 @@ router.get('/tracking/:token', publicRateLimiter, async (req: Request<{ token: s
     data: {
       reference: booking.reference,
       status: collectUkBuyerStatus(booking.status),
-      companyName: booking.company.name,
+      companyName: booking.company.brandName || booking.company.name,
+      companyLogoUrl: booking.company.logoUrl,
       destinationCountry: booking.destinationCountry,
       collectionAddress: booking.collectionAddress,
       collectionPostcode: booking.collectionPostcode,

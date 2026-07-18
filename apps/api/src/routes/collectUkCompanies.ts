@@ -44,6 +44,8 @@ function companyResponse(company: {
   name: string;
   slug: string;
   countriesServed: string[];
+  brandName: string | null;
+  logoUrl: string | null;
   isActive: boolean;
   createdAt: Date;
 }) {
@@ -52,6 +54,8 @@ function companyResponse(company: {
     name: company.name,
     slug: company.slug,
     countriesServed: company.countriesServed,
+    brandName: company.brandName,
+    logoUrl: company.logoUrl,
     isActive: company.isActive,
     createdAt: company.createdAt,
   };
@@ -135,6 +139,10 @@ router.get(
 const updateCompanySchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   countriesServed: z.array(z.string().trim().min(1)).min(1).optional(),
+  // White-label brand shown to the company's own customers. Nullable so a
+  // company can clear them back to defaults.
+  brandName: z.string().trim().max(200).nullable().optional(),
+  logoUrl: z.union([z.url().max(500), z.literal('')]).transform(v => v || null).nullable().optional(),
 });
 
 router.patch(
