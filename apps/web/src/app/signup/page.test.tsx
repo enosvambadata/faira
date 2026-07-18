@@ -24,11 +24,6 @@ vi.mock("@/lib/api", () => ({
   FulfilmentApiError: FakeApiError,
 }));
 
-const signInWithPasswordMock = vi.fn();
-vi.mock("@/lib/supabase", () => ({
-  createClient: () => ({ auth: { signInWithPassword: signInWithPasswordMock } }),
-}));
-
 const { default: SignupPage } = await import("./page");
 
 beforeEach(() => {
@@ -58,9 +53,10 @@ describe("SignupPage", () => {
     expect(signupMock).not.toHaveBeenCalled();
   });
 
-  it("signs up, signs in, and redirects to the Collect UK home on success", async () => {
+  it("shows a confirm-your-email screen after signup, without auto-login or redirect", async () => {
+    // Email verification (SCRUM-219): signup creates an UNconfirmed account and
+    // sends a confirm link — the page never auto-logs-in or redirects.
     signupMock.mockResolvedValue({ id: "user-1", email: "seller@example.com", phone: null });
-    signInWithPasswordMock.mockResolvedValue({ error: null });
 
     render(<SignupPage />);
 
@@ -69,10 +65,11 @@ describe("SignupPage", () => {
     await userEvent.type(screen.getByLabelText(/confirm password/i), "password123");
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(await screen.findByRole("button", { name: /create account/i })).toBeInTheDocument();
+    expect(await screen.findByText(/confirm your email/i)).toBeInTheDocument();
+    expect(screen.getByText("seller@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /go to sign in/i })).toBeInTheDocument();
     expect(signupMock).toHaveBeenCalledWith({ email: "seller@example.com", password: "password123" });
-    expect(signInWithPasswordMock).toHaveBeenCalledWith({ email: "seller@example.com", password: "password123" });
-    expect(pushMock).toHaveBeenCalledWith("/collect-uk");
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("shows a clear message when the account already exists", async () => {
