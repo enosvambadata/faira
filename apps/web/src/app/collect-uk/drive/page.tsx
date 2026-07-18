@@ -12,17 +12,13 @@ import { FileUpload, UploadState } from "@/components/ui/FileUpload";
 import { CollectBrand } from "@/components/collect-uk/CollectBrand";
 import { collectUkDriverPortal, uploadDriverDocument, FulfilmentApiError } from "@/lib/api";
 
-// Driver-level documents: one licence and one of each insurance certificate
-// (which may be fleet policies covering all the driver's vehicles).
+// Relaxed doc set for the initial recruitment push: driving licence + the
+// van's own insurance + a current MOT. Hire & reward / GIT / public liability
+// will be reintroduced later (legally required for paid carriage).
 const DOCS = [
   { key: "drivingLicenceUrl" as const, label: "Driving licence", hint: "Both sides, or a clear photo of the photocard" },
-  {
-    key: "motorInsuranceUrl" as const,
-    label: "Commercial vehicle insurance (hire & reward)",
-    hint: "Must show hire & reward / courier use — personal cover isn't valid for paid collections",
-  },
-  { key: "gitInsuranceUrl" as const, label: "Goods in Transit insurance", hint: "Covers the parcels you carry" },
-  { key: "liabilityUrl" as const, label: "Public liability insurance", hint: "Covers injury/damage while collecting" },
+  { key: "motorInsuranceUrl" as const, label: "Vehicle insurance", hint: "Your van's insurance certificate" },
+  { key: "motUrl" as const, label: "MOT certificate", hint: "Your van's current MOT pass" },
 ];
 
 type DocKey = (typeof DOCS)[number]["key"];
@@ -53,14 +49,12 @@ export default function DriveForFairaPage() {
   const [docs, setDocs] = useState<Record<DocKey, string | null>>({
     drivingLicenceUrl: null,
     motorInsuranceUrl: null,
-    gitInsuranceUrl: null,
-    liabilityUrl: null,
+    motUrl: null,
   });
   const [docStates, setDocStates] = useState<Record<DocKey, UploadState>>({
     drivingLicenceUrl: "idle",
     motorInsuranceUrl: "idle",
-    gitInsuranceUrl: "idle",
-    liabilityUrl: "idle",
+    motUrl: "idle",
   });
   const [vehicles, setVehicles] = useState<VehicleForm[]>([emptyVehicle()]);
   const [submitting, setSubmitting] = useState(false);
@@ -114,8 +108,7 @@ export default function DriveForFairaPage() {
         county: county.trim(),
         drivingLicenceUrl: docs.drivingLicenceUrl!,
         motorInsuranceUrl: docs.motorInsuranceUrl!,
-        gitInsuranceUrl: docs.gitInsuranceUrl!,
-        liabilityUrl: docs.liabilityUrl!,
+        motUrl: docs.motUrl!,
         vehicles: vehicles.map(v => ({
           makeModel: v.makeModel.trim(),
           registrationPlate: v.registrationPlate.trim(),
@@ -154,10 +147,13 @@ export default function DriveForFairaPage() {
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:px-6">
         <h1 className="text-xl font-semibold text-text">Drive for Vamba Collect</h1>
         <p className="mt-1 text-sm text-muted">
-          Got your own van? Vamba Collect sends you paid collection routes in your area. We review your
-          documents before your first route; a valid driving licence and commercial (hire &amp;
-          reward), Goods in Transit and public liability cover are required by law for carrying
-          customers&rsquo; goods.
+          Got your own van? Vamba Collect sends you paid collection routes in your area. To get started you just
+          need a <strong>driving licence</strong>, your <strong>van&rsquo;s insurance</strong> and a{" "}
+          <strong>current MOT</strong>. We review your documents before your first route.
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Note: carrying goods for payment legally needs &ldquo;hire &amp; reward&rdquo; insurance — we&rsquo;ll ask
+          for it before you take on regular routes.
         </p>
 
         <Card className="mt-6">

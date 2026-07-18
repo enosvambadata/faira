@@ -409,6 +409,7 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
     county: 'Greater Manchester',
     drivingLicenceUrl: 'collect-uk-driver-docs/licence',
     motorInsuranceUrl: 'collect-uk-driver-docs/motor',
+    motUrl: 'collect-uk-driver-docs/mot',
     gitInsuranceUrl: 'collect-uk-driver-docs/git',
     liabilityUrl: 'collect-uk-driver-docs/liability',
     vehicles: [
@@ -430,7 +431,8 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
         userId: USER_ID,
         status: 'APPLIED',
         drivingLicenceUrl: 'collect-uk-driver-docs/licence',
-        gitInsuranceUrl: 'collect-uk-driver-docs/git',
+        motorInsuranceUrl: 'collect-uk-driver-docs/motor',
+        motUrl: 'collect-uk-driver-docs/mot',
         vehicleReference: 'AB12 CDE', // primary summary from vehicles[0]
         vehicleMakeModel: 'Ford Transit LWB',
         capacityParcels: 30,
@@ -467,6 +469,28 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
     expect(driverCreateMock).not.toHaveBeenCalled();
   });
 
+  it('400s when the MOT is missing', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+    const { motUrl: _m, ...noMot } = APPLICATION;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(noMot);
+
+    expect(res.status).toBe(400);
+    expect(driverCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('still applies without the (now optional) hire & reward / GIT / liability docs', async () => {
+    driverFindUniqueMock.mockResolvedValue(null);
+    const { gitInsuranceUrl: _g, liabilityUrl: _lab, ...relaxed } = APPLICATION;
+
+    const app = createApp();
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(relaxed);
+
+    expect(res.status).toBe(201);
+    expect(driverCreateMock).toHaveBeenCalled();
+  });
+
   it('409s when the caller already has a live driver record', async () => {
     const app = createApp();
     const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(APPLICATION);
@@ -488,12 +512,12 @@ describe('POST /api/v1/collect-uk/driver/apply', () => {
     });
   });
 
-  it('400s when a required insurance document is missing', async () => {
+  it('400s when the vehicle insurance is missing', async () => {
     driverFindUniqueMock.mockResolvedValue(null);
-    const { gitInsuranceUrl: _omit, ...withoutGit } = APPLICATION;
+    const { motorInsuranceUrl: _omit, ...withoutInsurance } = APPLICATION;
 
     const app = createApp();
-    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(withoutGit);
+    const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send(withoutInsurance);
 
     expect(res.status).toBe(400);
     expect(driverCreateMock).not.toHaveBeenCalled();
@@ -519,7 +543,7 @@ describe('role exclusion: company members cannot apply as drivers', () => {
     const app = createApp();
     const res = await request(app).post('/api/v1/collect-uk/driver/apply').set(AUTH_HEADER).send({
       fullName: 'Conflicted', phone: '+447700900001', basePostcode: 'M1 1AE', county: 'Gtr Manchester',
-      drivingLicenceUrl: 'd/licence', motorInsuranceUrl: 'd/motor', gitInsuranceUrl: 'd/git', liabilityUrl: 'd/liab',
+      drivingLicenceUrl: 'd/licence', motorInsuranceUrl: 'd/motor', motUrl: 'd/mot',
       vehicles: [{ makeModel: 'Transit', registrationPlate: 'AB12 CDE', photoUrl: 'd/van' }],
     });
 

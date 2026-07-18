@@ -1529,6 +1529,7 @@ model CollectUkDriver {
   motorInsuranceUrl  String?  @map("motor_insurance_url")
   gitInsuranceUrl    String?  @map("git_insurance_url")
   liabilityUrl       String?  @map("liability_url")
+  motUrl             String?  @map("mot_url")
   reviewNotes       String?  @map("review_notes")
   appliedAt         DateTime? @map("applied_at")
   reviewedAt        DateTime? @map("reviewed_at")
