@@ -1373,6 +1373,10 @@ model CollectUkCompany {
   name            String
   slug            String   @unique
   countriesServed String[] @map("countries_served")
+  // White-label: what the company's own customers see on public pages.
+  // brandName falls back to name; logoUrl is an image URL (upload TBD).
+  brandName       String?  @map("brand_name")
+  logoUrl         String?  @map("logo_url")
   isActive        Boolean  @default(true) @map("is_active")
   // Atomically incremented each time a booking is created for this
   // company -- mirrors Hub.nextShipmentSequence's pattern, giving each

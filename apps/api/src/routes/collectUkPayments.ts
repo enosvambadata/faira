@@ -87,6 +87,10 @@ router.post(
       }
     }
 
+    // The company's brand is what the customer sees on Stripe's checkout.
+    const company = await prisma.collectUkCompany.findUnique({ where: { id: req.params.id } });
+    const brandName = company?.brandName || company?.name || 'Vamba Shipping';
+
     // Create the payment row first so its id is the Stripe metadata reference
     // (mirrors the Paynow initiate flow), then create the Checkout Session.
     const payment = await prisma.collectUkPayment.create({
@@ -107,6 +111,7 @@ router.post(
         currency: payment.currency,
         description: payment.description,
         customerName: payment.customerName,
+        brandName,
         successUrl: `${webAppUrl}/collect-uk/pay/success?ref=${payment.id}`,
         cancelUrl: `${webAppUrl}/collect-uk/pay/cancelled`,
         metadata: { paymentId: payment.id, companyId: req.params.id },

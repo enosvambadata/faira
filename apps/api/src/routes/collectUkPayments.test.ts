@@ -9,6 +9,7 @@ const paymentUpdateMock = vi.fn();
 const paymentFindManyMock = vi.fn();
 const paymentFindUniqueMock = vi.fn();
 const shipmentFindUniqueMock = vi.fn();
+const companyFindUniqueMock = vi.fn();
 const stripeConfiguredMock = vi.fn();
 const createCheckoutSessionMock = vi.fn();
 
@@ -34,6 +35,7 @@ vi.mock('../prisma', () => ({
       findUnique: (...args: unknown[]) => paymentFindUniqueMock(...args),
     },
     collectUkShipment: { findUnique: (...args: unknown[]) => shipmentFindUniqueMock(...args) },
+    collectUkCompany: { findUnique: (...args: unknown[]) => companyFindUniqueMock(...args) },
     auditLog: { create: (...args: unknown[]) => auditLogCreateMock(...args) },
   },
 }));
@@ -67,6 +69,7 @@ beforeEach(() => {
   getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
   companyRoleFindManyMock.mockResolvedValue([{ role: 'COMPANY_ADMIN', companyId: COMPANY_A }]);
   auditLogCreateMock.mockResolvedValue({});
+  companyFindUniqueMock.mockResolvedValue({ id: COMPANY_A, name: 'ABC Logistics', brandName: null });
   stripeConfiguredMock.mockReturnValue(true);
 });
 
@@ -84,7 +87,7 @@ describe('POST /api/v1/collect-uk/companies/:id/payments', () => {
     expect(res.status).toBe(201);
     expect(res.body.data.checkoutUrl).toBe('https://checkout.stripe.com/pay/cs_test_1');
     expect(createCheckoutSessionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ amountPence: 80000, currency: 'gbp', customerName: 'Tendai' }),
+      expect.objectContaining({ amountPence: 80000, currency: 'gbp', customerName: 'Tendai', brandName: 'ABC Logistics' }),
     );
   });
 
