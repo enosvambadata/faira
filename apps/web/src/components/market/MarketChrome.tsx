@@ -2,15 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { market, type MarketCategory, type MarketVehicleMake, type MarketVehicleModel } from "@/lib/api";
+import {
+  market,
+  marketGarage,
+  type MarketCategory,
+  type MarketVehicleMake,
+  type MarketVehicleModel,
+  type MarketGarageVehicle,
+} from "@/lib/api";
 import { Select } from "@/components/ui/Select";
 import { useMarketNav } from "./useMarketNav";
+import { useMarketAuth, signOutFromMarket } from "./useMarketAuth";
 import { SearchIcon, HeartIcon, CartIcon, CarIcon } from "./icons";
 
 const YEARS = Array.from({ length: 2027 - 1990 + 1 }, (_, i) => String(2027 - i));
 
 export function MarketChrome() {
   const { params, navigate } = useMarketNav();
+  const { signedIn } = useMarketAuth();
 
   const [term, setTerm] = useState(params.q ?? "");
   const [categories, setCategories] = useState<MarketCategory[]>([]);
@@ -19,6 +28,7 @@ export function MarketChrome() {
   const [makeId, setMakeId] = useState<string | undefined>();
   const [modelId, setModelId] = useState<string | undefined>();
   const [year, setYear] = useState<string | undefined>();
+  const [garageVehicles, setGarageVehicles] = useState<MarketGarageVehicle[]>([]);
 
   // Chrome fetches its own reference data once (the layout persists across
   // browse navigations, so this doesn't refire on every filter change).
@@ -43,6 +53,28 @@ export function MarketChrome() {
     };
   }, [makeId]);
 
+  // Saved garage vehicles load per sign-in (and clear on sign-out). Both
+  // setState calls live inside the nested async fn, not the effect body.
+  useEffect(() => {
+    let ignore = false;
+    const load = async () => {
+      if (!signedIn) {
+        setGarageVehicles([]);
+        return;
+      }
+      try {
+        const v = await marketGarage.list();
+        if (!ignore) setGarageVehicles(v);
+      } catch {
+        /* leave the garage empty on a failed load */
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, [signedIn]);
+
   // Reset the dependent model when the make changes — done in the handler
   // rather than an effect so there's no cascading synchronous setState.
   const changeMake = (value: string) => {
@@ -51,13 +83,41 @@ export function MarketChrome() {
     setModels([]);
   };
 
+  const saveVehicle = async () => {
+    if (!modelId) return;
+    try {
+      const v = await marketGarage.add(modelId, year ? Number(year) : undefined);
+      setGarageVehicles(prev => [v, ...prev.filter(x => x.id !== v.id)]);
+    } catch {
+      /* ignore — the filter still works even if the save didn't stick */
+    }
+  };
+
+  const removeVehicle = async (id: string) => {
+    try {
+      await marketGarage.remove(id);
+      setGarageVehicles(prev => prev.filter(x => x.id !== id));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOutFromMarket();
+  };
+
   const activeVehicle = useMemo(() => {
     if (!params.modelId) return null;
-    const modelName = models.find(m => m.id === params.modelId)?.name;
-    const makeName = makes.find(m => m.id === makeId)?.name;
+    const saved = garageVehicles.find(v => v.modelId === params.modelId);
+    const modelName = saved?.model ?? models.find(m => m.id === params.modelId)?.name;
+    const makeName = saved?.make ?? makes.find(m => m.id === makeId)?.name;
     const label = [makeName, modelName].filter(Boolean).join(" ");
     return `${label || "your vehicle"}${params.year ? ` · ${params.year}` : ""}`;
-  }, [params.modelId, params.year, models, makes, makeId]);
+  }, [params.modelId, params.year, models, makes, makeId, garageVehicles]);
+
+  // Whether the currently selected make/model is already saved (avoids
+  // offering "Save" for a vehicle that's already in the garage).
+  const alreadySaved = !!modelId && garageVehicles.some(v => v.modelId === modelId);
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +148,14 @@ export function MarketChrome() {
             <Link href="/market" className="hidden hover:text-primary sm:inline">Sell a part</Link>
             <Link href="/market" className="hidden hover:text-primary sm:inline">Help</Link>
           </nav>
-          <span>Ship to 🇿🇼 Zimbabwe</span>
+          <div className="flex items-center gap-4">
+            {signedIn ? (
+              <button onClick={handleSignOut} className="hover:text-primary">Sign out</button>
+            ) : (
+              <Link href="/login?next=/market" className="font-medium text-primary hover:underline">Sign in</Link>
+            )}
+            <span className="hidden sm:inline">Ship to 🇿🇼 Zimbabwe</span>
+          </div>
         </div>
       </div>
 
@@ -118,7 +185,7 @@ export function MarketChrome() {
         </form>
 
         <nav className="flex shrink-0 items-center gap-4 text-muted">
-          <Link href="/market" aria-label="Watchlist" className="flex flex-col items-center gap-0.5 text-[10px] hover:text-primary">
+          <Link href="/market/watchlist" aria-label="Watchlist" className="flex flex-col items-center gap-0.5 text-[10px] hover:text-primary">
             <HeartIcon size={21} />
             <span className="hidden md:inline">Watchlist</span>
           </Link>
@@ -162,7 +229,53 @@ export function MarketChrome() {
               >
                 Find parts that fit
               </button>
+              {signedIn && modelId && !alreadySaved && (
+                <button
+                  onClick={saveVehicle}
+                  className="h-11 rounded-md border border-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary-light"
+                >
+                  Save to garage
+                </button>
+              )}
             </div>
+          )}
+
+          {/* saved vehicles — quick-apply chips */}
+          {signedIn && garageVehicles.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {garageVehicles.map(v => {
+                const isActive = params.modelId === v.modelId;
+                return (
+                  <span
+                    key={v.id}
+                    className={`flex items-center gap-1.5 rounded-full border bg-white px-2.5 py-1 text-xs font-medium ${
+                      isActive ? "border-green text-green" : "border-border text-muted"
+                    }`}
+                  >
+                    <button
+                      onClick={() => navigate({ modelId: v.modelId, year: v.year ?? undefined })}
+                      className="hover:text-primary"
+                    >
+                      {v.make} {v.model}
+                      {v.year ? ` ${v.year}` : ""}
+                    </button>
+                    <button
+                      onClick={() => removeVehicle(v.id)}
+                      aria-label={`Remove ${v.make} ${v.model} from garage`}
+                      className="text-muted hover:text-red"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {!signedIn && (
+            <Link href="/login?next=/market" className="text-xs font-medium text-primary hover:underline">
+              Sign in to save your garage
+            </Link>
           )}
         </div>
       </div>

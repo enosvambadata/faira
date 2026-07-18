@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { type MarketListingSummary } from "@/lib/api";
-import { HeartIcon, ShieldIcon } from "./icons";
+import { ShieldIcon } from "./icons";
+import { WatchlistHeart } from "./WatchlistHeart";
 
 function formatPrice(price: string): string {
   const n = Number(price);
@@ -28,12 +29,9 @@ export function ListingCard({ listing }: { listing: MarketListingSummary }) {
         ) : (
           <div className="flex h-full w-full items-center justify-center text-4xl text-muted">🔧</div>
         )}
-        <span
-          aria-hidden
-          className="absolute right-2.5 top-2.5 grid h-8 w-8 place-items-center rounded-full border border-border bg-white/90 text-muted transition-colors group-hover:text-primary"
-        >
-          <HeartIcon size={16} />
-        </span>
+        <div className="absolute right-2.5 top-2.5">
+          <WatchlistHeart listingId={listing.id} />
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-3">
