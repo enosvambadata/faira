@@ -71,6 +71,27 @@ describe('GET /api/v1/wishlist', () => {
     );
   });
 
+  it('includes condition and the seller rating/verified badge on each card', async () => {
+    wishlistFindManyMock.mockResolvedValue([
+      {
+        createdAt: new Date('2026-07-04T00:00:00Z'),
+        listing: fakeListing({
+          condition: 'GOOD',
+          universalFit: false,
+          seller: { displayName: 'Tendai Moyo', sellerProfile: { ratingAvg: '4.9', ratingCount: 312, isVerified: true } },
+        }),
+      },
+    ]);
+
+    const app = createApp();
+    const res = await request(app).get('/api/v1/wishlist').set(AUTH_HEADER);
+
+    expect(res.status).toBe(200);
+    const card = res.body.data[0];
+    expect(card.condition).toBe('GOOD');
+    expect(card.seller).toEqual({ name: 'Tendai Moyo', rating: 4.9, ratingCount: 312, verified: true });
+  });
+
   it('rejects an unauthenticated request', async () => {
     const app = createApp();
     const res = await request(app).get('/api/v1/wishlist');
