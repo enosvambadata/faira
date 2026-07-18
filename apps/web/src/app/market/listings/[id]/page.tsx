@@ -137,20 +137,16 @@ export default function ListingDetailPage() {
 
               <div className="rounded-lg border border-border bg-white p-4">
                 <div className="flex flex-col gap-3">
-                  <button
-                    disabled
-                    title="Buying on the web is coming soon — the app handles checkout today"
-                    className="h-12 rounded-full bg-primary font-semibold text-white opacity-60"
-                  >
-                    Buy It Now
-                  </button>
-                  <button
-                    disabled
-                    className="h-12 rounded-full border border-primary font-semibold text-primary opacity-60"
-                  >
-                    Make an offer
-                  </button>
-                  <p className="text-center text-xs text-muted">Checkout on web is coming soon.</p>
+                  {listing.seller.id === userId ? (
+                    <p className="text-center text-sm text-muted">This is your listing.</p>
+                  ) : (
+                    <Link
+                      href={`/market/listings/${id}/checkout`}
+                      className="grid h-12 place-items-center rounded-full bg-primary font-semibold text-white transition-colors hover:bg-primary-dark"
+                    >
+                      Buy It Now
+                    </Link>
+                  )}
                 </div>
 
                 <div className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-sm text-green">
