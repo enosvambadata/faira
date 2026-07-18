@@ -64,6 +64,13 @@ export default function CompanyPortalLayout({ children }: { children: React.Reac
           <CollectBrand suffix="Company Portal" />
           <div className="flex items-center gap-2">
             <Link
+              href="/collect-uk/guide"
+              target="_blank"
+              className="cursor-pointer px-2 text-sm font-medium text-muted transition-colors duration-200 hover:text-primary"
+            >
+              Guide
+            </Link>
+            <Link
               href="/collect-uk"
               className="cursor-pointer px-2 text-sm font-medium text-muted transition-colors duration-200 hover:text-primary"
             >
