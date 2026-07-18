@@ -1713,3 +1713,43 @@ export const marketMessages = {
 
   unreadCount: () => request<{ count: number }>("/api/v1/conversations/unread-count", { auth: true }),
 };
+
+// ---- Faira Market: checkout / orders (auth-gated) ----
+
+export type MarketPaymentMethod = "ECOCASH" | "ONEMONEY" | "ZIMSWITCH" | "CASH_ON_DELIVERY";
+
+export interface MarketOrder {
+  id: string;
+  listingId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+}
+
+export interface MarketPayResult {
+  paymentId: string;
+  redirectUrl: string | null;
+  instructions: string | null;
+}
+
+export interface MarketPaymentStatus {
+  orderStatus: string;
+  paymentStatus: string | null;
+}
+
+export const marketOrders = {
+  create: (listingId: string, deliveryOption: string) =>
+    request<MarketOrder>("/api/v1/orders", { method: "POST", body: { listingId, deliveryOption }, auth: true }),
+
+  deliveryFee: (listingId: string, deliveryOption: string) =>
+    request<{ fee: number }>(
+      `/api/v1/orders/delivery-fee?listingId=${encodeURIComponent(listingId)}&deliveryOption=${encodeURIComponent(deliveryOption)}`,
+      { auth: true },
+    ),
+
+  pay: (orderId: string, payload: { method: MarketPaymentMethod; email?: string; phone?: string }) =>
+    request<MarketPayResult>(`/api/v1/orders/${encodeURIComponent(orderId)}/pay`, { method: "POST", body: payload, auth: true }),
+
+  paymentStatus: (orderId: string) =>
+    request<MarketPaymentStatus>(`/api/v1/orders/${encodeURIComponent(orderId)}/payment-status`, { auth: true }),
+};
