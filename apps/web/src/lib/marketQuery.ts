@@ -28,6 +28,8 @@ export interface MarketBrowseParams {
   // Display-only label for the garage vehicle (e.g. "Toyota Vitz") so cards
   // can say "Fits your Vitz". Carried in the URL; the API ignores it.
   fitLabel?: string;
+  // Only listings from verified sellers.
+  verifiedOnly?: boolean;
 }
 
 function csv(value: string | null): string[] {
@@ -60,6 +62,7 @@ export function parseMarketParams(sp: { get(key: string): string | null }): Mark
     fitFor: sp.get("fitFor") || undefined,
     fitYear: num(sp.get("fitYear")),
     fitLabel: sp.get("fitLabel") || undefined,
+    verifiedOnly: sp.get("verifiedOnly") === "true" || undefined,
   };
 }
 
@@ -80,6 +83,7 @@ export function buildMarketQuery(p: MarketBrowseParams): string {
   if (p.fitFor) sp.set("fitFor", p.fitFor);
   if (p.fitYear !== undefined) sp.set("fitYear", String(p.fitYear));
   if (p.fitLabel) sp.set("fitLabel", p.fitLabel);
+  if (p.verifiedOnly) sp.set("verifiedOnly", "true");
   const s = sp.toString();
   return s ? `?${s}` : "";
 }

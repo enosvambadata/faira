@@ -704,6 +704,37 @@ describe('GET /api/v1/listings — vehicle fitment filter', () => {
   });
 });
 
+describe('GET /api/v1/listings — verified-seller filter', () => {
+  beforeEach(() => {
+    listingFindManyMock.mockReset();
+    listingCountMock.mockReset();
+    listingCountMock.mockResolvedValue(0);
+  });
+
+  it('filters to verified sellers when verifiedOnly=true', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?verifiedOnly=true');
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ seller: { sellerProfile: { isVerified: true } } }),
+      }),
+    );
+  });
+
+  it('does not add the seller filter when verifiedOnly is absent or false', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?verifiedOnly=false');
+
+    const where = listingFindManyMock.mock.calls[0][0].where;
+    expect(where.seller).toBeUndefined();
+  });
+});
+
 describe('GET /api/v1/listings — enriched card fields', () => {
   const MODEL_ID = 'a3f1c2d4-1111-4222-8333-444455556666';
 

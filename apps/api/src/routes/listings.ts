@@ -76,6 +76,8 @@ const listQuerySchema = z.object({
   // can show "Fits your Vitz" vs "Check fit" pills without hiding anything.
   fitFor: z.string().uuid().optional(),
   fitYear: z.coerce.number().int().min(1980).max(2027).optional(),
+  // Only listings from verified sellers.
+  verifiedOnly: z.string().optional().transform(v => v === 'true'),
 });
 
 const PAGE_SIZE = 20;
@@ -110,7 +112,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice, modelId, year, fitFor, fitYear } =
+  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice, modelId, year, fitFor, fitYear, verifiedOnly } =
     parsed.data;
 
   // Card display data: seller name + rating/verified badge, and (when a garage
@@ -203,6 +205,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     ...(cities.length && { city: { in: cities } }),
     ...(Object.keys(price).length && { price }),
     ...(sizes.length && { attributes: { some: { key: 'size', value: { in: sizes } } } }),
+    ...(verifiedOnly && { seller: { sellerProfile: { isVerified: true } } }),
     ...fitmentFilter,
     ...(q && {
       OR: [
