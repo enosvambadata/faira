@@ -11,6 +11,19 @@ import { ApiError } from '../errors/ApiError';
 export const LEGAL_SOURCING_DECLARATION_TEXT =
   'I confirm that this item was lawfully acquired and that I have the legal right to sell it.';
 
+// Auto-parts fitment: one part fits many vehicles, each over an optionally
+// open-ended year range. See docs/marketplace/00-vehicle-fitment-spec.md.
+const fitmentInputSchema = z
+  .object({
+    modelId: z.string().uuid(),
+    yearFrom: z.number().int().min(1980).max(2027).optional(),
+    yearTo: z.number().int().min(1980).max(2027).optional(),
+    note: z.string().max(120).optional(),
+  })
+  .refine(f => f.yearFrom === undefined || f.yearTo === undefined || f.yearFrom <= f.yearTo, {
+    message: 'yearFrom must be <= yearTo',
+  });
+
 const createListingSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
@@ -23,6 +36,9 @@ const createListingSchema = z.object({
   // Drives delivery fee calculation (SCRUM-64).
   weightTier: z.enum(['LIGHT', 'MEDIUM', 'HEAVY']),
   attributes: z.record(z.string(), z.string()).optional(),
+  // A fit-anything part (tools, generic oil) skips per-vehicle fitment.
+  universalFit: z.boolean().optional().default(false),
+  fitments: z.array(fitmentInputSchema).max(50).optional(),
   legalSourcingDeclared: z.literal(true),
 });
 
@@ -52,6 +68,9 @@ const listQuerySchema = z.object({
   sizes: csv(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
+  // Fitment filter ("fits my car"): a model, optionally narrowed to a year.
+  modelId: z.string().uuid().optional(),
+  year: z.coerce.number().int().min(1980).max(2027).optional(),
 });
 
 const PAGE_SIZE = 20;
@@ -86,11 +105,40 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice } = parsed.data;
+  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice, modelId, year } = parsed.data;
 
   const price: { gte?: number; lte?: number } = {};
   if (minPrice !== undefined) price.gte = minPrice;
   if (maxPrice !== undefined) price.lte = maxPrice;
+
+  // Fitment match: a listing fits the chosen vehicle if it's universal, or has
+  // a fitment row for that model whose (open-ended) year range contains the
+  // target year. Held under a top-level AND so it composes with the search OR
+  // below rather than clobbering it. year is ignored without a modelId.
+  const fitmentFilter = modelId
+    ? {
+        AND: [
+          {
+            OR: [
+              { universalFit: true },
+              {
+                fitments: {
+                  some: {
+                    modelId,
+                    ...(year !== undefined && {
+                      AND: [
+                        { OR: [{ yearFrom: null }, { yearFrom: { lte: year } }] },
+                        { OR: [{ yearTo: null }, { yearTo: { gte: year } }] },
+                      ],
+                    }),
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      }
+    : {};
 
   const where = {
     status: 'ACTIVE' as const,
@@ -100,6 +148,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     ...(cities.length && { city: { in: cities } }),
     ...(Object.keys(price).length && { price }),
     ...(sizes.length && { attributes: { some: { key: 'size', value: { in: sizes } } } }),
+    ...fitmentFilter,
     ...(q && {
       OR: [
         { title: { contains: q, mode: 'insensitive' as const } },
@@ -263,12 +312,23 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     return;
   }
 
-  const { attributes, legalSourcingDeclared: _legalSourcingDeclared, ...listingData } = parsed.data;
+  const { attributes, fitments, legalSourcingDeclared: _legalSourcingDeclared, ...listingData } = parsed.data;
 
   const category = await prisma.category.findUnique({ where: { id: listingData.categoryId } });
   if (!category) {
     next(new ApiError('VALIDATION_ERROR', 'Unknown categoryId', 400));
     return;
+  }
+
+  // Reject fitment against vehicle models that don't exist, so bad IDs surface
+  // as a 400 rather than a foreign-key crash mid-create.
+  if (fitments?.length) {
+    const modelIds = [...new Set(fitments.map(f => f.modelId))];
+    const known = await prisma.vehicleModel.findMany({ where: { id: { in: modelIds } }, select: { id: true } });
+    if (known.length !== modelIds.length) {
+      next(new ApiError('VALIDATION_ERROR', 'Unknown vehicle modelId in fitments', 400));
+      return;
+    }
   }
 
   const attributeEntries = Object.entries(attributes ?? {}).filter(([, value]) => value.trim().length > 0);
@@ -282,8 +342,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       attributes: {
         create: attributeEntries.map(([key, value]) => ({ key, value })),
       },
+      fitments: {
+        create: (fitments ?? []).map(f => ({
+          modelId: f.modelId,
+          yearFrom: f.yearFrom ?? null,
+          yearTo: f.yearTo ?? null,
+          note: f.note ?? null,
+        })),
+      },
     },
-    include: { attributes: true },
+    include: { attributes: true, fitments: true },
   });
 
   res.status(201).json({
@@ -300,6 +368,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       weightTier: listing.weightTier,
       status: listing.status,
       attributes: Object.fromEntries(listing.attributes.map(a => [a.key, a.value])),
+      universalFit: listing.universalFit,
+      fitments: listing.fitments.map(f => ({ modelId: f.modelId, yearFrom: f.yearFrom, yearTo: f.yearTo, note: f.note })),
       createdAt: listing.createdAt,
     },
   });

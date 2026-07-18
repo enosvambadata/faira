@@ -9,6 +9,7 @@ const listingCountMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
 const listingUpdateMock = vi.fn();
 const listingAttributeFindManyMock = vi.fn();
+const vehicleModelFindManyMock = vi.fn();
 const signListingUploadMock = vi.fn();
 
 vi.mock('../supabase', () => ({
@@ -33,6 +34,9 @@ vi.mock('../prisma', () => ({
     },
     listingAttribute: {
       findMany: (...args: unknown[]) => listingAttributeFindManyMock(...args),
+    },
+    vehicleModel: {
+      findMany: (...args: unknown[]) => vehicleModelFindManyMock(...args),
     },
   },
 }));
@@ -115,6 +119,8 @@ describe('POST /api/v1/listings', () => {
         { key: 'size', value: '9' },
         { key: 'brand', value: 'Nike' },
       ],
+      universalFit: false,
+      fitments: [],
       createdAt: new Date('2026-07-04T00:00:00Z'),
     });
 
@@ -210,6 +216,8 @@ describe('POST /api/v1/listings', () => {
       deliveryOptions: VALID_PAYLOAD.deliveryOptions,
       status: 'ACTIVE',
       attributes: [],
+      universalFit: false,
+      fitments: [],
       createdAt: new Date('2026-07-04T00:00:00Z'),
     });
 
@@ -226,6 +234,112 @@ describe('POST /api/v1/listings', () => {
     );
     const createCallData = listingCreateMock.mock.calls[0][0].data;
     expect(createCallData.legalSourcingDeclared).toBeUndefined();
+  });
+});
+
+describe('POST /api/v1/listings — vehicle fitment', () => {
+  const MODEL_ID = 'a3f1c2d4-1111-4222-8333-444455556666';
+
+  beforeEach(() => {
+    getUserMock.mockReset();
+    categoryFindUniqueMock.mockReset();
+    listingCreateMock.mockReset();
+    vehicleModelFindManyMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    categoryFindUniqueMock.mockResolvedValue({ id: VALID_PAYLOAD.categoryId, name: 'Vehicle Parts', slug: 'vehicle-parts' });
+    listingCreateMock.mockResolvedValue({
+      id: 'listing-1',
+      title: VALID_PAYLOAD.title,
+      description: null,
+      price: { toString: () => '45.5' },
+      condition: 'GOOD',
+      city: 'Harare',
+      categoryId: VALID_PAYLOAD.categoryId,
+      imageUrls: VALID_PAYLOAD.imageUrls,
+      deliveryOptions: VALID_PAYLOAD.deliveryOptions,
+      weightTier: 'MEDIUM',
+      status: 'ACTIVE',
+      attributes: [],
+      universalFit: false,
+      fitments: [{ modelId: MODEL_ID, yearFrom: 2002, yearTo: 2007, note: null }],
+      createdAt: new Date('2026-07-04T00:00:00Z'),
+    });
+  });
+
+  it('persists fitment rows and returns them', async () => {
+    vehicleModelFindManyMock.mockResolvedValue([{ id: MODEL_ID }]);
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, fitments: [{ modelId: MODEL_ID, yearFrom: 2002, yearTo: 2007 }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.fitments).toEqual([{ modelId: MODEL_ID, yearFrom: 2002, yearTo: 2007, note: null }]);
+    expect(listingCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fitments: { create: [{ modelId: MODEL_ID, yearFrom: 2002, yearTo: 2007, note: null }] },
+        }),
+      }),
+    );
+  });
+
+  it('rejects fitment against an unknown vehicle model', async () => {
+    vehicleModelFindManyMock.mockResolvedValue([]); // none of the requested ids exist
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, fitments: [{ modelId: MODEL_ID }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fitment whose yearFrom is after yearTo', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, fitments: [{ modelId: MODEL_ID, yearFrom: 2010, yearTo: 2005 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a universal-fit part with no fitment rows', async () => {
+    listingCreateMock.mockResolvedValue({
+      id: 'listing-1',
+      title: VALID_PAYLOAD.title,
+      description: null,
+      price: { toString: () => '45.5' },
+      condition: 'GOOD',
+      city: 'Harare',
+      categoryId: VALID_PAYLOAD.categoryId,
+      imageUrls: VALID_PAYLOAD.imageUrls,
+      deliveryOptions: VALID_PAYLOAD.deliveryOptions,
+      weightTier: 'LIGHT',
+      status: 'ACTIVE',
+      attributes: [],
+      universalFit: true,
+      fitments: [],
+      createdAt: new Date('2026-07-04T00:00:00Z'),
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, universalFit: true });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.universalFit).toBe(true);
+    expect(vehicleModelFindManyMock).not.toHaveBeenCalled(); // no fitments to validate
   });
 });
 
@@ -506,6 +620,87 @@ describe('GET /api/v1/listings', () => {
     // path (orderBy price asc), not the in-app relevance ranking path.
     expect(listingFindManyMock).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { price: 'asc' } }));
     expect(listingFindManyMock).not.toHaveBeenCalledWith(expect.objectContaining({ include: { attributes: true } }));
+  });
+});
+
+describe('GET /api/v1/listings — vehicle fitment filter', () => {
+  const MODEL_ID = 'a3f1c2d4-1111-4222-8333-444455556666';
+
+  beforeEach(() => {
+    listingFindManyMock.mockReset();
+    listingCountMock.mockReset();
+    listingCountMock.mockResolvedValue(0);
+  });
+
+  it('matches universal parts or a model+year range when both modelId and year are given', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get(`/api/v1/listings?modelId=${MODEL_ID}&year=2005`);
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { universalFit: true },
+                {
+                  fitments: {
+                    some: {
+                      modelId: MODEL_ID,
+                      AND: [
+                        { OR: [{ yearFrom: null }, { yearFrom: { lte: 2005 } }] },
+                        { OR: [{ yearTo: null }, { yearTo: { gte: 2005 } }] },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('matches on model alone when no year is given', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get(`/api/v1/listings?modelId=${MODEL_ID}`);
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [{ OR: [{ universalFit: true }, { fitments: { some: { modelId: MODEL_ID } } }] }],
+        }),
+      }),
+    );
+  });
+
+  it('ignores a year with no modelId (no fitment filter applied)', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+
+    const app = createApp();
+    await request(app).get('/api/v1/listings?year=2005');
+
+    const where = listingFindManyMock.mock.calls[0][0].where;
+    expect(where.AND).toBeUndefined();
+  });
+
+  it('composes the fitment filter with a text search', async () => {
+    listingFindManyMock.mockResolvedValue([]);
+    listingCountMock.mockResolvedValue(0);
+
+    const app = createApp();
+    await request(app).get(`/api/v1/listings?modelId=${MODEL_ID}&q=brake`);
+
+    expect(listingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ AND: expect.any(Array), OR: expect.any(Array) }),
+      }),
+    );
   });
 });
 
