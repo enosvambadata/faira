@@ -35,18 +35,23 @@ const applySchema = z.object({
   basePostcode: z.string().trim().min(1).max(20),
   county: z.string().trim().min(1).max(100),
   drivingLicenceUrl: z.string().trim().min(1).max(500),
+  // Relaxed onboarding: driving licence + the van's own insurance + a current
+  // MOT are required. Hire & reward, Goods-in-Transit and public liability are
+  // optional for now (to be reintroduced) -- kept in the schema so older
+  // clients/records still validate.
   motorInsuranceUrl: z.string().trim().min(1).max(500),
-  gitInsuranceUrl: z.string().trim().min(1).max(500),
-  liabilityUrl: z.string().trim().min(1).max(500),
+  motUrl: z.string().trim().min(1).max(500),
+  gitInsuranceUrl: z.string().trim().min(1).max(500).optional(),
+  liabilityUrl: z.string().trim().min(1).max(500).optional(),
   vehicles: z.array(vehicleSchema).min(1).max(10),
 });
 
-// Own-van driver application. Driver-level documents (driving licence +
-// commercial hire & reward motor insurance, Goods in Transit and public
-// liability) are all required -- the legal prerequisites for carrying
-// customers' goods, verified before approving. Vehicles are a list: a
-// driver with two or more vans registers them all, each with its own
-// plate/capacity/photo. A REJECTED applicant may resubmit (same row
+// Own-van driver application. Relaxed doc set for the initial recruitment
+// push: driving licence + the van's own insurance + a current MOT are
+// required; hire & reward, Goods in Transit and public liability are optional
+// for now (legally needed for paid carriage -- to be reintroduced). Vehicles
+// are a list: a driver with two or more vans registers them all, each with its
+// own plate/capacity/photo. A REJECTED applicant may resubmit (same row
 // returns to APPLIED, vehicles replaced).
 router.post('/apply', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const parsed = applySchema.safeParse(req.body);

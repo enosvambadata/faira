@@ -1172,8 +1172,9 @@ export interface DriverApplicationPayload {
   county: string;
   drivingLicenceUrl: string;
   motorInsuranceUrl: string;
-  gitInsuranceUrl: string;
-  liabilityUrl: string;
+  motUrl: string;
+  gitInsuranceUrl?: string;
+  liabilityUrl?: string;
   vehicles: DriverVehiclePayload[];
 }
 
