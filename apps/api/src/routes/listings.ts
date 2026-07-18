@@ -71,6 +71,11 @@ const listQuerySchema = z.object({
   // Fitment filter ("fits my car"): a model, optionally narrowed to a year.
   modelId: z.string().uuid().optional(),
   year: z.coerce.number().int().min(1980).max(2027).optional(),
+  // Fitment *annotation* (garage vehicle): does NOT filter — each returned
+  // listing gets a `fits` flag relative to this model/year, so the storefront
+  // can show "Fits your Vitz" vs "Check fit" pills without hiding anything.
+  fitFor: z.string().uuid().optional(),
+  fitYear: z.coerce.number().int().min(1980).max(2027).optional(),
 });
 
 const PAGE_SIZE = 20;
@@ -105,7 +110,57 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     return;
   }
 
-  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice, modelId, year } = parsed.data;
+  const { page, q, sort, categoryIds, conditions, cities, sizes, minPrice, maxPrice, modelId, year, fitFor, fitYear } =
+    parsed.data;
+
+  // Card display data: seller name + rating/verified badge, and (when a garage
+  // vehicle is supplied via fitFor) fitments to compute the per-card fits flag.
+  const cardInclude = {
+    seller: { select: { displayName: true, sellerProfile: { select: { ratingAvg: true, ratingCount: true, isVerified: true } } } },
+    ...(fitFor ? { fitments: true } : {}),
+  };
+
+  type CardListing = {
+    id: string;
+    title: string;
+    price: { toString(): string };
+    condition: string;
+    city: string;
+    imageUrls: string[];
+    createdAt: Date;
+    universalFit: boolean;
+    seller?: { displayName: string | null; sellerProfile: { ratingAvg: unknown; ratingCount: number; isVerified: boolean } | null } | null;
+    fitments?: { modelId: string; yearFrom: number | null; yearTo: number | null }[];
+  };
+
+  const toCard = (l: CardListing) => {
+    const fits = fitFor
+      ? l.universalFit ||
+        (l.fitments ?? []).some(
+          f =>
+            f.modelId === fitFor &&
+            (f.yearFrom == null || fitYear == null || f.yearFrom <= fitYear) &&
+            (f.yearTo == null || fitYear == null || f.yearTo >= fitYear),
+        )
+      : undefined;
+    return {
+      id: l.id,
+      title: l.title,
+      price: l.price.toString(),
+      condition: l.condition,
+      city: l.city,
+      imageUrls: l.imageUrls,
+      createdAt: l.createdAt,
+      universalFit: l.universalFit,
+      seller: {
+        name: l.seller?.displayName ?? null,
+        rating: l.seller?.sellerProfile?.ratingAvg != null ? Number(l.seller.sellerProfile.ratingAvg) : null,
+        ratingCount: l.seller?.sellerProfile?.ratingCount ?? 0,
+        verified: l.seller?.sellerProfile?.isVerified ?? false,
+      },
+      fits,
+    };
+  };
 
   const price: { gte?: number; lte?: number } = {};
   if (minPrice !== undefined) price.gte = minPrice;
@@ -171,7 +226,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const [matches, matchTotal] = await Promise.all([
       prisma.listing.findMany({
         where,
-        include: { attributes: true },
+        include: { attributes: true, ...cardInclude },
         orderBy: { createdAt: 'desc' },
         take: SEARCH_MATCH_CAP,
       }),
@@ -194,6 +249,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const [listings, browseTotal] = await Promise.all([
       prisma.listing.findMany({
         where,
+        include: cardInclude,
         orderBy,
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE + 1,
@@ -207,14 +263,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 
   res.status(200).json({
-    data: pageItems.map(listing => ({
-      id: listing.id,
-      title: listing.title,
-      price: listing.price.toString(),
-      city: listing.city,
-      imageUrls: listing.imageUrls,
-      createdAt: listing.createdAt,
-    })),
+    data: (pageItems as CardListing[]).map(toCard),
     hasMore,
     total,
   });

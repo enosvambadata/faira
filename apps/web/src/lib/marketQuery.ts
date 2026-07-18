@@ -19,8 +19,12 @@ export interface MarketBrowseParams {
   cities?: string[];
   minPrice?: number;
   maxPrice?: number;
+  // Filter: only parts that fit this model/year ("only show parts that fit").
   modelId?: string;
   year?: number;
+  // Annotate (garage vehicle): keep all results but flag which ones fit.
+  fitFor?: string;
+  fitYear?: number;
 }
 
 function csv(value: string | null): string[] {
@@ -50,6 +54,8 @@ export function parseMarketParams(sp: { get(key: string): string | null }): Mark
     maxPrice: num(sp.get("maxPrice")),
     modelId: sp.get("modelId") || undefined,
     year: num(sp.get("year")),
+    fitFor: sp.get("fitFor") || undefined,
+    fitYear: num(sp.get("fitYear")),
   };
 }
 
@@ -67,6 +73,8 @@ export function buildMarketQuery(p: MarketBrowseParams): string {
   if (p.maxPrice !== undefined) sp.set("maxPrice", String(p.maxPrice));
   if (p.modelId) sp.set("modelId", p.modelId);
   if (p.year !== undefined) sp.set("year", String(p.year));
+  if (p.fitFor) sp.set("fitFor", p.fitFor);
+  if (p.fitYear !== undefined) sp.set("fitYear", String(p.fitYear));
   const s = sp.toString();
   return s ? `?${s}` : "";
 }

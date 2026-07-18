@@ -72,8 +72,12 @@ function Browse() {
                 {heading}{" "}
                 {!loading && <span className="text-sm font-normal text-muted">· {total.toLocaleString()} results</span>}
               </h1>
-              {params.modelId && (
-                <p className="mt-0.5 text-sm font-medium text-green">✓ Filtered to parts that fit your vehicle</p>
+              {params.modelId ? (
+                <p className="mt-0.5 text-sm font-medium text-green">✓ Only showing parts that fit your vehicle</p>
+              ) : (
+                params.fitFor && (
+                  <p className="mt-0.5 text-sm font-medium text-green">Fitment marked for your vehicle — ✓ = fits</p>
+                )
               )}
             </div>
             <div className="flex items-center gap-2 text-sm text-muted">
