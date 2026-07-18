@@ -1557,3 +1557,48 @@ export const market = {
 
   filterOptions: () => request<{ cities: string[]; sizes: string[] }>("/api/v1/listings/filter-options"),
 };
+
+// ---- Faira Market: garage (saved vehicles) + watchlist — all auth-gated ----
+
+export interface MarketGarageVehicle {
+  id: string;
+  modelId: string;
+  year: number | null;
+  make: string;
+  model: string;
+}
+
+export const marketGarage = {
+  list: () => request<MarketGarageVehicle[]>("/api/v1/garage", { auth: true }),
+
+  add: (modelId: string, year?: number) =>
+    request<MarketGarageVehicle>("/api/v1/garage", { method: "POST", body: { modelId, year }, auth: true }),
+
+  remove: (id: string) =>
+    request<void>(`/api/v1/garage/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+};
+
+export interface MarketWatchlistItem {
+  id: string;
+  title: string;
+  price: string;
+  city: string;
+  imageUrls: string[];
+  status: string;
+  savedAt: string;
+}
+
+export const marketWatchlist = {
+  ids: () => request<string[]>("/api/v1/wishlist/ids", { auth: true }),
+
+  list: () => request<MarketWatchlistItem[]>("/api/v1/wishlist", { auth: true }),
+
+  add: (listingId: string) =>
+    request<{ listingId: string; saved: boolean }>(`/api/v1/wishlist/${encodeURIComponent(listingId)}`, {
+      method: "POST",
+      auth: true,
+    }),
+
+  remove: (listingId: string) =>
+    request<void>(`/api/v1/wishlist/${encodeURIComponent(listingId)}`, { method: "DELETE", auth: true }),
+};
