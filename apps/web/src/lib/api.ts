@@ -1547,6 +1547,56 @@ export interface MarketListingDetail {
   createdAt: string;
 }
 
+export interface MarketUploadSignature {
+  signature: string;
+  timestamp: number;
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+  transformation: string;
+}
+
+export interface MarketFitmentInput {
+  modelId: string;
+  yearFrom?: number;
+  yearTo?: number;
+  note?: string;
+}
+
+export interface MarketCreateListingPayload {
+  title: string;
+  description?: string;
+  price: number;
+  condition: string;
+  city: string;
+  categoryId: string;
+  imageUrls: string[];
+  deliveryOptions: string[];
+  weightTier: string;
+  universalFit?: boolean;
+  fitments?: MarketFitmentInput[];
+  legalSourcingDeclared: true;
+}
+
+// Uploads a listing photo straight to Cloudinary with the signed params from
+// market.uploadSignature — bytes never pass through apps/api. The signature
+// only covers folder+transformation, so the resize can't be bypassed.
+// Returns the secure_url (this folder uses public delivery).
+export async function uploadListingImage(sig: MarketUploadSignature, file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("api_key", sig.apiKey);
+  form.append("timestamp", String(sig.timestamp));
+  form.append("signature", sig.signature);
+  form.append("folder", sig.folder);
+  form.append("transformation", sig.transformation);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, { method: "POST", body: form });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError("UPLOAD_FAILED", json?.error?.message ?? "Image upload failed", res.status);
+  return json.secure_url as string;
+}
+
 export const market = {
   categories: (parentId?: string) =>
     request<MarketCategory[]>(`/api/v1/categories${parentId ? `?parentId=${encodeURIComponent(parentId)}` : ""}`),
@@ -1562,6 +1612,11 @@ export const market = {
   get: (id: string) => request<MarketListingDetail>(`/api/v1/listings/${encodeURIComponent(id)}`),
 
   filterOptions: () => request<{ cities: string[]; sizes: string[] }>("/api/v1/listings/filter-options"),
+
+  uploadSignature: () => request<MarketUploadSignature>("/api/v1/listings/upload-signature", { method: "POST", auth: true }),
+
+  create: (payload: MarketCreateListingPayload) =>
+    request<{ id: string }>("/api/v1/listings", { method: "POST", body: payload, auth: true }),
 };
 
 // ---- Faira Market: garage (saved vehicles) + watchlist — all auth-gated ----

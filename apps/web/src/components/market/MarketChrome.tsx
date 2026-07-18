@@ -157,7 +157,7 @@ export function MarketChrome() {
         <div className="mx-auto flex h-9 max-w-[1280px] items-center justify-between px-4 text-xs text-muted sm:px-6">
           <nav className="flex gap-4">
             <Link href="/market" className="hover:text-primary">Daily deals</Link>
-            <Link href="/market" className="hidden hover:text-primary sm:inline">Sell a part</Link>
+            <Link href="/market/sell" className="hover:text-primary">Sell a part</Link>
             <Link href="/market" className="hidden hover:text-primary sm:inline">Help</Link>
           </nav>
           <div className="flex items-center gap-4">
