@@ -14,7 +14,7 @@ import { partsCategories } from "@/lib/marketCategories";
 import { Select } from "@/components/ui/Select";
 import { useMarketNav } from "./useMarketNav";
 import { useMarketAuth, signOutFromMarket } from "./useMarketAuth";
-import { SearchIcon, HeartIcon, CartIcon, CarIcon } from "./icons";
+import { SearchIcon, HeartIcon, CartIcon, CarIcon, MessageIcon } from "./icons";
 
 const YEARS = Array.from({ length: 2027 - 1990 + 1 }, (_, i) => String(2027 - i));
 
@@ -197,6 +197,10 @@ export function MarketChrome() {
         </form>
 
         <nav className="flex shrink-0 items-center gap-4 text-muted">
+          <Link href="/market/messages" aria-label="Messages" className="flex flex-col items-center gap-0.5 text-[10px] hover:text-primary">
+            <MessageIcon size={21} />
+            <span className="hidden md:inline">Messages</span>
+          </Link>
           <Link href="/market/watchlist" aria-label="Watchlist" className="flex flex-col items-center gap-0.5 text-[10px] hover:text-primary">
             <HeartIcon size={21} />
             <span className="hidden md:inline">Watchlist</span>

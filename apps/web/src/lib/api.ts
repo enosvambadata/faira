@@ -1666,3 +1666,50 @@ export const marketWatchlist = {
   remove: (listingId: string) =>
     request<void>(`/api/v1/wishlist/${encodeURIComponent(listingId)}`, { method: "DELETE", auth: true }),
 };
+
+// ---- Faira Market: buyer <-> seller messaging (auth-gated) ----
+
+interface MarketConversationBase {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: { id: string; title: string; price: string; imageUrl: string | null };
+  otherParticipant: { id: string; displayName: string | null; avatarUrl: string | null };
+  isMuted: boolean;
+}
+
+export type MarketConversation = MarketConversationBase;
+
+export interface MarketConversationListItem extends MarketConversationBase {
+  lastMessage: { body: string | null; imageUrl: string | null; senderId: string; createdAt: string } | null;
+  unreadCount: number;
+}
+
+export interface MarketMessage {
+  id: string;
+  senderId: string;
+  body: string | null;
+  imageUrl: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export const marketMessages = {
+  list: () => request<MarketConversationListItem[]>("/api/v1/conversations", { auth: true }),
+
+  start: (listingId: string) =>
+    request<MarketConversation>("/api/v1/conversations", { method: "POST", body: { listingId }, auth: true }),
+
+  get: (id: string) => request<MarketConversation>(`/api/v1/conversations/${encodeURIComponent(id)}`, { auth: true }),
+
+  messages: (id: string) =>
+    request<MarketMessage[]>(`/api/v1/conversations/${encodeURIComponent(id)}/messages`, { auth: true }),
+
+  send: (id: string, body: string) =>
+    request<MarketMessage>(`/api/v1/conversations/${encodeURIComponent(id)}/messages`, { method: "POST", body: { body }, auth: true }),
+
+  unreadCount: () => request<{ count: number }>("/api/v1/conversations/unread-count", { auth: true }),
+};
