@@ -163,6 +163,7 @@ export function MarketChrome() {
           <div className="flex items-center gap-4">
             {signedIn ? (
               <>
+                <Link href="/market/orders" className="hover:text-primary">Orders</Link>
                 <Link href="/market/account" className="font-medium text-primary hover:underline">Your shop</Link>
                 <button onClick={handleSignOut} className="hover:text-primary">Sign out</button>
               </>

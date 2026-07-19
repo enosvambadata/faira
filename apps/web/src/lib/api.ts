@@ -1829,3 +1829,64 @@ export const marketAccount = {
   submitVerification: (idDocumentUrl: string, selfieUrl: string) =>
     request<MarketVerification>("/api/v1/verification", { method: "POST", body: { idDocumentUrl, selfieUrl }, auth: true }),
 };
+
+// ---- Faira Market: buyer orders / tracking (auth-gated) ----
+
+export interface MarketOrderListItem {
+  id: string;
+  priceAtPurchase: string;
+  status: string;
+  displayStatus: string;
+  createdAt: string;
+  listing: { id: string; title: string; imageUrl: string | null };
+}
+
+export interface MarketOrderDetail {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  priceAtPurchase: string;
+  deliveryOption: string;
+  status: string;
+  displayStatus: string;
+  shippingMethod: string | null;
+  trackingReference: string | null;
+  shippedAt: string | null;
+  paymentMethod: string | null;
+  canMarkCollected: boolean;
+  listing: { id: string; title: string; imageUrl: string | null };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketOrderReview {
+  rating: number;
+  comment: string | null;
+}
+
+export const marketBuyerOrders = {
+  purchases: () => request<MarketOrderListItem[]>("/api/v1/orders/purchases", { auth: true }),
+
+  get: (id: string) => request<MarketOrderDetail>(`/api/v1/orders/${encodeURIComponent(id)}`, { auth: true }),
+
+  confirmDelivery: (id: string) =>
+    request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${encodeURIComponent(id)}/confirm-delivery`, {
+      method: "POST",
+      auth: true,
+    }),
+
+  markCollected: (id: string) =>
+    request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${encodeURIComponent(id)}/mark-collected`, {
+      method: "POST",
+      auth: true,
+    }),
+
+  review: (id: string) => request<MarketOrderReview | null>(`/api/v1/orders/${encodeURIComponent(id)}/reviews`, { auth: true }),
+
+  submitReview: (id: string, rating: number, comment?: string) =>
+    request<MarketOrderReview>(`/api/v1/orders/${encodeURIComponent(id)}/reviews`, {
+      method: "POST",
+      body: { rating, comment },
+      auth: true,
+    }),
+};
