@@ -486,6 +486,14 @@ model Order {
   deliveryAddressLine        String?         @map("delivery_address_line")
   deliverySuburb             String?         @map("delivery_suburb")
   deliveryCity               String?         @map("delivery_city")
+  // Collection code (SCRUM-260, anti-leakage Layer 3): a short code the BUYER
+  // holds and shows the seller at an in-person handover (MEETUP), redeemed to
+  // confirm delivery + release escrow without either party exchanging a phone
+  // number. Marketplace-local — deliberately NOT Fulfilment's Shipment-bound
+  // CollectionCode. Revealed only to the buyer by shapeOrderForViewer; the
+  // attempt counter locks brute-force guessing by the seller.
+  collectionCode             String?         @map("collection_code")
+  collectionCodeAttempts     Int             @default(0) @map("collection_code_attempts")
   status                     OrderStatus     @default(PENDING)
   // Tracks the 5-day no-response auto-release window (SCRUM-55) — nullable
   // so "reminder not yet sent" is representable without a sentinel date.

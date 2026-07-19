@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useMarketAuth } from "@/components/market/useMarketAuth";
+import { ProtectionNotice } from "@/components/market/ProtectionNotice";
 
 export default function ChatThreadPage() {
   const { id } = useParams<{ id: string }>();
@@ -96,6 +97,8 @@ export default function ChatThreadPage() {
       </div>
 
       {error && <div className="pt-3"><Alert tone="error">{error}</Alert></div>}
+
+      <ProtectionNotice className="mt-3" />
 
       {/* messages */}
       <div className="flex-1 overflow-y-auto py-4">

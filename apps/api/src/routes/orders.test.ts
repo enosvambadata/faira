@@ -6,6 +6,7 @@ const listingFindUniqueMock = vi.fn();
 const orderCreateMock = vi.fn();
 const orderFindUniqueMock = vi.fn();
 const orderFindManyMock = vi.fn();
+const orderUpdateMock = vi.fn();
 const orderUpdateManyMock = vi.fn();
 const paymentCreateMock = vi.fn();
 const paymentUpdateMock = vi.fn();
@@ -59,6 +60,7 @@ vi.mock('../prisma', () => ({
       create: (...args: unknown[]) => orderCreateMock(...args),
       findUnique: (...args: unknown[]) => orderFindUniqueMock(...args),
       findMany: (...args: unknown[]) => orderFindManyMock(...args),
+      update: (...args: unknown[]) => orderUpdateMock(...args),
       updateMany: (...args: unknown[]) => orderUpdateManyMock(...args),
     },
     payment: {
@@ -124,6 +126,8 @@ function fakeOrder(overrides: Partial<Record<string, unknown>> = {}) {
     deliveryAddressLine: '12 Samora Machel Ave',
     deliverySuburb: 'Avondale',
     deliveryCity: 'Harare',
+    collectionCode: '482913',
+    collectionCodeAttempts: 0,
     listing: fakeListing(),
     payments: [],
     disputes: [],
@@ -344,6 +348,8 @@ describe('GET /api/v1/orders/:orderId', () => {
       deliveryAddressLine: '12 Samora Machel Ave',
       deliverySuburb: 'Avondale',
       deliveryCity: 'Harare',
+      collectionCode: '482913',
+      collectionCodeAttempts: 0,
       ...overrides,
     };
   }
@@ -751,6 +757,76 @@ describe('POST /api/v1/orders/:orderId/confirm-delivery', () => {
     const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-delivery`).set(AUTH_HEADER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/v1/orders/:orderId/confirm-handover', () => {
+  beforeEach(() => {
+    // The seller redeems the buyer's code.
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+  });
+
+  const meetupOrder = (overrides = {}) => fakeOrder({ status: 'PAID', deliveryMethod: 'MEETUP', ...overrides });
+
+  it('releases escrow when the seller enters the correct code', async () => {
+    orderFindUniqueMock.mockResolvedValue(meetupOrder());
+    orderUpdateManyMock.mockResolvedValue({ count: 1 });
+    transactionMock.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => unknown)({
+            order: { updateMany: (...a: unknown[]) => orderUpdateManyMock(...a) },
+            escrowLedgerEntry: { create: (...a: unknown[]) => escrowCreateMock(...a) },
+          })
+        : Promise.all(arg as unknown[]),
+    );
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-handover`).set(AUTH_HEADER).send({ code: '482913' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('COMPLETED');
+    expect(escrowCreateMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: 'RELEASE' }) }));
+  });
+
+  it('rejects a wrong code and increments the attempt counter', async () => {
+    orderFindUniqueMock.mockResolvedValue(meetupOrder());
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-handover`).set(AUTH_HEADER).send({ code: '000000' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_CODE');
+    expect(orderUpdateMock).toHaveBeenCalledWith({ where: { id: ORDER_ID }, data: { collectionCodeAttempts: { increment: 1 } } });
+    expect(escrowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('locks after too many wrong attempts', async () => {
+    orderFindUniqueMock.mockResolvedValue(meetupOrder({ collectionCodeAttempts: 5 }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-handover`).set(AUTH_HEADER).send({ code: '482913' });
+
+    expect(res.status).toBe(423);
+    expect(escrowCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('403s when the caller is not the seller', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: BUYER_ID } }, error: null });
+    orderFindUniqueMock.mockResolvedValue(meetupOrder());
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-handover`).set(AUTH_HEADER).send({ code: '482913' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('409s for a non-meetup order (handover codes are meetup-only)', async () => {
+    orderFindUniqueMock.mockResolvedValue(meetupOrder({ deliveryMethod: 'COURIER' }));
+
+    const app = createApp();
+    const res = await request(app).post(`/api/v1/orders/${ORDER_ID}/confirm-handover`).set(AUTH_HEADER).send({ code: '482913' });
+
+    expect(res.status).toBe(409);
   });
 });
 
