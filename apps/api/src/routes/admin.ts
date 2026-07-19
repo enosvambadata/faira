@@ -4,7 +4,6 @@ import { prisma } from '../prisma';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { supabaseAdmin } from '../supabase';
 import { ApiError } from '../errors/ApiError';
-import { sendPushNotification } from '../lib/push';
 import { releaseEscrowFunds, splitCommission } from '../services/escrowRelease';
 import { notifyOrderStatusChange } from '../services/orderNotifications';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
@@ -14,10 +13,9 @@ import {
   purgeExpiredMessageRawBodies,
   RAW_MESSAGE_RETENTION_DAYS,
 } from '../services/messageRetention';
+import { runAutoReleaseSweep, runAutoRefundSweep } from '../services/escrowSweeps';
 
 const router = Router();
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 const rejectSchema = z.object({
   reason: z.string().trim().min(1).max(500).optional(),
@@ -178,120 +176,20 @@ router.post('/deletion-requests/:id/process', requireAdmin, async (req: Request<
   res.status(200).json({ data: { id: request.id, status: 'PROCESSED' } });
 });
 
-// Same "list what's due, then act on it" shape as the deletion-request
-// endpoints above — there's no in-process scheduler (see requireAdmin's
-// comment: no admin dashboard/worker exists yet), so something external
-// (a human, or a cron pinger once one exists) is expected to poll these.
-router.get('/orders/delivery-reminders-due', requireAdmin, async (_req: Request, res: Response) => {
-  const orders = await prisma.order.findMany({
-    // status: 'PAID' alone excludes disputed orders now — raising a
-    // dispute transitions the order to DISPUTED (SCRUM-60), so a "please
-    // confirm delivery" nudge naturally can't fire once the buyer has
-    // already flagged a problem.
-    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
-    include: {
-      listing: { select: { title: true } },
-      payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 },
-    },
-  });
-
-  const now = Date.now();
-  const due = orders
-    .map(order => {
-      const confirmedAt = order.payments[0]?.confirmedAt;
-      if (!confirmedAt) return null;
-
-      const daysSincePaid = (now - confirmedAt.getTime()) / DAY_MS;
-      let reminderDay: 3 | 4 | null = null;
-      if (daysSincePaid >= 4 && !order.deliveryReminderDay4SentAt) reminderDay = 4;
-      else if (daysSincePaid >= 3 && !order.deliveryReminderDay3SentAt) reminderDay = 3;
-      if (!reminderDay) return null;
-
-      return {
-        id: order.id,
-        listingTitle: order.listing.title,
-        buyerId: order.buyerId,
-        reminderDay,
-        daysSincePaid: Math.floor(daysSincePaid),
-      };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-  res.status(200).json({ data: due });
+// Escrow timer sweeps (SCRUM-258). No in-process scheduler exists (see
+// requireAdmin's comment), so an external cron pings these two endpoints; each
+// runs its grace reminders and then actions what's due. Sweep A releases a
+// SHIPPED order the buyer never confirmed; Sweep B refunds a PAID order the
+// seller never shipped — opposite money directions, both re-checking state
+// atomically at fire time (see services/escrowSweeps).
+router.post('/orders/sweep-auto-release', requireAdmin, async (_req: Request, res: Response) => {
+  const result = await runAutoReleaseSweep();
+  res.status(200).json({ data: result });
 });
 
-const sendReminderSchema = z.object({
-  reminderDay: z.union([z.literal(3), z.literal(4)]),
-});
-
-router.post(
-  '/orders/:id/send-delivery-reminder',
-  requireAdmin,
-  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
-    const parsed = sendReminderSchema.safeParse(req.body);
-    if (!parsed.success) {
-      next(new ApiError('VALIDATION_ERROR', 'Invalid request body', 400, z.flattenError(parsed.error)));
-      return;
-    }
-
-    const order = await prisma.order.findUnique({
-      where: { id: req.params.id },
-      include: {
-        listing: { select: { title: true } },
-        buyer: { select: { expoPushToken: true, pushNotificationsEnabled: true } },
-      },
-    });
-
-    if (!order) {
-      next(new ApiError('NOT_FOUND', 'Order not found', 404));
-      return;
-    }
-    if (order.status !== 'PAID') {
-      next(new ApiError('INVALID_STATE', 'Order is not awaiting delivery confirmation', 409));
-      return;
-    }
-
-    const { reminderDay } = parsed.data;
-    const alreadySent = reminderDay === 3 ? order.deliveryReminderDay3SentAt : order.deliveryReminderDay4SentAt;
-    if (alreadySent) {
-      next(new ApiError('INVALID_STATE', 'This reminder was already sent', 409));
-      return;
-    }
-
-    if (order.buyer.pushNotificationsEnabled && order.buyer.expoPushToken) {
-      await sendPushNotification({
-        to: order.buyer.expoPushToken,
-        title: 'Confirm your delivery',
-        body: `Have you received "${order.listing.title}"? Confirm delivery, or the seller is paid automatically soon.`,
-        data: { orderId: order.id },
-      });
-    }
-
-    await prisma.order.update({
-      where: { id: order.id },
-      data:
-        reminderDay === 3 ? { deliveryReminderDay3SentAt: new Date() } : { deliveryReminderDay4SentAt: new Date() },
-    });
-
-    res.status(200).json({ data: { id: order.id, reminderDay } });
-  },
-);
-
-router.get('/orders/auto-release-due', requireAdmin, async (_req: Request, res: Response) => {
-  // Same reasoning as delivery-reminders-due: status: 'PAID' alone already
-  // excludes disputed orders (they're DISPUTED now, not PAID).
-  const orders = await prisma.order.findMany({
-    where: { status: 'PAID', payments: { some: { status: 'CONFIRMED' } } },
-    include: { payments: { where: { status: 'CONFIRMED' }, orderBy: { confirmedAt: 'desc' }, take: 1 } },
-  });
-
-  const now = Date.now();
-  const due = orders.filter(order => {
-    const confirmedAt = order.payments[0]?.confirmedAt;
-    return confirmedAt !== undefined && confirmedAt !== null && now - confirmedAt.getTime() >= 5 * DAY_MS;
-  });
-
-  res.status(200).json({ data: due.map(order => ({ id: order.id, buyerId: order.buyerId })) });
+router.post('/orders/sweep-auto-refund', requireAdmin, async (_req: Request, res: Response) => {
+  const result = await runAutoRefundSweep();
+  res.status(200).json({ data: result });
 });
 
 router.post(
