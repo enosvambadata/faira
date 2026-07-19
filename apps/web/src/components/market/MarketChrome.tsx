@@ -162,7 +162,10 @@ export function MarketChrome() {
           </nav>
           <div className="flex items-center gap-4">
             {signedIn ? (
-              <button onClick={handleSignOut} className="hover:text-primary">Sign out</button>
+              <>
+                <Link href="/market/account" className="font-medium text-primary hover:underline">Your shop</Link>
+                <button onClick={handleSignOut} className="hover:text-primary">Sign out</button>
+              </>
             ) : (
               <>
                 <Link href="/signup?redirect=/market" className="hover:text-primary">Register</Link>

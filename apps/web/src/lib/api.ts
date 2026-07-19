@@ -1753,3 +1753,79 @@ export const marketOrders = {
   paymentStatus: (orderId: string) =>
     request<MarketPaymentStatus>(`/api/v1/orders/${encodeURIComponent(orderId)}/payment-status`, { auth: true }),
 };
+
+// ---- Faira Market: seller account (auth-gated) ----
+
+export interface MarketProfile {
+  id: string;
+  displayName: string | null;
+  city: string | null;
+  avatarUrl: string | null;
+  pushNotificationsEnabled: boolean;
+  emailNotificationsEnabled: boolean;
+}
+
+export interface MarketMyListing {
+  id: string;
+  title: string;
+  price: string;
+  city: string;
+  imageUrls: string[];
+  status: string;
+}
+
+export interface MarketSale {
+  id: string;
+  priceAtPurchase: string;
+  status: string;
+  displayStatus: string;
+  createdAt: string;
+  listing: { id: string; title: string; imageUrl: string | null };
+}
+
+export interface MarketSellerBalance {
+  availableBalance: number;
+  minimumPayoutAmount: number;
+}
+
+export interface MarketVerification {
+  id: string;
+  status: string;
+  rejectionReason: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export const marketAccount = {
+  profile: () => request<MarketProfile>("/api/v1/profile", { auth: true }),
+
+  updateProfile: (payload: { displayName?: string; city?: string }) =>
+    request<MarketProfile>("/api/v1/profile", { method: "PATCH", body: payload, auth: true }),
+
+  myListings: () => request<MarketMyListing[]>("/api/v1/listings/mine", { auth: true }),
+
+  editListing: (id: string, payload: { price?: number; description?: string }) =>
+    request<{ id: string }>(`/api/v1/listings/${encodeURIComponent(id)}`, { method: "PATCH", body: payload, auth: true }),
+
+  markSold: (id: string) =>
+    request<{ id: string; status: string }>(`/api/v1/listings/${encodeURIComponent(id)}/sold`, { method: "PATCH", auth: true }),
+
+  sales: () => request<MarketSale[]>("/api/v1/orders/sales", { auth: true }),
+
+  balance: () => request<MarketSellerBalance>("/api/v1/sellers/me/balance", { auth: true }),
+
+  requestPayout: (amount: number, payoutMethodDetails: string) =>
+    request<{ id: string; amount: string; status: string }>("/api/v1/sellers/me/payout-requests", {
+      method: "POST",
+      body: { amount, payoutMethodDetails },
+      auth: true,
+    }),
+
+  verification: () => request<MarketVerification | null>("/api/v1/verification/mine", { auth: true }),
+
+  verificationUploadSignature: () =>
+    request<MarketUploadSignature>("/api/v1/verification/upload-signature", { method: "POST", auth: true }),
+
+  submitVerification: (idDocumentUrl: string, selfieUrl: string) =>
+    request<MarketVerification>("/api/v1/verification", { method: "POST", body: { idDocumentUrl, selfieUrl }, auth: true }),
+};
