@@ -83,6 +83,9 @@ function SignupForm() {
   const themeClass = isMarket || isFulfilmentTarget(redirect) ? "" : "theme-collect";
   const brand = isMarket ? "Faira Parts" : "Vamba Collect";
   const loginHref = redirect ? `/login?next=${encodeURIComponent(redirect)}` : "/login";
+  // Where the confirmation link returns — a callback route that establishes the
+  // session and forwards to where the user was headed.
+  const callbackUrl = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirect ?? "/")}`;
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -103,7 +106,7 @@ function SignupForm() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await auth.signup({ email: form.email.trim(), password: form.password });
+      await auth.signup({ email: form.email.trim(), password: form.password, redirectTo: callbackUrl() });
       setSentTo(form.email.trim());
     } catch (err) {
       if (err instanceof FulfilmentApiError && err.code === "ACCOUNT_ALREADY_EXISTS") {
@@ -120,7 +123,7 @@ function SignupForm() {
     if (!sentTo) return;
     setResending(true);
     try {
-      await auth.resendConfirmation(sentTo);
+      await auth.resendConfirmation(sentTo, callbackUrl());
       setResent(true);
     } catch {
       // resend is best-effort; the original email may still arrive

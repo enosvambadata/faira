@@ -70,7 +70,8 @@ function LoginForm() {
 
   const handleResend = async () => {
     try {
-      await auth.resendConfirmation(email.trim());
+      const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(searchParams.get("next") ?? "/")}`;
+      await auth.resendConfirmation(email.trim(), callbackUrl);
     } catch {
       // best-effort
     } finally {
