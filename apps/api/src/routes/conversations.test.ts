@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
+import { REDACTION_PLACEHOLDER } from '../lib/contactRedaction';
 
 const getUserMock = vi.fn();
 const listingFindUniqueMock = vi.fn();
@@ -527,6 +528,56 @@ describe('POST /api/v1/conversations/:id/messages', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.body).toBe('Is this still available?');
+  });
+
+  it('redacts contact info before storing, keeps the raw copy, and flags the attempt', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    messageCreateMock.mockReset();
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: `grab it ${REDACTION_PLACEHOLDER}`, imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/conversations/conversation-1/messages')
+      .set(AUTH_HEADER)
+      .send({ body: 'grab it 0771234567' });
+
+    expect(res.status).toBe(201);
+    // The redacted text is what reaches the other party...
+    expect(res.body.data.body).toBe(`grab it ${REDACTION_PLACEHOLDER}`);
+    // ...while the untouched original + flag are persisted for admin dispute review.
+    expect(messageCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        body: `grab it ${REDACTION_PLACEHOLDER}`,
+        bodyRaw: 'grab it 0771234567',
+        containedContactInfo: true,
+      }),
+    });
+  });
+
+  it('stores clean text unchanged with the flag off', async () => {
+    conversationFindUniqueMock.mockResolvedValue(fakeConversation());
+    messageCreateMock.mockReset();
+    transactionMock.mockResolvedValue([
+      { id: 'm1', senderId: BUYER_ID, body: 'Is the 2NZ-FE still available?', imageUrl: null, readAt: null, createdAt: new Date() },
+      {},
+    ]);
+
+    const app = createApp();
+    await request(app)
+      .post('/api/v1/conversations/conversation-1/messages')
+      .set(AUTH_HEADER)
+      .send({ body: 'Is the 2NZ-FE still available?' });
+
+    expect(messageCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        body: 'Is the 2NZ-FE still available?',
+        bodyRaw: 'Is the 2NZ-FE still available?',
+        containedContactInfo: false,
+      }),
+    });
   });
 
   it('un-archives the conversation for both sides when a message is sent', async () => {

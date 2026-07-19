@@ -137,6 +137,36 @@ describe('POST /api/v1/listings', () => {
     );
   });
 
+  it('rejects (does not redact) a listing whose description hides contact info', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, description: 'Great engine, whatsapp me on 0771234567' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CONTACT_INFO_NOT_ALLOWED');
+    expect(res.body.error.details.field).toBe('description');
+    expect(listingCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a listing with part codes/years that only look like numbers', async () => {
+    listingCreateMock.mockResolvedValue({
+      id: 'listing-2', title: VALID_PAYLOAD.title, description: 'Fits 2005-2012, OEM 04465-42160',
+      price: { toString: () => '45.5' }, condition: 'GOOD', city: 'Harare', categoryId: VALID_PAYLOAD.categoryId,
+      imageUrls: VALID_PAYLOAD.imageUrls, deliveryOptions: VALID_PAYLOAD.deliveryOptions, status: 'ACTIVE',
+      attributes: [], universalFit: false, fitments: [], createdAt: new Date('2026-07-04T00:00:00Z'),
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(AUTH_HEADER)
+      .send({ ...VALID_PAYLOAD, description: 'Fits 2005-2012, OEM 04465-42160' });
+
+    expect(res.status).toBe(201);
+  });
+
   it('rejects an unauthenticated request', async () => {
     const app = createApp();
     const res = await request(app).post('/api/v1/listings').send(VALID_PAYLOAD);

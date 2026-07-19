@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { signListingUpload } from '../lib/cloudinary';
+import { findContactInfoField, CONTACT_INFO_REJECTION } from '../lib/contactRedaction';
 import { ApiError } from '../errors/ApiError';
 
 // Stored verbatim against every listing at creation time (see
@@ -364,6 +365,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     return;
   }
 
+  // Anti-leakage (SCRUM-257): a listing is public copy, so contact info here is
+  // reject-and-warn (not silent redact) — the seller fixes their own text.
+  const contactField = findContactInfoField({ title: parsed.data.title, description: parsed.data.description });
+  if (contactField) {
+    next(new ApiError('CONTACT_INFO_NOT_ALLOWED', CONTACT_INFO_REJECTION, 400, { field: contactField }));
+    return;
+  }
+
   const { attributes, fitments, legalSourcingDeclared: _legalSourcingDeclared, ...listingData } = parsed.data;
 
   const category = await prisma.category.findUnique({ where: { id: listingData.categoryId } });
@@ -432,6 +441,13 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest & Request<{ i
 
   if (!parsed.success) {
     next(new ApiError('VALIDATION_ERROR', 'Invalid update payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  // Anti-leakage (SCRUM-257): reject-and-warn on edited description too.
+  const contactField = findContactInfoField({ description: parsed.data.description });
+  if (contactField) {
+    next(new ApiError('CONTACT_INFO_NOT_ALLOWED', CONTACT_INFO_REJECTION, 400, { field: contactField }));
     return;
   }
 

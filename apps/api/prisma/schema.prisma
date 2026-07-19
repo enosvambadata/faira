@@ -360,7 +360,13 @@ model Message {
   id             String    @id @default(uuid()) @db.Uuid
   conversationId String    @map("conversation_id") @db.Uuid
   senderId       String    @map("sender_id") @db.Uuid
-  body           String?
+  // `body` is the redacted text shown to users; `bodyRaw` is the original,
+  // readable ONLY by admins for dispute/audit and purged after the order's
+  // dispute window closes. `containedContactInfo` flags leakage attempts so we
+  // can later warn/rate-limit repeat offenders (no auto-ban).
+  body                 String?
+  bodyRaw              String?  @map("body_raw")
+  containedContactInfo Boolean  @default(false) @map("contained_contact_info")
   imageUrl       String?   @map("image_url")
   readAt         DateTime? @map("read_at")
   createdAt      DateTime  @default(now()) @map("created_at")
