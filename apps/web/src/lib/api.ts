@@ -1866,6 +1866,8 @@ export interface MarketOrderDelivery {
   addressLine: string | null;
   phone: string | null;
   reference: string;
+  // The buyer's handover code — present only in the buyer's own view.
+  collectionCode: string | null;
 }
 
 export interface MarketOrderDetail {
@@ -1907,6 +1909,14 @@ export const marketBuyerOrders = {
   markCollected: (id: string) =>
     request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${encodeURIComponent(id)}/mark-collected`, {
       method: "POST",
+      auth: true,
+    }),
+
+  // Seller redeems the buyer's handover code (MEETUP) to release escrow.
+  confirmHandover: (id: string, code: string) =>
+    request<{ id: string; status: string; displayStatus: string }>(`/api/v1/orders/${encodeURIComponent(id)}/confirm-handover`, {
+      method: "POST",
+      body: { code },
       auth: true,
     }),
 

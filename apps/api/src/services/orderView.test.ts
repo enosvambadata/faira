@@ -15,6 +15,7 @@ function order(overrides: Partial<OrderForView> = {}): OrderForView {
     deliveryAddressLine: '12 Samora Machel Ave',
     deliverySuburb: 'Avondale',
     deliveryCity: 'Harare',
+    collectionCode: '482913',
     listing: { sellerId: SELLER },
     ...overrides,
   };
@@ -50,6 +51,10 @@ describe('deliveryViewFor — buyer & admin', () => {
   it('shows admins everything (dispute review)', () => {
     expect(deliveryViewFor(order({ deliveryMethod: 'MEETUP' }), 'admin')?.phone).toBe('0771234567');
   });
+
+  it('reveals the collection code to the buyer', () => {
+    expect(deliveryViewFor(order(), 'buyer')?.collectionCode).toBe('482913');
+  });
 });
 
 describe('deliveryViewFor — seller gating by status', () => {
@@ -62,6 +67,10 @@ describe('deliveryViewFor — seller gating by status', () => {
     expect(view).not.toBeNull();
     expect(view?.recipientName).toBe('Tariro M.');
     expect(view?.city).toBe('Harare');
+  });
+
+  it('never reveals the collection code to the seller (they redeem it)', () => {
+    expect(deliveryViewFor(order({ status: 'PAID' }), 'seller')?.collectionCode).toBeNull();
   });
 });
 

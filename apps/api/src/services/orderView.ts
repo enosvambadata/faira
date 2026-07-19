@@ -38,6 +38,7 @@ export interface OrderForView {
   deliveryAddressLine: string | null;
   deliverySuburb: string | null;
   deliveryCity: string | null;
+  collectionCode: string | null;
   listing: { sellerId: string };
 }
 
@@ -49,6 +50,9 @@ export interface DeliveryView {
   addressLine: string | null;
   phone: string | null;
   reference: string;
+  // The buyer's handover code — revealed ONLY to the buyer (never the seller,
+  // who redeems it by entering what the buyer shows them in person).
+  collectionCode: string | null;
 }
 
 // A short, human-friendly reference both parties can quote without exchanging
@@ -84,6 +88,7 @@ export function deliveryViewFor(order: OrderForView, role: ViewerRole): Delivery
       addressLine: order.deliveryAddressLine,
       phone: order.deliveryPhone,
       reference,
+      collectionCode: order.collectionCode,
     };
   }
 
@@ -102,5 +107,7 @@ export function deliveryViewFor(order: OrderForView, role: ViewerRole): Delivery
     addressLine: visibility.addressLine ? order.deliveryAddressLine : null,
     phone: visibility.phone ? order.deliveryPhone : null,
     reference,
+    // Never disclosed to the seller — they redeem it, they don't hold it.
+    collectionCode: null,
   };
 }

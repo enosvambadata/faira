@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { randomInt } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
@@ -156,6 +157,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
   }
 
   const { delivery } = parsed.data;
+  // Marketplace-local handover code (SCRUM-260): a 6-digit code the buyer shows
+  // the seller at an in-person handover to release escrow without swapping phone
+  // numbers. Stored per order; only ever disclosed back to the buyer.
+  const collectionCode = String(randomInt(100000, 1000000));
   const order = await prisma.order.create({
     data: {
       listingId: listing.id,
@@ -168,6 +173,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       deliveryAddressLine: delivery.addressLine ?? null,
       deliverySuburb: delivery.suburb ?? null,
       deliveryCity: delivery.city,
+      collectionCode,
       status: 'PENDING',
     },
   });
@@ -556,6 +562,64 @@ router.post(
     const { released } = await releaseEscrowFunds(order.id);
     if (!released) {
       next(new ApiError('INVALID_STATE', 'Order is not awaiting delivery confirmation', 409));
+      return;
+    }
+
+    res.status(200).json({ data: { id: order.id, status: 'COMPLETED', displayStatus: displayStatus('COMPLETED') } });
+  },
+);
+
+const confirmHandoverSchema = z.object({ code: z.string().trim().min(4).max(10) });
+const MAX_HANDOVER_ATTEMPTS = 5;
+
+// Collection-code handover (SCRUM-260): for an in-person MEET-UP, the seller
+// enters the code the buyer shows them. On match it releases escrow through the
+// same atomic path as every other release — so neither party has to exchange a
+// phone number, and there's a real handover signal instead of only the timer.
+router.post(
+  '/:orderId/confirm-handover',
+  requireAuth,
+  async (req: AuthenticatedRequest & Request<{ orderId: string }>, res: Response, next: NextFunction) => {
+    const parsed = confirmHandoverSchema.safeParse(req.body);
+    if (!parsed.success) {
+      next(new ApiError('VALIDATION_ERROR', 'Enter the code the buyer is showing you', 400, z.flattenError(parsed.error)));
+      return;
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { listing: { select: { sellerId: true } } },
+    });
+
+    if (!order) {
+      next(new ApiError('NOT_FOUND', 'Order not found', 404));
+      return;
+    }
+    if (order.listing.sellerId !== req.userId) {
+      next(new ApiError('FORBIDDEN', 'Only the seller confirms a handover', 403));
+      return;
+    }
+    if (order.deliveryMethod !== 'MEETUP') {
+      next(new ApiError('INVALID_STATE', 'Handover codes are only for in-person meet-ups', 409));
+      return;
+    }
+    // Brute-force guard: the seller redeeming a 6-digit code gets a handful of
+    // tries, then must fall back to the buyer confirming from their own side.
+    if (order.collectionCodeAttempts >= MAX_HANDOVER_ATTEMPTS) {
+      next(new ApiError('LOCKED', 'Too many incorrect codes — ask the buyer to confirm delivery from their end', 423));
+      return;
+    }
+    if (!order.collectionCode || parsed.data.code !== order.collectionCode) {
+      await prisma.order.update({ where: { id: order.id }, data: { collectionCodeAttempts: { increment: 1 } } });
+      next(new ApiError('INVALID_CODE', "That code doesn't match. Check the code the buyer is showing you.", 400));
+      return;
+    }
+
+    // Match → release through releaseEscrowFunds (guards PAID/SHIPPED atomically,
+    // excludes a disputed order, and is idempotent under a race).
+    const { released } = await releaseEscrowFunds(order.id);
+    if (!released) {
+      next(new ApiError('INVALID_STATE', 'This order is not awaiting handover', 409));
       return;
     }
 

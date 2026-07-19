@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { ShieldIcon } from "@/components/market/icons";
 import { useMarketAuth } from "@/components/market/useMarketAuth";
+import { ProtectionNotice } from "@/components/market/ProtectionNotice";
 
 const METHODS: { value: MarketPaymentMethod; label: string; hint: string }[] = [
   { value: "ECOCASH", label: "EcoCash", hint: "Approve the prompt on your phone" },
@@ -353,6 +354,8 @@ export default function CheckoutPage() {
               <span><span className="font-semibold text-green">Escrow protected.</span> Funds release when you confirm the part arrived.</span>
             </p>
           </div>
+
+          <ProtectionNotice />
 
           {phase === "awaiting" ? (
             <Alert tone="info">{instructions ?? "Approve the payment on your phone…"}</Alert>

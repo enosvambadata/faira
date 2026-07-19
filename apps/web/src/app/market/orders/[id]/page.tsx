@@ -36,6 +36,8 @@ export default function OrderDetailPage() {
   // review draft
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
+  // seller's handover-code entry
+  const [handoverCode, setHandoverCode] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -161,6 +163,41 @@ export default function OrderDetailPage() {
             <ShieldIcon size={16} className="text-green" />
             <span><span className="font-semibold text-green">Escrow protected.</span> Confirm delivery once the part arrives as described — that releases the payment to the seller.</span>
           </p>
+
+          {/* Buyer's handover code (meet-ups): shown to the buyer to reveal at
+              collection so no phone number changes hands. */}
+          {order.delivery?.collectionCode && order.delivery.method === "MEETUP" && order.status !== "COMPLETED" && (
+            <div className="rounded-lg border border-primary/40 bg-primary/5 p-4 text-center">
+              <p className="text-xs text-muted">Show this code to the seller when you collect — it releases your escrow payment.</p>
+              <p className="mt-1 text-3xl font-bold tracking-[0.3em] text-text">{order.delivery.collectionCode}</p>
+            </div>
+          )}
+
+          {/* Seller redeems the buyer's code to complete a meet-up sale. */}
+          {order.viewerRole === "seller" && order.delivery?.method === "MEETUP" && (order.status === "PAID" || order.status === "SHIPPED") && (
+            <div className="rounded-lg border border-border bg-white p-4">
+              <h2 className="text-sm font-semibold text-text">Confirm handover</h2>
+              <p className="mt-1 text-xs text-muted">Enter the code the buyer shows you — it completes the sale and releases your payment.</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={handoverCode}
+                  onChange={e => setHandoverCode(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="6-digit code"
+                  className="h-11 flex-1 rounded-md border border-border bg-white px-3.5 text-[15px] tracking-widest text-text outline-none focus:border-primary"
+                />
+                <Button
+                  size="md"
+                  onClick={() => run(() => marketBuyerOrders.confirmHandover(id, handoverCode.trim()))}
+                  loading={busy}
+                  disabled={busy || handoverCode.trim().length < 4}
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* actions */}
           <div className="flex flex-col gap-2">
