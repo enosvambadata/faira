@@ -63,7 +63,7 @@ const PHONE_LOCAL = new RegExp(
   "g",
 );
 
-const EMAIL = /(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}(?![A-Za-z0-9])/g;
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9])/g;
 
 // Off-platform handles / apps and explicit "my number is …" solicitations.
 // Word-based, so they never collide with part codes. "call it a day" / "reach
