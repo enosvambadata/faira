@@ -477,8 +477,11 @@ model Order {
   status                     OrderStatus     @default(PENDING)
   // Tracks the 5-day no-response auto-release window (SCRUM-55) — nullable
   // so "reminder not yet sent" is representable without a sentinel date.
-  deliveryReminderDay3SentAt DateTime?       @map("delivery_reminder_day3_sent_at")
-  deliveryReminderDay4SentAt DateTime?       @map("delivery_reminder_day4_sent_at")
+  // Escrow-sweep grace reminders (SCRUM-258): autoRelease → buyer, sent before
+  // a SHIPPED order auto-releases; autoRefund → seller, sent before an unshipped
+  // PAID order is auto-cancelled and refunded.
+  autoReleaseReminderAt      DateTime?       @map("auto_release_reminder_at")
+  autoRefundReminderAt       DateTime?       @map("auto_refund_reminder_at")
   // Fulfillment details the seller fills in when shipping (SCRUM-61) —
   // distinct from deliveryOption, which the buyer picked at checkout.
   // trackingReference only applies to COURIER/POSTAL, not MEETUP.

@@ -1,0 +1,49 @@
+# Escrow timer sweeps (SCRUM-258) + raw-message retention purge.
+#
+# The API has no in-process scheduler, so this is the external cron pinger the
+# admin endpoints were always designed for. It hits three admin endpoints on a
+# schedule; each is idempotent (reminders guarded by a sent-at column, releases/
+# refunds by an atomic status guard), so an extra run is harmless.
+#
+# Requires two repo settings (Settings → Secrets and variables → Actions):
+#   secret ADMIN_TOKEN         — the API's admin token (x-admin-token header)
+#   variable SWEEP_API_BASE_URL — e.g. https://api-staging-9878.up.railway.app
+#
+# NOTE: GitHub only fires `schedule:` from the DEFAULT branch (main). On develop
+# it won't auto-run yet — use "Run workflow" (workflow_dispatch) to trigger it
+# manually, or it activates automatically once this reaches main.
+name: Escrow Sweeps
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # every 6 hours
+  workflow_dispatch: {}
+
+jobs:
+  sweep:
+    name: Run escrow sweeps + raw-message purge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping admin sweep endpoints
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          SWEEP_API_BASE_URL: ${{ vars.SWEEP_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ADMIN_TOKEN:-}" ] || [ -z "${SWEEP_API_BASE_URL:-}" ]; then
+            echo "ADMIN_TOKEN secret and SWEEP_API_BASE_URL variable must be set."
+            exit 1
+          fi
+          for path in \
+            /api/v1/admin/orders/sweep-auto-release \
+            /api/v1/admin/orders/sweep-auto-refund \
+            /api/v1/admin/messages/purge-raw; do
+            echo "POST $path"
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' -X POST \
+              -H "x-admin-token: ${ADMIN_TOKEN}" "${SWEEP_API_BASE_URL}${path}")
+            echo "  -> ${code}: $(cat /tmp/body)"
+            if [ "${code}" != "200" ]; then
+              echo "Sweep endpoint ${path} returned ${code}"
+              exit 1
+            fi
+          done
