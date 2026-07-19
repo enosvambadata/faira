@@ -9,6 +9,11 @@ import { releaseEscrowFunds, splitCommission } from '../services/escrowRelease';
 import { notifyOrderStatusChange } from '../services/orderNotifications';
 import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { getParcelEvidenceViewUrl } from '../lib/cloudinary';
+import {
+  countPurgeableRawMessages,
+  purgeExpiredMessageRawBodies,
+  RAW_MESSAGE_RETENTION_DAYS,
+} from '../services/messageRetention';
 
 const router = Router();
 
@@ -307,6 +312,62 @@ router.post(
     res.status(200).json({ data: { id: order.id, status: 'COMPLETED' } });
   },
 );
+
+// Dispute/audit access to the ORIGINAL (pre-redaction) message text. Buyers and
+// sellers only ever see the redacted `body`; admins can read `bodyRaw` here to
+// adjudicate a dispute, until it's purged after the retention window.
+router.get(
+  '/conversations/:id/messages/raw',
+  requireAdmin,
+  async (req: Request<{ id: string }>, res: Response, next: NextFunction) => {
+    const conversation = await prisma.conversation.findUnique({ where: { id: req.params.id } });
+    if (!conversation) {
+      next(new ApiError('NOT_FOUND', 'Conversation not found', 404));
+      return;
+    }
+
+    const messages = await prisma.message.findMany({
+      where: { conversationId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        senderId: true,
+        body: true,
+        bodyRaw: true,
+        containedContactInfo: true,
+        imageUrl: true,
+        createdAt: true,
+      },
+    });
+
+    res.status(200).json({
+      data: messages.map(m => ({
+        id: m.id,
+        senderId: m.senderId,
+        body: m.body,
+        // bodyRaw is null once purged, or when it equals body (nothing redacted);
+        // fall back to the redacted body so the timeline is never blank.
+        bodyRaw: m.bodyRaw ?? m.body,
+        containedContactInfo: m.containedContactInfo,
+        imageUrl: m.imageUrl,
+        createdAt: m.createdAt,
+      })),
+    });
+  },
+);
+
+// Retention purge for raw message text. Follows the same "no in-process
+// scheduler" pattern as the order endpoints above — an external cron pings the
+// GET to see how much is due, then the POST to purge.
+router.get('/messages/raw-purge-due', requireAdmin, async (_req: Request, res: Response) => {
+  const count = await countPurgeableRawMessages();
+  res.status(200).json({ data: { count, retentionDays: RAW_MESSAGE_RETENTION_DAYS } });
+});
+
+router.post('/messages/purge-raw', requireAdmin, async (_req: Request, res: Response) => {
+  const purged = await purgeExpiredMessageRawBodies();
+  res.status(200).json({ data: { purged, retentionDays: RAW_MESSAGE_RETENTION_DAYS } });
+});
 
 router.get('/disputes', requireAdmin, async (_req: Request, res: Response) => {
   const disputes = await prisma.paymentDispute.findMany({

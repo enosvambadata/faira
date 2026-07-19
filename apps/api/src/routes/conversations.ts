@@ -4,6 +4,7 @@ import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { signChatUpload } from '../lib/cloudinary';
 import { sendPushNotification } from '../lib/push';
+import { redactContactInfo } from '../lib/contactRedaction';
 import { ApiError } from '../errors/ApiError';
 
 const router = Router();
@@ -283,6 +284,15 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
     return;
   }
 
+  // Anti-leakage (SCRUM-257): redact contact info before it reaches the other
+  // party (and the push preview). We persist the redacted text as `body`, keep
+  // the untouched original in `bodyRaw` for admin dispute review, and flag the
+  // attempt. Image-only messages have no body to inspect.
+  const rawBody = parsed.data.body;
+  const { redacted, containedContactInfo } = rawBody
+    ? redactContactInfo(rawBody)
+    : { redacted: undefined as string | undefined, containedContactInfo: false };
+
   // Sending a message un-archives the thread for whichever side had
   // archived it — otherwise a reply to an archived conversation would
   // vanish into it permanently instead of resurfacing in the inbox.
@@ -291,7 +301,9 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest & Req
       data: {
         conversationId: conversation.id,
         senderId: req.userId!,
-        body: parsed.data.body,
+        body: redacted,
+        bodyRaw: rawBody,
+        containedContactInfo,
         imageUrl: parsed.data.imageUrl,
       },
     }),

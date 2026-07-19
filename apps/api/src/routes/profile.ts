@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/requireAuth';
 import { uploadAvatar } from '../lib/cloudinary';
+import { findContactInfoField, CONTACT_INFO_REJECTION } from '../lib/contactRedaction';
 import { supabaseAdmin } from '../supabase';
 import { ApiError } from '../errors/ApiError';
 
@@ -69,6 +70,14 @@ router.patch('/', requireAuth, async (req: AuthenticatedRequest, res: Response, 
 
   if (!parsed.success) {
     next(new ApiError('VALIDATION_ERROR', 'Invalid profile payload', 400, z.flattenError(parsed.error)));
+    return;
+  }
+
+  // Anti-leakage (SCRUM-257): the display name shows on every listing/thread, so
+  // it's a prime spot to plant a number — reject-and-warn.
+  const contactField = findContactInfoField({ displayName: parsed.data.displayName });
+  if (contactField) {
+    next(new ApiError('CONTACT_INFO_NOT_ALLOWED', CONTACT_INFO_REJECTION, 400, { field: contactField }));
     return;
   }
 

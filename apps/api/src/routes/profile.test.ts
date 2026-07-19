@@ -161,6 +161,19 @@ describe('PATCH /api/v1/profile', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(userUpdateMock).not.toHaveBeenCalled();
   });
+
+  it('rejects a display name that smuggles a phone number', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .patch('/api/v1/profile')
+      .set(AUTH_HEADER)
+      .send({ displayName: 'Tendai 0771234567' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CONTACT_INFO_NOT_ALLOWED');
+    expect(res.body.error.details.field).toBe('displayName');
+    expect(userUpdateMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('PATCH /api/v1/profile/notifications', () => {
