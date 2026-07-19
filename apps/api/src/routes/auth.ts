@@ -13,6 +13,10 @@ const signupSchema = z
     email: z.email().optional(),
     phone: phoneSchema.optional(),
     password: z.string().min(8, 'Password must be at least 8 characters').optional(),
+    // Where the confirmation link returns after the user clicks it. Supabase
+    // enforces this against the project's Redirect URLs allowlist, so an
+    // arbitrary value can't be used to redirect elsewhere.
+    redirectTo: z.string().url().optional(),
   })
   .refine(data => Boolean(data.email) !== Boolean(data.phone), {
     message: 'Provide exactly one of email or phone',
@@ -83,7 +87,7 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
     return;
   }
 
-  const { email, phone, password } = parsed.data;
+  const { email, phone, password, redirectTo } = parsed.data;
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -121,7 +125,11 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
   // "check your inbox" screen.
   let confirmationEmailSent = true;
   if (email) {
-    const { error: mailError } = await supabasePublic.auth.resend({ type: 'signup', email });
+    const { error: mailError } = await supabasePublic.auth.resend({
+      type: 'signup',
+      email,
+      options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+    });
     if (mailError) {
       confirmationEmailSent = false;
       logger.error({ err: mailError }, 'Failed to send signup confirmation email');
@@ -139,7 +147,7 @@ router.post('/signup', async (req: Request, res: Response, next: NextFunction) =
   });
 });
 
-const emailResendSchema = z.object({ email: z.email() });
+const emailResendSchema = z.object({ email: z.email(), redirectTo: z.string().url().optional() });
 
 // Resend the signup confirmation link. Always 200 (even when Supabase reports
 // the address is unknown or already confirmed) so the endpoint can't be used
@@ -151,7 +159,11 @@ router.post('/email/resend', async (req: Request, res: Response, next: NextFunct
     return;
   }
 
-  const { error } = await supabasePublic.auth.resend({ type: 'signup', email: parsed.data.email });
+  const { error } = await supabasePublic.auth.resend({
+    type: 'signup',
+    email: parsed.data.email,
+    options: parsed.data.redirectTo ? { emailRedirectTo: parsed.data.redirectTo } : undefined,
+  });
   if (error) {
     logger.warn({ err: error }, 'Confirmation email resend reported an error');
   }

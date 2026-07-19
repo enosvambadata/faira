@@ -176,7 +176,7 @@ export const auth = {
   // not auto-login, it shows a "check your inbox" screen (see signup/page.tsx).
   // Login goes straight through the browser Supabase client so @supabase/ssr's
   // cookie-based session sync stays correct.
-  signup: (payload: { email: string; password: string }) =>
+  signup: (payload: { email: string; password: string; redirectTo?: string }) =>
     request<{
       id: string;
       email: string | null;
@@ -187,10 +187,10 @@ export const auth = {
       body: payload,
     }),
 
-  resendConfirmation: (email: string) =>
+  resendConfirmation: (email: string, redirectTo?: string) =>
     request<{ message: string }>("/api/v1/auth/email/resend", {
       method: "POST",
-      body: { email },
+      body: { email, redirectTo },
     }),
 };
 
