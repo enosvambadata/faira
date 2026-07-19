@@ -9,6 +9,7 @@ import {
   ApiError,
   type MarketListingDetail,
   type MarketPaymentMethod,
+  type MarketDeliveryMethod,
 } from "@/lib/api";
 import { Alert } from "@/components/ui/Alert";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -35,6 +36,15 @@ export default function CheckoutPage() {
   const [method, setMethod] = useState<MarketPaymentMethod>("ECOCASH");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  // Structured delivery details (SCRUM-259): captured once here so the buyer
+  // never has to share contact through the redacted chat. The API gates who
+  // sees what.
+  const [deliveryMethod, setDeliveryMethod] = useState<MarketDeliveryMethod>("COURIER");
+  const [recipientName, setRecipientName] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [addressLine, setAddressLine] = useState("");
+  const [suburb, setSuburb] = useState("");
+  const [city, setCity] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
   const [instructions, setInstructions] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -105,8 +115,18 @@ export default function CheckoutPage() {
     setPhase("form");
   };
 
+  const needsAddress = deliveryMethod !== "MEETUP";
+
   const placeOrder = async () => {
     if (!deliveryOption) return;
+    if (!recipientName.trim() || !deliveryPhone.trim() || !city.trim()) {
+      setError("Add the recipient name, a contact number, and the delivery city.");
+      return;
+    }
+    if (needsAddress && !addressLine.trim()) {
+      setError("Add the delivery address for a courier or postal order.");
+      return;
+    }
     if (needsEmail && !email.trim()) {
       setError("Enter your email for the payment receipt.");
       return;
@@ -118,7 +138,14 @@ export default function CheckoutPage() {
     setPlacing(true);
     setError(null);
     try {
-      const order = await marketOrders.create(id, deliveryOption);
+      const order = await marketOrders.create(id, deliveryOption, {
+        method: deliveryMethod,
+        recipientName: recipientName.trim(),
+        phone: deliveryPhone.trim(),
+        addressLine: needsAddress ? addressLine.trim() : undefined,
+        suburb: suburb.trim() || undefined,
+        city: city.trim(),
+      });
       const result = await marketOrders.pay(order.id, {
         method,
         email: needsEmail ? email.trim() : undefined,
@@ -212,6 +239,62 @@ export default function CheckoutPage() {
                   {opt}
                 </label>
               ))}
+            </div>
+          </div>
+
+          {/* delivery details */}
+          <div>
+            <span className="text-sm font-medium text-text">Where should it go?</span>
+            <p className="mt-0.5 text-xs text-muted">
+              Kept private. The seller only sees what they need to ship — and never your number unless a courier needs it.
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {(["COURIER", "POSTAL", "MEETUP"] as const).map(m => (
+                <label
+                  key={m}
+                  className={`cursor-pointer rounded-md border px-3 py-2 text-center text-sm ${deliveryMethod === m ? "border-primary bg-primary/5 font-medium text-text" : "border-border bg-white text-muted"}`}
+                >
+                  <input type="radio" name="deliveryMethod" className="sr-only" checked={deliveryMethod === m} onChange={() => setDeliveryMethod(m)} />
+                  {m === "COURIER" ? "Courier" : m === "POSTAL" ? "Postal" : "Meet-up"}
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              <input
+                value={recipientName}
+                onChange={e => setRecipientName(e.target.value)}
+                placeholder="Recipient name"
+                className="h-11 rounded-md border border-border bg-white px-3.5 text-[15px] text-text outline-none focus:border-primary"
+              />
+              <input
+                value={deliveryPhone}
+                onChange={e => setDeliveryPhone(e.target.value)}
+                inputMode="tel"
+                placeholder="Contact number for delivery"
+                className="h-11 rounded-md border border-border bg-white px-3.5 text-[15px] text-text outline-none focus:border-primary"
+              />
+              {needsAddress && (
+                <input
+                  value={addressLine}
+                  onChange={e => setAddressLine(e.target.value)}
+                  placeholder="Delivery address"
+                  className="h-11 rounded-md border border-border bg-white px-3.5 text-[15px] text-text outline-none focus:border-primary"
+                />
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={suburb}
+                  onChange={e => setSuburb(e.target.value)}
+                  placeholder="Suburb (optional)"
+                  className="h-11 flex-1 rounded-md border border-border bg-white px-3.5 text-[15px] text-text outline-none focus:border-primary"
+                />
+                <input
+                  value={city}
+                  onChange={e => setCity(e.target.value)}
+                  placeholder="City"
+                  className="h-11 flex-1 rounded-md border border-border bg-white px-3.5 text-[15px] text-text outline-none focus:border-primary"
+                />
+              </div>
             </div>
           </div>
 

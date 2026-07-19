@@ -89,6 +89,14 @@ const BUYER_ID = 'buyer-1';
 const SELLER_ID = 'seller-1';
 const LISTING_ID = '64d25c37-d8f0-4a11-b92e-ecb9b168f516';
 const ORDER_ID = 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1';
+const DELIVERY = {
+  method: 'COURIER',
+  recipientName: 'Tariro M.',
+  phone: '0771234567',
+  addressLine: '12 Samora Machel Ave',
+  suburb: 'Avondale',
+  city: 'Harare',
+};
 
 function fakeListing(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -110,6 +118,12 @@ function fakeOrder(overrides: Partial<Record<string, unknown>> = {}) {
     buyerId: BUYER_ID,
     priceAtPurchase: { toString: () => '45.50' },
     status: 'PENDING',
+    deliveryMethod: 'COURIER',
+    deliveryRecipientName: 'Tariro M.',
+    deliveryPhone: '0771234567',
+    deliveryAddressLine: '12 Samora Machel Ave',
+    deliverySuburb: 'Avondale',
+    deliveryCity: 'Harare',
     listing: fakeListing(),
     payments: [],
     disputes: [],
@@ -131,7 +145,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier', delivery: DELIVERY });
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('PENDING');
@@ -149,7 +163,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID, deliveryOption: 'Teleport' });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Teleport', delivery: DELIVERY });
 
     expect(res.status).toBe(400);
     expect(orderCreateMock).not.toHaveBeenCalled();
@@ -157,7 +171,7 @@ describe('POST /api/v1/orders', () => {
 
   it('400s when deliveryOption is missing', async () => {
     const app = createApp();
-    const res = await request(app).post('/api/v1/orders').set(AUTH_HEADER).send({ listingId: LISTING_ID });
+    const res = await request(app).post('/api/v1/orders').set(AUTH_HEADER).send({ listingId: LISTING_ID, delivery: DELIVERY });
 
     expect(res.status).toBe(400);
   });
@@ -169,7 +183,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier', delivery: DELIVERY });
 
     expect(res.status).toBe(404);
   });
@@ -181,7 +195,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier', delivery: DELIVERY });
 
     expect(res.status).toBe(409);
   });
@@ -193,7 +207,7 @@ describe('POST /api/v1/orders', () => {
     const res = await request(app)
       .post('/api/v1/orders')
       .set(AUTH_HEADER)
-      .send({ listingId: LISTING_ID, deliveryOption: 'Courier' });
+      .send({ listingId: LISTING_ID, deliveryOption: 'Courier', delivery: DELIVERY });
 
     expect(res.status).toBe(403);
   });
@@ -324,9 +338,49 @@ describe('GET /api/v1/orders/:orderId', () => {
       shippingMethod: null,
       trackingReference: null,
       shippedAt: null,
+      deliveryMethod: 'COURIER',
+      deliveryRecipientName: 'Tariro M.',
+      deliveryPhone: '0771234567',
+      deliveryAddressLine: '12 Samora Machel Ave',
+      deliverySuburb: 'Avondale',
+      deliveryCity: 'Harare',
       ...overrides,
     };
   }
+
+  it('shows the buyer their own full delivery details (incl. phone)', async () => {
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail());
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.body.data.viewerRole).toBe('buyer');
+    expect(res.body.data.delivery).toMatchObject({ phone: '0771234567', city: 'Harare', reference: expect.stringMatching(/^FA-/) });
+  });
+
+  it('discloses NOTHING about the buyer to the seller before payment', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail({ status: 'PENDING' }));
+
+    const app = createApp();
+    const res = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+
+    expect(res.body.data.viewerRole).toBe('seller');
+    expect(res.body.data.delivery).toBeNull();
+  });
+
+  it('gives the paid seller the destination + phone for COURIER, but never the phone for MEETUP', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: SELLER_ID } }, error: null });
+
+    const app = createApp();
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail({ status: 'PAID', deliveryMethod: 'COURIER' }));
+    const courier = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+    expect(courier.body.data.delivery).toMatchObject({ addressLine: '12 Samora Machel Ave', phone: '0771234567' });
+
+    orderFindUniqueMock.mockResolvedValue(fakeOrderDetail({ status: 'PAID', deliveryMethod: 'MEETUP' }));
+    const meetup = await request(app).get(`/api/v1/orders/${ORDER_ID}`).set(AUTH_HEADER);
+    expect(meetup.body.data.delivery).toMatchObject({ city: 'Harare', addressLine: null, phone: null });
+  });
 
   it('shows the buyer the shipping method and tracking reference once shipped', async () => {
     orderFindUniqueMock.mockResolvedValue(

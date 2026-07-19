@@ -15,6 +15,7 @@ import { releaseEscrowFunds } from '../services/escrowRelease';
 import { calculateDeliveryFee } from '../services/deliveryFee';
 import { notifyOrderStatusChange } from '../services/orderNotifications';
 import { getOrderCompletedAt, isRevealed } from '../services/orderReviews';
+import { orderViewerRole, deliveryViewFor } from '../services/orderView';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { canTransition, displayStatus } from '../lib/orderStateMachine';
 import { signDisputeEvidenceUpload } from '../lib/cloudinary';
@@ -83,6 +84,23 @@ const createReviewSchema = z.object({
 const createOrderSchema = z.object({
   listingId: z.string().uuid(),
   deliveryOption: z.string().min(1),
+  // Structured delivery details (SCRUM-259). The buyer provides their contact
+  // through this access-controlled field — not the redacted chat — and it's
+  // gated per (viewer, status, method) on the way back out. `method` drives the
+  // seller-visibility decision table and is known from PAID.
+  delivery: z
+    .object({
+      method: z.enum(['MEETUP', 'COURIER', 'POSTAL']),
+      recipientName: z.string().trim().min(1).max(120),
+      phone: z.string().trim().min(9).max(20),
+      addressLine: z.string().trim().max(200).optional(),
+      suburb: z.string().trim().max(120).optional(),
+      city: z.string().trim().min(1).max(120),
+    })
+    .refine(d => d.method === 'MEETUP' || !!d.addressLine, {
+      message: 'A delivery address is required for courier and postal orders',
+      path: ['addressLine'],
+    }),
 });
 
 const shipOrderSchema = z
@@ -137,12 +155,19 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
     return;
   }
 
+  const { delivery } = parsed.data;
   const order = await prisma.order.create({
     data: {
       listingId: listing.id,
       buyerId,
       priceAtPurchase: listing.price,
       deliveryOption: parsed.data.deliveryOption,
+      deliveryMethod: delivery.method,
+      deliveryRecipientName: delivery.recipientName,
+      deliveryPhone: delivery.phone,
+      deliveryAddressLine: delivery.addressLine ?? null,
+      deliverySuburb: delivery.suburb ?? null,
+      deliveryCity: delivery.city,
       status: 'PENDING',
     },
   });
@@ -154,6 +179,9 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response, n
       priceAtPurchase: order.priceAtPurchase.toString(),
       deliveryOption: order.deliveryOption,
       status: order.status,
+      // Echo the buyer's own details back (they just entered them), with the
+      // Faira reference they can quote instead of sharing personal contact.
+      delivery: deliveryViewFor({ ...order, listing: { sellerId: listing.sellerId } }, 'buyer'),
     },
   });
 });
@@ -257,7 +285,8 @@ router.get(
       next(new ApiError('NOT_FOUND', 'Order not found', 404));
       return;
     }
-    if (order.buyerId !== req.userId && order.listing.sellerId !== req.userId) {
+    const role = orderViewerRole(order, req.userId!);
+    if (!role) {
       next(new ApiError('FORBIDDEN', 'Not part of this order', 403));
       return;
     }
@@ -267,8 +296,13 @@ router.get(
         id: order.id,
         buyerId: order.buyerId,
         sellerId: order.listing.sellerId,
+        viewerRole: role,
         priceAtPurchase: order.priceAtPurchase.toString(),
         deliveryOption: order.deliveryOption,
+        // Gated per (viewer, status, method): the seller sees nothing before
+        // payment, then only the fields the delivery method requires. Null when
+        // nothing is disclosed. See services/orderView.
+        delivery: deliveryViewFor(order, role),
         status: order.status,
         displayStatus: displayStatus(order.status),
         // Filled in once the seller ships (SCRUM-61) — null until then.
