@@ -1737,9 +1737,23 @@ export interface MarketPaymentStatus {
   paymentStatus: string | null;
 }
 
+export type MarketDeliveryMethod = "MEETUP" | "COURIER" | "POSTAL";
+
+// Delivery details captured at checkout (SCRUM-259). The buyer provides contact
+// here — an access-controlled field the API gates per viewer/status/method — so
+// it never has to be shared through the (redacted) chat.
+export interface MarketDeliveryDetails {
+  method: MarketDeliveryMethod;
+  recipientName: string;
+  phone: string;
+  addressLine?: string;
+  suburb?: string;
+  city: string;
+}
+
 export const marketOrders = {
-  create: (listingId: string, deliveryOption: string) =>
-    request<MarketOrder>("/api/v1/orders", { method: "POST", body: { listingId, deliveryOption }, auth: true }),
+  create: (listingId: string, deliveryOption: string, delivery: MarketDeliveryDetails) =>
+    request<MarketOrder>("/api/v1/orders", { method: "POST", body: { listingId, deliveryOption, delivery }, auth: true }),
 
   deliveryFee: (listingId: string, deliveryOption: string) =>
     request<{ fee: number }>(
@@ -1841,12 +1855,27 @@ export interface MarketOrderListItem {
   listing: { id: string; title: string; imageUrl: string | null };
 }
 
+// The delivery block the API discloses to this viewer (SCRUM-259). Gated
+// server-side: null for a seller pre-payment; address/phone omitted unless the
+// method requires them. `reference` is the shared Faira code for coordination.
+export interface MarketOrderDelivery {
+  method: MarketDeliveryMethod | null;
+  recipientName: string | null;
+  suburb: string | null;
+  city: string | null;
+  addressLine: string | null;
+  phone: string | null;
+  reference: string;
+}
+
 export interface MarketOrderDetail {
   id: string;
   buyerId: string;
   sellerId: string;
+  viewerRole: "buyer" | "seller" | "admin";
   priceAtPurchase: string;
   deliveryOption: string;
+  delivery: MarketOrderDelivery | null;
   status: string;
   displayStatus: string;
   shippingMethod: string | null;

@@ -474,6 +474,18 @@ model Order {
   // The option the buyer picked at checkout (SCRUM-59) — one of the
   // seller's listing.deliveryOptions at the time of purchase.
   deliveryOption             String          @map("delivery_option")
+  // Structured delivery details captured at checkout (SCRUM-259, anti-leakage
+  // Layer 2). deliveryMethod drives what the seller is allowed to see and is
+  // known from PAID (unlike shippingMethod, which the seller sets at ship time).
+  // These are gated per (viewer, status, method) by shapeOrderForViewer — the
+  // buyer provides contact through this access-controlled field instead of the
+  // now-redacted chat. Nullable: pre-existing orders never captured them.
+  deliveryMethod             ShippingMethod? @map("delivery_method")
+  deliveryRecipientName      String?         @map("delivery_recipient_name")
+  deliveryPhone              String?         @map("delivery_phone")
+  deliveryAddressLine        String?         @map("delivery_address_line")
+  deliverySuburb             String?         @map("delivery_suburb")
+  deliveryCity               String?         @map("delivery_city")
   status                     OrderStatus     @default(PENDING)
   // Tracks the 5-day no-response auto-release window (SCRUM-55) — nullable
   // so "reminder not yet sent" is representable without a sentinel date.

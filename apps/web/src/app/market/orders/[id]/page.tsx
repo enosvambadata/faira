@@ -138,6 +138,25 @@ export default function OrderDetailPage() {
             {order.trackingReference && <><div className="border-t border-border" /><Info label="Tracking" value={order.trackingReference} /></>}
           </div>
 
+          {/* Delivery details, gated server-side to what this viewer may see. */}
+          {order.delivery && (
+            <div className="rounded-lg border border-border bg-white px-4 py-1">
+              <Info
+                label="Deliver to"
+                value={
+                  [order.delivery.recipientName, order.delivery.addressLine, order.delivery.suburb, order.delivery.city]
+                    .filter(Boolean)
+                    .join(", ") || "—"
+                }
+              />
+              {order.delivery.phone && (
+                <><div className="border-t border-border" /><Info label="Contact" value={order.delivery.phone} /></>
+              )}
+              <div className="border-t border-border" />
+              <Info label="Faira ref" value={order.delivery.reference} />
+            </div>
+          )}
+
           <p className="flex items-start gap-2 text-sm text-muted">
             <ShieldIcon size={16} className="text-green" />
             <span><span className="font-semibold text-green">Escrow protected.</span> Confirm delivery once the part arrives as described — that releases the payment to the seller.</span>
