@@ -97,10 +97,12 @@ function LoginForm() {
     );
   }
 
+  const isMarket = Boolean(searchParams.get("next")?.startsWith("/market"));
+
   return (
     <Card>
       <h1 className="text-xl font-semibold text-text">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">Welcome back to Vamba Collect.</p>
+      <p className="mt-1 text-sm text-muted">{isMarket ? "Welcome back to Faira." : "Welcome back to Vamba Collect."}</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
         <Field label="Email address" required>
@@ -156,10 +158,13 @@ function isFulfilmentTarget(target: string | null): boolean {
 
 function ThemedLogin() {
   const searchParams = useSearchParams();
-  const themeClass = isFulfilmentTarget(searchParams.get("next")) ? "" : "theme-collect";
+  const next = searchParams.get("next");
+  const isMarket = Boolean(next?.startsWith("/market"));
+  // Marketplace + Fulfilment keep the warm Faira brand; Collect UK gets navy.
+  const warm = isMarket || isFulfilmentTarget(next);
   return (
-    <div className={themeClass}>
-      <AuthLayout>
+    <div className={warm ? "" : "theme-collect"}>
+      <AuthLayout brand={isMarket ? "Faira Parts" : "Vamba Collect"}>
         <LoginForm />
       </AuthLayout>
     </div>

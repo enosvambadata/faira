@@ -54,6 +54,13 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
       step2: "Seller details",
     };
   }
+  if (redirect?.startsWith("/market")) {
+    return {
+      title: "Create your Faira account",
+      subtitle: "Buy and sell car parts and engines — protected by escrow.",
+      step2: "Start buying & selling",
+    };
+  }
   return {
     title: "Create your Vamba Collect account",
     subtitle: "Register your shipping company's collections — or apply to drive for Vamba Collect.",
@@ -72,7 +79,9 @@ function SignupForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
   const context = signupContext(redirect);
-  const themeClass = isFulfilmentTarget(redirect) ? "" : "theme-collect";
+  const isMarket = Boolean(redirect?.startsWith("/market"));
+  const themeClass = isMarket || isFulfilmentTarget(redirect) ? "" : "theme-collect";
+  const brand = isMarket ? "Faira Parts" : "Vamba Collect";
   const loginHref = redirect ? `/login?next=${encodeURIComponent(redirect)}` : "/login";
   const [form, setForm] = useState<FormState>({ email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -124,7 +133,7 @@ function SignupForm() {
   if (sentTo) {
     return (
       <div className={themeClass}>
-        <AuthLayout>
+        <AuthLayout brand={brand}>
           <Card>
             <h1 className="text-xl font-semibold text-text">Confirm your email</h1>
             <p className="mt-2 text-sm text-muted">
@@ -153,7 +162,7 @@ function SignupForm() {
 
   return (
     <div className={themeClass}>
-    <AuthLayout>
+    <AuthLayout brand={brand}>
       <Card>
         <h1 className="text-xl font-semibold text-text">{context.title}</h1>
         <p className="mt-1 text-sm text-muted">{context.subtitle}</p>
