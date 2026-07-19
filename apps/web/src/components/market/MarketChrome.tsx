@@ -164,7 +164,10 @@ export function MarketChrome() {
             {signedIn ? (
               <button onClick={handleSignOut} className="hover:text-primary">Sign out</button>
             ) : (
-              <Link href="/login?next=/market" className="font-medium text-primary hover:underline">Sign in</Link>
+              <>
+                <Link href="/signup?redirect=/market" className="hover:text-primary">Register</Link>
+                <Link href="/login?next=/market" className="font-medium text-primary hover:underline">Sign in</Link>
+              </>
             )}
             <span className="hidden sm:inline">Ship to 🇿🇼 Zimbabwe</span>
           </div>
