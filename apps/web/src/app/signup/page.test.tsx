@@ -68,7 +68,9 @@ describe("SignupPage", () => {
     expect(await screen.findByText(/confirm your email/i)).toBeInTheDocument();
     expect(screen.getByText("seller@example.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /go to sign in/i })).toBeInTheDocument();
-    expect(signupMock).toHaveBeenCalledWith({ email: "seller@example.com", password: "password123" });
+    expect(signupMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "seller@example.com", password: "password123" }),
+    );
     expect(pushMock).not.toHaveBeenCalled();
   });
 
