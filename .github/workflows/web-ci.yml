@@ -1,0 +1,52 @@
+name: Web CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/web-ci.yml'
+
+jobs:
+  lint-typecheck-test-build:
+    name: Lint, Type Check, Unit Tests & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        # npm install (not npm ci): Tailwind v4's @tailwindcss/oxide pulls in
+        # platform-specific native binaries + a wasm fallback (@emnapi/*), and a
+        # lockfile generated on one OS doesn't carry every platform's optional
+        # package entries — so `npm ci` fails cross-platform. `npm install`
+        # resolves the correct deps for the CI runner.
+        run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
