@@ -14,6 +14,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@faira/api-core": "*",
     "@faira/db": "*",
     "@prisma/client": "^7.8.0",
     "@sentry/node": "^10.63.0",
