@@ -95,12 +95,17 @@ jobs:
       # Supabase manages the `auth` schema in real environments; the migrations
       # FK to auth.users and call auth.uid() in RLS. Stub them so migrate deploy
       # can apply against the bare Postgres service container.
-      - name: Prepare Supabase-managed auth objects
+      - name: Prepare Supabase-managed objects
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           CREATE SCHEMA IF NOT EXISTS auth;
           CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
           CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+              CREATE PUBLICATION supabase_realtime;
+            END IF;
+          END $$;
           SQL
 
       # @faira/db owns the migrations — the single migrate owner. Applies every
