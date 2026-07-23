@@ -6,6 +6,7 @@
     "packages/*",
     "apps/api",
     "apps/collect-api",
+    "apps/fulfilment-api",
     "apps/web"
   ],
   "scripts": {

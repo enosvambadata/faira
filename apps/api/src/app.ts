@@ -19,14 +19,6 @@ import adminRouter from './routes/admin';
 import ordersRouter from './routes/orders';
 import reviewsRouter from './routes/reviews';
 import reportsRouter from './routes/reports';
-import fulfilmentRolesRouter from './routes/fulfilmentRoles';
-import fulfilmentSellersRouter from './routes/fulfilmentSellers';
-import fulfilmentHubsRouter from './routes/fulfilmentHubs';
-import fulfilmentShipmentsRouter from './routes/fulfilmentShipments';
-import hubOpsRouter from './routes/hubOps';
-import transportRouter from './routes/transport';
-import manifestsRouter from './routes/manifests';
-import trackingRouter from './routes/tracking';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -75,14 +67,6 @@ export function createApp(): Express {
   app.use('/api/v1/orders', ordersRouter);
   app.use('/api/v1/reviews', reviewsRouter);
   app.use('/api/v1/reports', reportsRouter);
-  app.use('/api/v1/fulfilment/user-roles', fulfilmentRolesRouter);
-  app.use('/api/v1/fulfilment/sellers', fulfilmentSellersRouter);
-  app.use('/api/v1/fulfilment/hubs', fulfilmentHubsRouter);
-  app.use('/api/v1/fulfilment/shipments', fulfilmentShipmentsRouter);
-  app.use('/api/v1/fulfilment/hub-ops', hubOpsRouter);
-  app.use('/api/v1/fulfilment/transport', transportRouter);
-  app.use('/api/v1/fulfilment/manifests', manifestsRouter);
-  app.use('/api/v1/fulfilment/tracking', trackingRouter);
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
 
