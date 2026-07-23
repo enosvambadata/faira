@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json ./
 COPY packages/db/package.json ./packages/db/
 COPY packages/api-core/package.json ./packages/api-core/
+COPY packages/ui/package.json ./packages/ui/
 COPY apps/api/package.json ./apps/api/
 COPY apps/collect-api/package.json ./apps/collect-api/
 COPY apps/fulfilment-api/package.json ./apps/fulfilment-api/
@@ -16,6 +17,10 @@ COPY apps/web/package.json ./apps/web/
 # DATABASE_URL) even though the web app doesn't import it.
 COPY packages/db ./packages/db
 COPY packages/api-core ./packages/api-core
+# @faira/ui ships TS source that Next transpiles at build time
+# (transpilePackages), so the whole package — not just its manifest — must be
+# present before the build.
+COPY packages/ui ./packages/ui
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db"
 RUN npm install --no-audit --no-fund
 
@@ -36,6 +41,10 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+# Keep the node_modules/@faira/ui workspace symlink target present (next start
+# resolves the workspace even though the components are already compiled into
+# .next).
+COPY --from=builder /app/packages/ui ./packages/ui
 COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
 COPY --from=builder /app/apps/web/.next ./apps/web/.next
 COPY --from=builder /app/apps/web/public ./apps/web/public

@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json ./
 COPY packages/db/package.json ./packages/db/
 COPY packages/api-core/package.json ./packages/api-core/
+COPY packages/ui/package.json ./packages/ui/
 COPY apps/api/package.json ./apps/api/
 COPY apps/collect-api/package.json ./apps/collect-api/
 COPY apps/fulfilment-api/package.json ./apps/fulfilment-api/
