@@ -9,7 +9,7 @@ import { recordAuditLog } from '../services/fulfilmentAuditLog';
 import { notifyShipmentMilestone } from '../services/collectUkShipmentNotifications';
 import { verifyShipmentTrackingToken } from '../lib/collectUkShipmentToken';
 import { publicRateLimiter } from './collectUkBookings';
-import { phoneSchema } from './auth';
+import { phoneSchema } from '../lib/phone';
 
 // ---------------------------------------------------------------------------
 // Owner router -- mounted at /api/v1/collect-uk/companies, so every path is

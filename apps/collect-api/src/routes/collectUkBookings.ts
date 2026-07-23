@@ -8,7 +8,7 @@ import { generateBookingTrackingToken, verifyBookingTrackingToken } from '../lib
 import { collectUkBuyerStatus } from '../lib/collectUkBookingStatus';
 import { notifyBookingConfirmed, notifyBookingCancelled } from '../services/collectUkNotifications';
 import { geocodePostcode } from '../lib/collectUkGeo';
-import { phoneSchema } from './auth';
+import { phoneSchema } from '../lib/phone';
 import { logger } from '../logger';
 
 const router = Router();

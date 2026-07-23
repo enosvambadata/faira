@@ -5,6 +5,7 @@
   "workspaces": [
     "packages/*",
     "apps/api",
+    "apps/collect-api",
     "apps/web"
   ],
   "scripts": {

@@ -27,15 +27,6 @@ import hubOpsRouter from './routes/hubOps';
 import transportRouter from './routes/transport';
 import manifestsRouter from './routes/manifests';
 import trackingRouter from './routes/tracking';
-import collectUkCompaniesRouter from './routes/collectUkCompanies';
-import collectUkCompanyRolesRouter from './routes/collectUkCompanyRoles';
-import collectUkBookingsRouter from './routes/collectUkBookings';
-import collectUkSchedulingRouter from './routes/collectUkScheduling';
-import collectUkDriverPortalRouter from './routes/collectUkDriverPortal';
-import collectUkShipmentsRouter, { collectUkShipmentTrackingRouter } from './routes/collectUkShipments';
-import collectUkFreightRatesRouter from './routes/collectUkFreightRates';
-import collectUkPaymentsRouter from './routes/collectUkPayments';
-import collectUkTeamRouter from './routes/collectUkTeam';
 import { errorHandler } from './errors/errorHandler';
 import { logger } from './logger';
 
@@ -92,17 +83,6 @@ export function createApp(): Express {
   app.use('/api/v1/fulfilment/transport', transportRouter);
   app.use('/api/v1/fulfilment/manifests', manifestsRouter);
   app.use('/api/v1/fulfilment/tracking', trackingRouter);
-  app.use('/api/v1/collect-uk/companies', collectUkCompaniesRouter);
-  app.use('/api/v1/collect-uk/companies', collectUkShipmentsRouter);
-  app.use('/api/v1/collect-uk/companies', collectUkFreightRatesRouter);
-  app.use('/api/v1/collect-uk/companies', collectUkPaymentsRouter);
-  app.use('/api/v1/collect-uk/companies', collectUkTeamRouter);
-  app.use('/api/v1/admin/collect-uk/company-roles', collectUkCompanyRolesRouter);
-  app.use('/api/v1/collect-uk', collectUkBookingsRouter);
-  app.use('/api/v1/collect-uk', collectUkShipmentTrackingRouter);
-  app.use('/api/v1/admin/collect-uk', collectUkSchedulingRouter);
-  app.use('/api/v1/collect-uk/driver', collectUkDriverPortalRouter);
-
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
 
