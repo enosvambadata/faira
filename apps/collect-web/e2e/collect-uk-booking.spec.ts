@@ -14,7 +14,7 @@ test.describe("Faira Collect UK guest booking", () => {
     const companyName = `E2E Booking Logistics ${uniqueId}`;
 
     // --- Company admin registers and adds a warehouse ---
-    await request.post("https://api-staging-9878.up.railway.app/api/v1/auth/signup", {
+    await request.post(`${process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app"}/api/v1/auth/signup`, {
       data: { email, password },
     });
 

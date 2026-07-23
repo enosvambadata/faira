@@ -16,7 +16,7 @@ import { test, expect, APIRequestContext } from "@playwright/test";
 // by the 17 new backend tests in hubOps.test.ts (including a concurrency
 // test). This spec verifies the real UI: shipment lookup, and that an
 // incorrect code is rejected with a clear error via the real endpoint.
-const API_URL = "https://api-staging-9878.up.railway.app";
+const API_URL = process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app";
 const SUPABASE_URL = "https://eqjvtugbyjukuvztdyuc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_GTBKG2bIEZIoWsX5w4Rjgg_5qvDCfMQ";
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN;

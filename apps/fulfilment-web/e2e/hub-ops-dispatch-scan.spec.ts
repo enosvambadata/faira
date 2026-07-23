@@ -6,7 +6,7 @@ import { test, expect, APIRequestContext } from "@playwright/test";
 // E2E_ADMIN_TOKEN is set. Manifest creation/add/finalize (already covered
 // by hub-ops-manifest.spec.ts) is done via the API here so this spec can
 // focus its browser-driven portion on the actual scan-out/short-ship UI.
-const API_URL = "https://api-staging-9878.up.railway.app";
+const API_URL = process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app";
 const SUPABASE_URL = "https://eqjvtugbyjukuvztdyuc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_GTBKG2bIEZIoWsX5w4Rjgg_5qvDCfMQ";
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN;

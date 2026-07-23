@@ -7,7 +7,7 @@ import { test, expect, APIRequestContext } from "@playwright/test";
 // (seal, manifest, finalize, scan-out) is already covered by earlier
 // specs and done here via the API so this spec's browser-driven portion
 // can focus on the actual destination-hub arrival-scan UI.
-const API_URL = "https://api-staging-9878.up.railway.app";
+const API_URL = process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app";
 const SUPABASE_URL = "https://eqjvtugbyjukuvztdyuc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_GTBKG2bIEZIoWsX5w4Rjgg_5qvDCfMQ";
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN;

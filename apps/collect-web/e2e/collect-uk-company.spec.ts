@@ -9,7 +9,7 @@ test.describe("Faira Collect UK company portal", () => {
     const email = `e2e-collect-uk-company-${uniqueId}@faira-test.dev`;
     const password = "e2eTestPassword123";
 
-    await request.post("https://api-staging-9878.up.railway.app/api/v1/auth/signup", {
+    await request.post(`${process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app"}/api/v1/auth/signup`, {
       data: { email, password },
     });
 

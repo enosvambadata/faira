@@ -5,7 +5,7 @@ import { test, expect, APIRequestContext } from "@playwright/test";
 // POST /fulfilment/user-roles endpoint. This spec is skipped unless
 // E2E_ADMIN_TOKEN is set, so it stays runnable in environments (CI) that
 // don't have that secret, without silently faking coverage.
-const API_URL = "https://api-staging-9878.up.railway.app";
+const API_URL = process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app";
 const SUPABASE_URL = "https://eqjvtugbyjukuvztdyuc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_GTBKG2bIEZIoWsX5w4Rjgg_5qvDCfMQ";
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN;
