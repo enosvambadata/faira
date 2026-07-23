@@ -15,3 +15,28 @@ export function assertRequiredEnv(env: Record<string, string | undefined> = proc
     throw new Error(`Missing required environment variable(s): ${missing.join(', ')}`);
   }
 }
+
+// Optional-but-important config: notifications are best-effort, so a missing
+// provider can't crash the boot — but it CAN make the product silently mute in
+// the field (SCRUM-261). Warn loudly at startup so a live deploy without a
+// working customer channel is obvious in the logs rather than invisible.
+export function warnOptionalConfig(
+  log: { warn: (obj: unknown, msg: string) => void },
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const twilioSet = Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM);
+  const resendSet = Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
+
+  if (!twilioSet) {
+    log.warn(
+      { hint: 'set TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM' },
+      'Twilio not configured: SMS to UK (+44) numbers will NOT be delivered (Africa’s Talking cannot reach UK). Vamba Collect customer SMS is effectively muted.',
+    );
+  }
+  if (!resendSet) {
+    log.warn(
+      { hint: 'set RESEND_API_KEY + EMAIL_FROM' },
+      'Resend not configured: transactional email will not send. With Twilio also unset, customers would receive NO notifications on any channel.',
+    );
+  }
+}

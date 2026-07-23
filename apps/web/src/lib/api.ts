@@ -1083,6 +1083,7 @@ export interface CollectUkBookingCompany {
 export interface CreateBookingPayload {
   customerName: string;
   customerContact: string;
+  customerEmail?: string;
   destinationCountry: string;
   collectionAddress: string;
   collectionPostcode: string;

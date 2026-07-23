@@ -51,6 +51,7 @@ export default function BookCollectionPage() {
 
   const [customerName, setCustomerName] = useState("");
   const [customerContact, setCustomerContact] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [destinationCountry, setDestinationCountry] = useState<string | undefined>(undefined);
   const [collectionAddress, setCollectionAddress] = useState("");
   const [collectionPostcode, setCollectionPostcode] = useState("");
@@ -107,6 +108,7 @@ export default function BookCollectionPage() {
       const result = await collectUkBookings.create(slug, {
         customerName: customerName.trim(),
         customerContact: customerContact.trim(),
+        customerEmail: customerEmail.trim() || undefined,
         destinationCountry,
         collectionAddress: collectionAddress.trim(),
         collectionPostcode: collectionPostcode.trim(),
@@ -187,8 +189,20 @@ export default function BookCollectionPage() {
                   {p => <Input {...p} value={customerName} onChange={e => setCustomerName(e.target.value)} />}
                 </Field>
 
-                <Field label="Contact number or email" required>
+                <Field label="Mobile number" required>
                   {p => <Input {...p} value={customerContact} onChange={e => setCustomerContact(e.target.value)} placeholder="+44 7700 900000" />}
+                </Field>
+
+                <Field label="Email (recommended)" hint="We'll send updates by email too — the most reliable way to reach you.">
+                  {p => (
+                    <Input
+                      {...p}
+                      type="email"
+                      value={customerEmail}
+                      onChange={e => setCustomerEmail(e.target.value)}
+                      placeholder="you@example.com"
+                    />
+                  )}
                 </Field>
 
                 <Field label="Destination country" required>

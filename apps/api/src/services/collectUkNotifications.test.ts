@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const bookingFindUniqueMock = vi.fn();
 const driverFindUniqueMock = vi.fn();
+const notificationLogCreateMock = vi.fn();
 const sendSmsMock = vi.fn();
 const sendEmailMock = vi.fn();
 const getUserByIdMock = vi.fn();
@@ -10,6 +11,7 @@ vi.mock('../prisma', () => ({
   prisma: {
     collectUkCollectionBooking: { findUnique: (...args: unknown[]) => bookingFindUniqueMock(...args) },
     collectUkDriver: { findUnique: (...args: unknown[]) => driverFindUniqueMock(...args) },
+    collectUkNotificationLog: { create: (...args: unknown[]) => notificationLogCreateMock(...args) },
   },
 }));
 
@@ -44,6 +46,7 @@ const BOOKING = {
   id: 'booking-1',
   reference: 'FC-abc-logistics-000001',
   customerContact: '+447700900000',
+  customerEmail: null,
   destinationCountry: 'Zimbabwe',
   preferredDate: new Date('2026-08-01T00:00:00Z'),
   company: { name: 'ABC Logistics' },
@@ -54,13 +57,53 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.WEB_APP_URL = 'https://app.example.com';
   bookingFindUniqueMock.mockResolvedValue(BOOKING);
-  sendSmsMock.mockResolvedValue(undefined);
-  sendEmailMock.mockResolvedValue(undefined);
+  sendSmsMock.mockResolvedValue({ status: 'SENT', provider: 'twilio' });
+  sendEmailMock.mockResolvedValue({ status: 'SENT', provider: 'resend' });
+  notificationLogCreateMock.mockResolvedValue({});
   driverFindUniqueMock.mockResolvedValue({ userId: 'u-1', phone: '+447700900201', fullName: 'Tendai' });
   getUserByIdMock.mockResolvedValue({ data: { user: { email: 'tendai@example.com' } } });
 });
 
 describe('collectUkNotifications', () => {
+  it('sends SMS only (no email on file) and logs the attempt', async () => {
+    await notifyBookingConfirmed('booking-1');
+
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(notificationLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingId: 'booking-1',
+        event: 'booking_confirmed',
+        channel: 'SMS',
+        recipient: '+447700900000',
+        status: 'SENT',
+        provider: 'twilio',
+      }),
+    });
+  });
+
+  it('also emails and logs BOTH channels when the customer gave an email', async () => {
+    bookingFindUniqueMock.mockResolvedValue({ ...BOOKING, customerEmail: 'jane@example.com' });
+
+    await notifyBookingConfirmed('booking-1');
+
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock).toHaveBeenCalledWith('jane@example.com', expect.stringContaining('ABC Logistics'), expect.stringContaining('http'));
+    const channels = notificationLogCreateMock.mock.calls.map(c => c[0].data.channel);
+    expect(channels).toEqual(['SMS', 'EMAIL']);
+  });
+
+  it('records a FAILED delivery (best-effort still logs the outcome)', async () => {
+    sendSmsMock.mockResolvedValue({ status: 'FAILED', provider: 'twilio', detail: 'http 500' });
+
+    await notifyBookingConfirmed('booking-1');
+
+    expect(notificationLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({ channel: 'SMS', status: 'FAILED', detail: 'http 500' }),
+    });
+  });
+
   it('booking confirmed with a collection window: includes the week and tracking link', async () => {
     bookingFindUniqueMock.mockResolvedValue({
       ...BOOKING,

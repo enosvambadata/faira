@@ -1711,6 +1711,10 @@ model CollectUkCollectionBooking {
   customerUserId      String?                 @map("customer_user_id") @db.Uuid
   customerName        String                  @map("customer_name")
   customerContact     String                  @map("customer_contact")
+  // Optional email captured at booking (SCRUM-261): a reliable second channel
+  // for guest customers, since UK (+44) SMS only delivers once Twilio is
+  // configured. Notifications go to both when present.
+  customerEmail       String?                 @map("customer_email")
   destinationCountry  String                  @map("destination_country")
   collectionAddress   String                  @map("collection_address")
   collectionPostcode  String                  @map("collection_postcode")
@@ -2007,4 +2011,37 @@ model CollectUkShipmentMilestone {
 
   @@index([shipmentId])
   @@map("collect_uk_shipment_milestones")
+}
+
+enum CollectUkNotificationChannel {
+  SMS
+  EMAIL
+}
+
+enum CollectUkNotificationStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Delivery record for every Collect UK customer/driver notification attempt
+// (SCRUM-261). Sends are best-effort and were previously fire-and-forget, so a
+// silently-failed SMS (e.g. UK number with no Twilio) or an unconfigured email
+// left no trace. This makes each attempt visible: what event, to whom, over
+// which channel, and the outcome (SENT / FAILED / SKIPPED) + provider/reason.
+model CollectUkNotificationLog {
+  id         String                       @id @default(uuid()) @db.Uuid
+  bookingId  String?                      @map("booking_id") @db.Uuid
+  shipmentId String?                      @map("shipment_id") @db.Uuid
+  event      String
+  channel    CollectUkNotificationChannel
+  recipient  String
+  status     CollectUkNotificationStatus
+  provider   String?
+  detail     String?
+  createdAt  DateTime                     @default(now()) @map("created_at")
+
+  @@index([bookingId, createdAt])
+  @@index([status, createdAt])
+  @@map("collect_uk_notification_logs")
 }

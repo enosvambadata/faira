@@ -85,6 +85,10 @@ const createBookingSchema = z
         return d; // anything else -> let phoneSchema reject it
       })
       .pipe(phoneSchema),
+    // Optional email — a reliable SECOND channel (SCRUM-261). UK SMS only
+    // delivers once Twilio is configured; email via Resend has no such gap, so
+    // notifications go to both when an email is given.
+    customerEmail: z.string().trim().toLowerCase().email().optional(),
     destinationCountry: z.string().trim().min(1).max(100),
     collectionAddress: z.string().trim().min(1).max(300),
     collectionPostcode: z.string().trim().min(1).max(20),
@@ -151,6 +155,7 @@ router.post('/book/:companySlug', publicRateLimiter, async (req: Request<{ compa
         reference,
         customerName: parsed.data.customerName,
         customerContact: parsed.data.customerContact,
+        customerEmail: parsed.data.customerEmail ?? null,
         destinationCountry: parsed.data.destinationCountry,
         collectionAddress: parsed.data.collectionAddress,
         collectionPostcode: parsed.data.collectionPostcode,
