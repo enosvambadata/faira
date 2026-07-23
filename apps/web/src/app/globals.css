@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* @faira/ui lives outside this app's tree, so Tailwind v4's automatic content
+   detection (rooted at the app) won't scan it — the shared components would
+   render UNSTYLED without this. Path is relative to THIS css file. */
+@source "../../../../packages/ui/src";
+
 /*
   Faira design tokens — mirrors apps/mobile/src/theme/colors.ts exactly so
   the brand is consistent between the consumer app and this web app. Do not
