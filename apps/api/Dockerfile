@@ -1,23 +1,35 @@
+# Built from the repo ROOT context (npm workspaces). On Railway set the service's
+# build context to the repo root and dockerfilePath to apps/api/Dockerfile.
 FROM node:24-alpine AS builder
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
-
-COPY . .
-# prisma generate (run as part of the build script) needs DATABASE_URL to be
-# resolvable, but not reachable — no real connection is made at generate time.
+# Workspace manifests + lockfile first (cached install layer). @faira/db source
+# must be present before install because the root postinstall builds it
+# (prisma generate + tsc). generate needs DATABASE_URL resolvable, not reachable.
+COPY package.json package-lock.json ./
+COPY packages/db/package.json ./packages/db/
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/db ./packages/db
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db"
-RUN npm run build
+RUN npm install --no-audit --no-fund
+
+# Build the API workspace (tsc → apps/api/dist).
+COPY apps/api ./apps/api
+RUN npm run build -w faira-api
 
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app/package*.json ./
+# node_modules holds the hoisted deps + a node_modules/@faira/db symlink into
+# packages/db, so packages/db (dist + prisma) must be copied too. packages/db
+# also carries the migrations for the `npm run migrate -w @faira/db` release step.
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+CMD ["node", "apps/api/dist/server.js"]

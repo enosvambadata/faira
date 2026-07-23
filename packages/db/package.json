@@ -1,0 +1,33 @@
+{
+  "name": "@faira/db",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./supabase": {
+      "types": "./dist/supabase.d.ts",
+      "default": "./dist/supabase.js"
+    }
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc",
+    "migrate": "prisma migrate deploy",
+    "type-check": "prisma generate && tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "prisma": "^7.8.0",
+    "typescript": "^6.0.3"
+  }
+}

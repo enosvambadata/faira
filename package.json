@@ -1,0 +1,19 @@
+{
+  "name": "faira",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "postinstall": "npm run build -w @faira/db",
+    "build:db": "npm run build -w @faira/db",
+    "migrate": "npm run migrate -w @faira/db"
+  },
+  "overrides": {
+    "@emnapi/core": "1.11.2",
+    "@emnapi/runtime": "1.11.2"
+  }
+}

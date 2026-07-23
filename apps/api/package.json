@@ -5,16 +5,16 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint . --ext .ts --max-warnings 0",
     "lint:fix": "eslint . --ext .ts --fix",
-    "type-check": "prisma generate && tsc --noEmit",
-    "test": "prisma generate && vitest run",
-    "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
+    "@faira/db": "*",
     "@prisma/client": "^7.8.0",
     "@sentry/node": "^10.63.0",
     "@supabase/supabase-js": "^2.110.0",
@@ -52,14 +52,9 @@
     "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
     "prettier": "^3.3.3",
-    "prisma": "^7.8.0",
     "supertest": "^7.2.2",
     "tsx": "^4.22.5",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
-  },
-  "overrides": {
-    "@emnapi/core": "1.11.2",
-    "@emnapi/runtime": "1.11.2"
   }
 }

@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/web-ci.yml'
 
 jobs:
@@ -11,14 +14,13 @@ jobs:
     name: Lint, Type Check, Unit Tests & Build
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: apps/web
-
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
       NEXT_PUBLIC_API_URL: http://localhost:3000
+      # The root postinstall builds @faira/db (prisma generate needs a
+      # resolvable — not reachable — URL), even though the web app doesn't use it.
+      DATABASE_URL: postgresql://user:password@localhost:5432/db
 
     steps:
       - name: Checkout
@@ -29,24 +31,22 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # npm install (not ci): Tailwind v4's @tailwindcss/oxide native/wasm
+      # optional deps (@emnapi/*) aren't fully captured cross-platform in the
+      # lockfile; install resolves them for the runner. Root install = workspace.
       - name: Install dependencies
-        # npm install (not npm ci): Tailwind v4's @tailwindcss/oxide pulls in
-        # platform-specific native binaries + a wasm fallback (@emnapi/*), and a
-        # lockfile generated on one OS doesn't carry every platform's optional
-        # package entries — so `npm ci` fails cross-platform. `npm install`
-        # resolves the correct deps for the CI runner.
         run: npm install --no-audit --no-fund
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint -w faira-web
 
       - name: Type check
-        run: npm run type-check
+        run: npm run type-check -w faira-web
 
       - name: Unit tests
-        run: npm run test
+        run: npm run test -w faira-web
 
       - name: Build
-        run: npm run build
+        run: npm run build -w faira-web
