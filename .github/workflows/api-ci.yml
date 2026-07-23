@@ -92,6 +92,17 @@ jobs:
       - name: Install dependencies
         run: rm -f package-lock.json && npm install --no-audit --no-fund
 
+      # Supabase manages the `auth` schema in real environments; the migrations
+      # FK to auth.users and call auth.uid() in RLS. Stub them so migrate deploy
+      # can apply against the bare Postgres service container.
+      - name: Prepare Supabase-managed auth objects
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
+          CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+          SQL
+
       # @faira/db owns the migrations — the single migrate owner. Applies every
       # migration to the fresh Postgres, catching drift the mocked unit tests
       # can't and giving the integration tests a real DB.
