@@ -60,22 +60,23 @@ describe('sendSms', () => {
     configureTwilio();
     fetchMock.mockResolvedValue({ ok: true, status: 201 });
 
-    await sendSms('447700900123', 'hello');
+    const result = await sendSms('447700900123', 'hello');
 
     const params = new URLSearchParams(fetchMock.mock.calls[0][1].body as string);
     expect(params.get('To')).toBe('+447700900123');
+    expect(result).toEqual({ status: 'SENT', provider: 'twilio' });
   });
 
-  it('is best-effort: a Twilio failure never throws', async () => {
+  it('is best-effort: a Twilio failure never throws, reports FAILED', async () => {
     configureTwilio();
     fetchMock.mockRejectedValue(new Error('network down'));
 
-    await expect(sendSms('+447700900123', 'hello')).resolves.toBeUndefined();
+    await expect(sendSms('+447700900123', 'hello')).resolves.toMatchObject({ status: 'FAILED' });
   });
 
-  it("is best-effort: an Africa's Talking failure never throws", async () => {
+  it("is best-effort: an Africa's Talking failure never throws, reports FAILED", async () => {
     atSendMock.mockRejectedValue(new Error('AT down'));
 
-    await expect(sendSms('+447700900123', 'hello')).resolves.toBeUndefined();
+    await expect(sendSms('+447700900123', 'hello')).resolves.toMatchObject({ status: 'FAILED' });
   });
 });
