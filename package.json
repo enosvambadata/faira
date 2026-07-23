@@ -8,7 +8,8 @@
     "apps/collect-api",
     "apps/fulfilment-api",
     "apps/web",
-    "apps/collect-web"
+    "apps/collect-web",
+    "apps/fulfilment-web"
   ],
   "scripts": {
     "postinstall": "npm run build -w @faira/db && npm run build -w @faira/api-core",

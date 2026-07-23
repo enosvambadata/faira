@@ -14,6 +14,7 @@ COPY apps/collect-api/package.json ./apps/collect-api/
 COPY apps/fulfilment-api/package.json ./apps/fulfilment-api/
 COPY apps/web/package.json ./apps/web/
 COPY apps/collect-web/package.json ./apps/collect-web/
+COPY apps/fulfilment-web/package.json ./apps/fulfilment-web/
 # @faira/db is built by the root postinstall (prisma generate needs a resolvable
 # DATABASE_URL) even though the web apps don't import it.
 COPY packages/db ./packages/db
