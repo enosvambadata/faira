@@ -1,104 +1,17 @@
-import { createClient } from "./supabase";
+import { request, requestRaw, ApiError, API_URL, createClient } from "@faira/ui";
 import { buildMarketQuery, type MarketBrowseParams } from "./marketQuery";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+// A few marketplace methods talk to Supabase directly (e.g. resumable/multipart
+// storage uploads) rather than through request(), so keep a browser client here.
 const supabase = createClient();
 
-export class ApiError extends Error {
-  code: string;
-  status: number;
-  details: unknown;
-
-  constructor(code: string, message: string, status: number, details: unknown = null) {
-    super(message);
-    this.code = code;
-    this.status = status;
-    this.details = details;
-  }
-}
-
-interface RequestOptions {
-  method?: string;
-  body?: unknown;
-  auth?: boolean;
-  // Faira-internal admin surfaces (Collect UK dispatch) authenticate with
-  // the shared ADMIN_TOKEN header instead of a Supabase session.
-  adminToken?: string;
-}
-
-// Mirrors apps/mobile/src/lib/api.ts's request<T>() shape so both clients
-// talk to the same backend the same way — auth is always a Supabase
-// access token in the Authorization header, never a cookie/session sent
-// to apps/api directly.
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-
-  if (options.auth) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      headers.Authorization = `Bearer ${session.access_token}`;
-    }
-  }
-
-  if (options.adminToken) {
-    headers["x-admin-token"] = options.adminToken;
-  }
-
-  let body: BodyInit | undefined;
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(options.body);
-  }
-
-  const res = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body,
-  });
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err = json?.error ?? {};
-    throw new ApiError(err.code ?? "UNKNOWN_ERROR", err.message ?? "Something went wrong", res.status, err.details ?? null);
-  }
-
-  return json.data as T;
-}
-
-// Like request(), but returns the whole response envelope rather than just
-// `data` — for list endpoints that carry pagination metadata alongside it
-// (e.g. the marketplace browse: { data, hasMore, total }).
-async function requestRaw<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-
-  if (options.auth) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      headers.Authorization = `Bearer ${session.access_token}`;
-    }
-  }
-
-  let body: BodyInit | undefined;
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(options.body);
-  }
-
-  const res = await fetch(`${API_URL}${path}`, { method: options.method ?? "GET", headers, body });
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err = json?.error ?? {};
-    throw new ApiError(err.code ?? "UNKNOWN_ERROR", err.message ?? "Something went wrong", res.status, err.details ?? null);
-  }
-
-  return json as T;
-}
+// The HTTP core (request/requestRaw/ApiError/auth) and the Supabase browser
+// client now live in @faira/ui, shared across the Faira web apps. This file
+// keeps the marketplace-specific types + API methods (some of which use
+// ApiError/API_URL directly for multipart uploads), and re-exports the pieces
+// that existing `@/lib/api` consumers still import from here.
+export { ApiError };
+export { auth } from "@faira/ui";
 
 export interface OnboardingDraft {
   id: string;
@@ -169,30 +82,6 @@ export interface SignedUpload {
   token: string;
 }
 
-export const auth = {
-  // Reuses the existing Express endpoint (not the Supabase browser client's
-  // own signUp) so account creation stays server-controlled. The account is
-  // created UNconfirmed and Supabase emails a confirm link — the caller must
-  // not auto-login, it shows a "check your inbox" screen (see signup/page.tsx).
-  // Login goes straight through the browser Supabase client so @supabase/ssr's
-  // cookie-based session sync stays correct.
-  signup: (payload: { email: string; password: string; redirectTo?: string }) =>
-    request<{
-      id: string;
-      email: string | null;
-      phone: string | null;
-      confirmationEmailSent?: boolean;
-    }>("/api/v1/auth/signup", {
-      method: "POST",
-      body: payload,
-    }),
-
-  resendConfirmation: (email: string, redirectTo?: string) =>
-    request<{ message: string }>("/api/v1/auth/email/resend", {
-      method: "POST",
-      body: { email, redirectTo },
-    }),
-};
 
 export interface CollectUkFreightRate {
   id: string;

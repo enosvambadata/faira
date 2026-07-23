@@ -1,5 +1,8 @@
-// @faira/ui — shared web design system (components + cn). Consumed by Next via transpilePackages.
+// @faira/ui — shared web foundation (design system + HTTP core + supabase).
+// Consumed by Next via transpilePackages.
 export { cn } from './cn';
+export { createClient } from './supabase';
+export * from './http';
 export * from './components/ui/Alert';
 export * from './components/ui/Button';
 export * from './components/ui/Card';
