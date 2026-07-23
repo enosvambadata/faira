@@ -8,9 +8,11 @@ WORKDIR /app
 # (prisma generate + tsc). generate needs DATABASE_URL resolvable, not reachable.
 COPY package.json ./
 COPY packages/db/package.json ./packages/db/
+COPY packages/api-core/package.json ./packages/api-core/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/db ./packages/db
+COPY packages/api-core ./packages/api-core
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db"
 RUN npm install --no-audit --no-fund
 
@@ -28,6 +30,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /app/packages/api-core ./packages/api-core
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 

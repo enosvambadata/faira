@@ -7,11 +7,13 @@ WORKDIR /app
 
 COPY package.json ./
 COPY packages/db/package.json ./packages/db/
+COPY packages/api-core/package.json ./packages/api-core/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 # @faira/db is built by the root postinstall (prisma generate needs a resolvable
 # DATABASE_URL) even though the web app doesn't import it.
 COPY packages/db ./packages/db
+COPY packages/api-core ./packages/api-core
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db"
 RUN npm install --no-audit --no-fund
 
