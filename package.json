@@ -7,7 +7,8 @@
     "apps/api",
     "apps/collect-api",
     "apps/fulfilment-api",
-    "apps/web"
+    "apps/web",
+    "apps/collect-web"
   ],
   "scripts": {
     "postinstall": "npm run build -w @faira/db && npm run build -w @faira/api-core",
@@ -17,6 +18,8 @@
   },
   "overrides": {
     "@emnapi/core": "1.11.2",
-    "@emnapi/runtime": "1.11.2"
+    "@emnapi/runtime": "1.11.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
   }
 }

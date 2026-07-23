@@ -26,8 +26,8 @@ const openSans = Open_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Faira",
-  description: "Faira — auto-parts marketplace and fulfilment logistics.",
+  title: "Vamba Collect",
+  description: "Vamba Collect — parcel collection and fulfilment logistics for shipping companies.",
 };
 
 export default function RootLayout({

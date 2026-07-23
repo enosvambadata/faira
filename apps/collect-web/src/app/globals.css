@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* @faira/ui lives outside this app's tree, so Tailwind v4's automatic content
+   detection (rooted at the app) won't scan it — the shared components would
+   render UNSTYLED without this. Path is relative to THIS css file. */
+@source "../../../../packages/ui/src";
+
+/*
+  Faira design tokens — mirrors apps/mobile/src/theme/colors.ts exactly so
+  the brand is consistent between the consumer app and this web app. Do not
+  add colors here that don't exist there without updating both.
+*/
+:root {
+  --color-primary: #c2501b;
+  --color-primary-dark: #9c3f15;
+  --color-primary-light: #f7e4d9;
+  --color-gold: #d9a441;
+  --color-dark: #2e1a0d;
+  --color-bg: #f5efe2;
+  --color-white: #ffffff;
+  --color-text: #2e1a0d;
+  --color-muted: #8a7a6e;
+  --color-border: #e5ddd0;
+  --color-light: #faf6ef;
+  --color-red: #c0392b;
+  --color-green: #2e7d32;
+  --color-warning: #d9a441;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 2px rgba(46, 26, 13, 0.06), 0 1px 3px rgba(46, 26, 13, 0.08);
+  --shadow-modal: 0 8px 24px rgba(46, 26, 13, 0.16);
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-gold: var(--color-gold);
+  --color-dark: var(--color-dark);
+  --color-bg: var(--color-bg);
+  --color-white: var(--color-white);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-light: var(--color-light);
+  --color-red: var(--color-red);
+  --color-green: var(--color-green);
+  --color-warning: var(--color-warning);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/*
+  Collect UK product theme — "Trust & Authority" system (navy + trust-blue
+  CTA, Poppins headings / Open Sans body) applied as a SCOPED override so
+  Fulfilment pages keep the shared warm brand that mirrors apps/mobile.
+  Every component that uses the token utilities (bg-primary, text-muted,
+  border-border, ...) restyles automatically inside this scope — do not
+  hardcode Collect UK hex values in components.
+*/
+.theme-collect {
+  --color-primary: #0369a1;
+  --color-primary-dark: #075985;
+  --color-primary-light: #e0f2fe;
+  --color-gold: #d97706;
+  --color-dark: #0f172a;
+  --color-bg: #f8fafc;
+  --color-text: #0f172a;
+  --color-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-light: #f1f5f9;
+  --color-red: #dc2626;
+  --color-green: #15803d;
+  --color-warning: #d97706;
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 8px 24px rgba(15, 23, 42, 0.16);
+
+  font-family: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.theme-collect h1,
+.theme-collect h2,
+.theme-collect h3,
+.theme-collect h4 {
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Visible focus ring for keyboard navigation everywhere, including on
+   elements that don't otherwise get Tailwind's focus utilities applied
+   (e.g. via Radix primitives that render their own DOM). */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

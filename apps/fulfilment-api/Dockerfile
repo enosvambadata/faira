@@ -13,6 +13,7 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/collect-api/package.json ./apps/collect-api/
 COPY apps/fulfilment-api/package.json ./apps/fulfilment-api/
 COPY apps/web/package.json ./apps/web/
+COPY apps/collect-web/package.json ./apps/collect-web/
 COPY packages/db ./packages/db
 COPY packages/api-core ./packages/api-core
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db"
