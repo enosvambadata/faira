@@ -37,7 +37,7 @@ jobs:
       # optional deps (@emnapi/*) aren't fully captured cross-platform in the
       # lockfile; install resolves them for the runner. Root install = workspace.
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint -w faira-web

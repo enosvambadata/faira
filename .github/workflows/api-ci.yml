@@ -35,7 +35,7 @@ jobs:
       # Tailwind-v4 oxide optional deps (@emnapi/*), which npm ci can't resolve
       # cross-platform. install repairs them and still respects the lockfile.
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint -w faira-api
@@ -90,7 +90,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       # @faira/db owns the migrations — the single migrate owner. Applies every
       # migration to the fresh Postgres, catching drift the mocked unit tests

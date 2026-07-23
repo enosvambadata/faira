@@ -6,7 +6,7 @@ WORKDIR /app
 # Workspace manifests + lockfile first (cached install layer). @faira/db source
 # must be present before install because the root postinstall builds it
 # (prisma generate + tsc). generate needs DATABASE_URL resolvable, not reachable.
-COPY package.json package-lock.json ./
+COPY package.json ./
 COPY packages/db/package.json ./packages/db/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
