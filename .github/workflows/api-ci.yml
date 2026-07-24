@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'apps/api/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/api-ci.yml'
 
 jobs:
@@ -11,10 +14,9 @@ jobs:
     name: Lint & Unit Tests
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: apps/api
-
+    # npm workspaces: run from the repo root. DATABASE_URL is set because the
+    # root postinstall builds @faira/db (prisma generate needs a resolvable —
+    # not reachable — URL).
     env:
       DATABASE_URL: postgresql://user:password@localhost:5432/db
 
@@ -27,28 +29,93 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: apps/api/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # npm install (not ci): the root lockfile now includes the web app's
+      # Tailwind-v4 oxide optional deps (@emnapi/*), which npm ci can't resolve
+      # cross-platform. install repairs them and still respects the lockfile.
       - name: Install dependencies
-        run: npm ci
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint -w faira-api
 
       - name: Unit tests
-        run: npm run test
+        run: npm run test -w faira-api
 
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build from the repo ROOT context so the Dockerfile can see the whole
+      # workspace (root manifests + packages/db + apps/api).
+      - name: Build image
+        run: docker build -f apps/api/Dockerfile -t faira-api:ci .
+
+  integration:
+    name: Integration (real Postgres)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: faira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/faira_test
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build -t faira-api:ci .
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
+
+      # Supabase manages the `auth` schema in real environments; the migrations
+      # FK to auth.users and call auth.uid() in RLS. Stub them so migrate deploy
+      # can apply against the bare Postgres service container.
+      - name: Prepare Supabase-managed objects
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
+          CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+              CREATE PUBLICATION supabase_realtime;
+            END IF;
+          END $$;
+          SQL
+
+      # @faira/db owns the migrations — the single migrate owner. Applies every
+      # migration to the fresh Postgres, catching drift the mocked unit tests
+      # can't and giving the integration tests a real DB.
+      - name: Apply migrations
+        run: npm run migrate -w @faira/db
+
+      - name: Integration tests (real Postgres)
+        run: npm run test:integration -w faira-api
+
+  # NOTE: the Playwright e2e suite (apps/web/e2e) needs a live API + Supabase +
+  # Cloudinary (maintainer-only secrets), so it is deliberately not wired here.

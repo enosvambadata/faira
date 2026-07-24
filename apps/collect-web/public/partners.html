@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Faira Collect partner proposal for UK shipping companies: shared doorstep collection, wholesale pricing, and what we promise.">
+<title>Faira Collect — Partner Proposal</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --blue: #0369a1;
+    --blue-deep: #075985;
+    --sky: #e0f2fe;
+    --muted: #5b6b7e;
+    --ground: #f8fafc;
+    --line: #e2e8f0;
+    --green: #15803d;
+  }
+  html { background: var(--ground); }
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    line-height: 1.65;
+    font-size: 16px;
+    margin: 0;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+
+  /* header */
+  .top { background: #fff; border-bottom: 1px solid var(--line); }
+  .top-inner { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .mark {
+    width: 38px; height: 38px; border-radius: 9px; background: var(--ink);
+    display: grid; place-items: center; flex-shrink: 0;
+  }
+  .mark svg { display: block; }
+  .brand-name { font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
+  .doc-label {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* hero */
+  .hero { padding: 64px 0 52px; }
+  .hero h1 {
+    font-size: clamp(34px, 5.5vw, 50px); line-height: 1.08; letter-spacing: -0.025em;
+    font-weight: 750; margin: 0 0 8px; text-wrap: balance; max-width: 15ch;
+  }
+  .hero h1 .lose { color: var(--blue); }
+  .hero .thesis { font-size: 18px; color: var(--muted); max-width: 58ch; margin: 18px 0 0; }
+  .hero .thesis strong { color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .chip {
+    background: #fff; border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 15px; font-size: 13.5px; font-weight: 600; color: var(--blue-deep);
+  }
+
+  /* sections */
+  section { padding: 44px 0; }
+  section + section { border-top: 1px solid var(--line); }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--blue); margin: 0 0 10px;
+  }
+  h2 {
+    font-size: 27px; font-weight: 720; letter-spacing: -0.02em; line-height: 1.2;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  p { margin: 0 0 14px; max-width: 66ch; }
+  .lead { font-size: 17px; }
+
+  /* cost strip */
+  .maths {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px; margin-top: 26px;
+  }
+  .maths .cell {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px;
+  }
+  .maths .big { font-size: 26px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .maths .cap { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+
+  /* steps */
+  .steps { list-style: none; margin: 30px 0 0; padding: 0; display: grid; gap: 0; }
+  .step { display: grid; grid-template-columns: 44px 1fr; gap: 18px; position: relative; padding-bottom: 26px; }
+  .step:last-child { padding-bottom: 0; }
+  .step::before {
+    content: ""; position: absolute; left: 21px; top: 40px; bottom: 4px; width: 2px;
+    background: var(--line);
+  }
+  .step:last-child::before { display: none; }
+  .step-n {
+    width: 42px; height: 42px; border-radius: 50%; background: var(--sky); color: var(--blue-deep);
+    font-weight: 750; display: grid; place-items: center; font-size: 16px;
+    border: 2px solid #bae0f5; position: relative; z-index: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .step h3 { margin: 8px 0 4px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .step p { font-size: 15px; color: var(--muted); margin: 0; }
+  .step .who {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; border-radius: 4px; padding: 2px 8px; margin-left: 8px;
+    vertical-align: 2px;
+  }
+  .who.you { background: #fef3c7; color: #92400e; }
+  .who.us { background: var(--sky); color: var(--blue-deep); }
+
+  /* pricing */
+  .price-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 26px; margin-top: 26px; align-items: start; }
+  .price-card { background: var(--ink); color: #f1f5f9; border-radius: 12px; padding: 26px 28px; }
+  .price-card .eyebrow { color: #7dd3fc; }
+  .price-line { display: flex; justify-content: space-between; align-items: baseline; padding: 11px 0; border-bottom: 1px solid #24344d; gap: 16px; }
+  .price-line:last-of-type { border-bottom: 0; }
+  .price-line .lbl { font-size: 14.5px; color: #c3cede; }
+  .price-line .amt { font-weight: 750; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .price-note { font-size: 13px; color: #93a5bd; margin: 14px 0 0; }
+  .worked { border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 24px 26px; }
+  .worked h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+  .worked table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin-top: 10px; }
+  .worked td { padding: 9px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .worked tr:last-child td { border-bottom: 0; font-weight: 750; }
+  .worked td:last-child { text-align: right; white-space: nowrap; }
+  .worked .sub { color: var(--muted); font-size: 13px; }
+  .margin-note { background: var(--sky); border-radius: 10px; padding: 16px 20px; margin-top: 26px; font-size: 15px; max-width: none; }
+  .margin-note strong { color: var(--blue-deep); }
+
+  /* two columns: ask + promise */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 26px; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 26px 28px; }
+  .panel.promise { border-top: 4px solid var(--blue); }
+  .panel.ask { border-top: 4px solid #d9a441; }
+  .panel h3 { margin: 0 0 16px; font-size: 18px; font-weight: 720; letter-spacing: -0.01em; }
+  .panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 13px; }
+  .panel li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 15px; }
+  .panel li .ico { font-weight: 800; line-height: 1.5; }
+  .ask .ico { color: #b07d1e; }
+  .promise .ico { color: var(--green); }
+  .panel li strong { display: block; }
+  .panel li span.sub { color: var(--muted); font-size: 13.5px; }
+
+  /* customer journey */
+  .journey { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 24px; }
+  .msg {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 15px;
+    font-size: 13px; color: var(--muted);
+  }
+  .msg b { display: block; color: var(--ink); font-size: 13.5px; margin-bottom: 3px; }
+
+  /* CTA */
+  .cta { background: var(--ink); color: #e2e8f0; margin-top: 44px; }
+  .cta-inner { padding: 52px 0 56px; }
+  .cta h2 { color: #fff; }
+  .cta p { color: #aebbcd; }
+  .cta .actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 24px; align-items: center; }
+  .btn {
+    display: inline-block; background: var(--blue); color: #fff; text-decoration: none;
+    font-weight: 700; padding: 13px 26px; border-radius: 8px; font-size: 15.5px;
+    transition: background 180ms ease;
+  }
+  .btn:hover, .btn:focus-visible { background: #0284c7; outline: 2px solid #7dd3fc; outline-offset: 2px; }
+  .cta .alt { color: #7dd3fc; font-size: 14.5px; }
+  .cta .alt a { color: #7dd3fc; }
+  .foot { border-top: 1px solid #24344d; margin-top: 44px; padding-top: 20px; font-size: 13px; color: #7c8ca1; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+  @media (max-width: 720px) {
+    .price-grid, .split { grid-template-columns: 1fr; }
+    .hero { padding: 44px 0 36px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.01ms !important; }
+  }
+
+  /* Print: browsers drop background colours by default, which would turn
+     the dark CTA block into white-on-white -- restyle it (and tidy the
+     rest) so the printout carries the full pitch including the call to
+     action, with the register URL spelled out. */
+  @media print {
+    html, body { background: #fff; }
+    .chips .chip { border: 1px solid #94a3b8; }
+    section, .panel, .price-card, .worked, .step { break-inside: avoid; }
+    .cta { background: #fff; color: #0f172a; border-top: 3px solid #0f172a; margin-top: 24px; }
+    .cta h2 { color: #0f172a; }
+    .cta p, .cta .foot { color: #334155; }
+    .cta .eyebrow { color: #0369a1 !important; }
+    .btn { background: none; color: #0369a1; border: 2px solid #0369a1; padding: 10px 20px; }
+    .btn::after {
+      content: " — collect.vambadata.com/signup";
+      font-weight: 600; font-size: 13px;
+    }
+    .cta .alt, .cta .alt a { color: #0f172a; }
+    .foot { border-top-color: #cbd5e1; }
+    .price-card { background: #fff; color: #0f172a; border: 2px solid #0f172a; }
+    .price-card .eyebrow { color: #0369a1 !important; }
+    .price-line { border-bottom-color: #cbd5e1; }
+    .price-line .lbl { color: #334155; }
+    .price-note { color: #475569; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M21 8.5v7a2 2 0 0 1-1 1.73l-6 3.5a2 2 0 0 1-2 0l-6-3.5A2 2 0 0 1 5 15.5v-7a2 2 0 0 1 1-1.73l6-3.5a2 2 0 0 1 2 0l6 3.5a2 2 0 0 1 1 1.73Z" stroke="#fff" stroke-width="1.8"/>
+          <path d="m5.3 7 7.7 4.5L20.7 7M13 21.5V11.5" stroke="#fff" stroke-width="1.8"/>
+        </svg>
+      </span>
+      <span class="brand-name">Faira Collect</span>
+    </div>
+    <span class="doc-label">Partner proposal</span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>Keep the collection fee. <span class="lose">Lose the van.</span></h1>
+    <p class="thesis">
+      Faira Collect is a shared doorstep-collection network for shipping companies in the UK.
+      Your customers book online, our drivers collect from their doors, and the parcels arrive at
+      <strong>your warehouse</strong> — labelled, photographed, and tracked. You keep charging your
+      £30&ndash;50 collection fee exactly as you do today. You just stop paying for the van, the fuel,
+      and the wasted afternoons that earn it.
+    </p>
+    <div class="chips">
+      <span class="chip">Customers book in under 2 minutes</span>
+      <span class="chip">Photo proof at every doorstep</span>
+      <span class="chip">Text updates at every step</span>
+      <span class="chip">You only pay on delivered handover</span>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">Why this exists</p>
+      <h2>Collections are your most expensive, least profitable hours</h2>
+      <p class="lead">
+        Every home collection you run yourself costs a driver's time, a van, fuel, and insurance —
+        £25 or more per pickup once the day is honestly costed. Bookings arrive scattered across the
+        week and across the map, so the van runs half-empty or the customer waits.
+      </p>
+      <p>
+        Faira pools collections from multiple shipping companies into one efficient driver round.
+        Density we can build together is density none of us can build alone — that's what makes each
+        pickup cheaper than running it yourself.
+      </p>
+      <div class="maths">
+        <div class="cell"><div class="big">£25+</div><div class="cap">what a self-run home collection really costs you</div></div>
+        <div class="cell"><div class="big">£30–50</div><div class="cap">what your customers already pay for it</div></div>
+        <div class="cell"><div class="big">£0</div><div class="cap">vans, drivers and fuel you'll need with Faira</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2>From booking link to your warehouse door</h2>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-n">1</span>
+          <div><h3>Set up in one afternoon <span class="who you">you</span></h3>
+          <p>Register your company, add your warehouse address and opening hours, and get your own branded booking link to share on WhatsApp, Facebook, or your website.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-n">2</span>
+          <div><h3>Customers book — no account, no app <span class="who us">faira</span></h3>
+          <p>They enter their address, what they're sending (drums, suitcases, fridges, pallets&hellip;) and how many parcels. They get a reference, a live tracking link, and a confirmation text.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-n">3</span>
+          <div><h3>Watch demand build, then declare your collection week <span class="who you">you</span></h3>
+          <p>Your dashboard shows how many bookings and parcels are waiting. When you have the volume and you're ready to receive — typically in the run-up to your monthly shipment — you set your collection week. Every waiting customer is told their week is set, automatically.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-n">4</span>
+          <div><h3>We route, collect, and prove it <span class="who us">faira</span></h3>
+          <p>Faira plans the driver rounds inside your week. Each customer is texted their exact day. At the doorstep: photo proof, and a printed label on every box — customer name, your company, destination, "parcel 2 of 3".</p></div>
+        </li>
+        <li class="step">
+          <span class="step-n">5</span>
+          <div><h3>Parcels arrive at your warehouse <span class="who us">faira</span></h3>
+          <p>Delivered labelled and accounted for, ready for you to weigh, pack, and ship exactly as you do today.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-n">6</span>
+          <div><h3>You confirm handover — that's the only moment you're charged <span class="who you">you</span></h3>
+          <p>One click per booking confirms receipt. Your billing statement groups every charge by collection week, so one shipment cycle = one clean statement.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">Pricing</p>
+      <h2>Simple wholesale rates — your retail fee stays yours</h2>
+      <div class="price-grid">
+        <div class="price-card">
+          <p class="eyebrow">What Faira charges you</p>
+          <div class="price-line"><span class="lbl">Per collection stop</span><span class="amt">£30.00</span></div>
+          <div class="price-line"><span class="lbl">Per parcel — small (shoebox)</span><span class="amt">£5.00</span></div>
+          <div class="price-line"><span class="lbl">Per parcel — medium (microwave)</span><span class="amt">£8.00</span></div>
+          <div class="price-line"><span class="lbl">Per parcel — large (suitcase)</span><span class="amt">£12.00</span></div>
+          <div class="price-line"><span class="lbl">Per parcel — drum / extra large</span><span class="amt">£18.00</span></div>
+          <p class="price-note">Vehicles (cars, SUVs, trucks) quoted separately. No sign-up fee, no monthly fee during the pilot, no charge for cancelled or failed collections.</p>
+        </div>
+        <div class="worked">
+          <h3>What a typical pickup costs you</h3>
+          <p class="sub">and what you'd charge the customer, as you already do</p>
+          <table>
+            <tr><td>1 small parcel</td><td>£35.00</td></tr>
+            <tr><td>2 medium parcels <span class="sub">(most common)</span></td><td>£46.00</td></tr>
+            <tr><td>2 drums</td><td>£66.00</td></tr>
+            <tr><td>Your retail fee <span class="sub">(market: £35–70 per drum collection)</span></td><td>£35–70+</td></tr>
+          </table>
+        </div>
+      </div>
+      <p class="margin-note">
+        <strong>The margin stays with you.</strong> Charge your customers what you charge today — the
+        difference is yours, for work you no longer do. Your real profit stays where it has always
+        been: in the per-kilo shipping. We just remove the cost of getting parcels to your door.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">The partnership</p>
+      <h2>What we need from you, and what we promise back</h2>
+      <div class="split">
+        <div class="panel ask">
+          <h3>What we need from you</h3>
+          <ul>
+            <li><span class="ico">→</span><div><strong>15 minutes to set up</strong><span class="sub">Register, add your warehouse and opening hours, agree your rate.</span></div></li>
+            <li><span class="ico">→</span><div><strong>Share your booking link</strong><span class="sub">Put it where your customers already are — WhatsApp status, Facebook, flyers.</span></div></li>
+            <li><span class="ico">→</span><div><strong>Declare your collection weeks</strong><span class="sub">Aligned to your shipping schedule, when you're ready to receive and pack.</span></div></li>
+            <li><span class="ico">→</span><div><strong>Receive and confirm same-day</strong><span class="sub">Check parcels in when our driver arrives and confirm each handover.</span></div></li>
+            <li><span class="ico">→</span><div><strong>Honest feedback during the pilot</strong><span class="sub">You're an early partner — what you tell us shapes what we build next.</span></div></li>
+          </ul>
+        </div>
+        <div class="panel promise">
+          <h3>Our promise to you</h3>
+          <ul>
+            <li><span class="ico">✓</span><div><strong>Every parcel photographed at collection</strong><span class="sub">Doorstep proof on record for every pickup, every time.</span></div></li>
+            <li><span class="ico">✓</span><div><strong>Every box labelled — nothing goes missing</strong><span class="sub">Customer name, your company, destination, and "parcel 1 of N" on every box.</span></div></li>
+            <li><span class="ico">✓</span><div><strong>Your customers informed at every step</strong><span class="sub">Booking, collection week, exact day, collected, arrived, handed over — without you sending a single message.</span></div></li>
+            <li><span class="ico">✓</span><div><strong>Full visibility, nothing hidden</strong><span class="sub">Live dashboard of every booking and its status; failed collections rearranged and the customer told.</span></div></li>
+            <li><span class="ico">✓</span><div><strong>You pay only for delivered work</strong><span class="sub">A charge exists only when you confirm a handover at your warehouse — never before.</span></div></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">Your customers' experience</p>
+      <h2>Six messages, zero "where is my parcel?" calls</h2>
+      <p>Every customer gets a live tracking page and a text at each milestone — in your company's name:</p>
+      <div class="journey">
+        <div class="msg"><b>Booking received</b>with their tracking link</div>
+        <div class="msg"><b>Collection week set</b>the moment you declare it</div>
+        <div class="msg"><b>Your exact day</b>when we schedule the route</div>
+        <div class="msg"><b>Parcel collected</b>as the driver leaves their door</div>
+        <div class="msg"><b>Arrived at warehouse</b>when the round completes</div>
+        <div class="msg"><b>With your shipper</b>when you confirm handover</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta">
+    <div class="wrap cta-inner">
+      <p class="eyebrow" style="color:#7dd3fc">Become a pilot partner</p>
+      <h2>Your next shipment could be collected without your van</h2>
+      <p>
+        Setup takes one afternoon. There's no sign-up fee and no commitment beyond your first
+        collection week — if it doesn't earn its place, walk away owing nothing.
+      </p>
+      <div class="actions">
+        <a class="btn" href="/signup?redirect=/collect-uk/register">Register your company</a>
+        <span class="alt">or write to <a href="mailto:enos@vambadata.com">enos@vambadata.com</a> and we'll set you up together</span>
+      </div>
+      <div class="foot">
+        <span>Faira Collect — a Vambadata Ltd product, United Kingdom</span>
+        <span>collect.vambadata.com</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

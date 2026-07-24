@@ -1,9 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-
-const adapter = new PrismaPg({
-  connectionString:
-    process.env.DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
-});
-
-export const prisma = new PrismaClient({ adapter });
+// Thin re-export shim: the Prisma client now lives in the shared @faira/db
+// package (one schema + one migration owner across the monorepo). Kept so the
+// many `from '../prisma'` imports across routes/services/tests keep working.
+export { prisma } from '@faira/db';

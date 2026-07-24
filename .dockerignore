@@ -1,0 +1,17 @@
+# Root build context is the whole monorepo — keep images lean and builds fast.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+apps/mobile
+.git
+.github
+.claude
+docs
+infra
+**/*.md
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log

@@ -1,0 +1,29 @@
+{
+  "name": "@faira/api-core",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "africastalking": "^0.8.0",
+    "cloudinary": "^2.10.0",
+    "express": "^5.2.1",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/africastalking": "^0.8.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

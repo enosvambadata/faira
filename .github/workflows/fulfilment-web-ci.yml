@@ -1,0 +1,52 @@
+name: Fulfilment Web CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/fulfilment-web/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/fulfilment-web-ci.yml'
+
+jobs:
+  lint-typecheck-test-build:
+    name: Lint, Type Check, Unit Tests & Build
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      # The root postinstall builds @faira/db (prisma generate needs a
+      # resolvable — not reachable — URL), even though the web app doesn't use it.
+      DATABASE_URL: postgresql://user:password@localhost:5432/db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      # npm install (not ci): Tailwind v4's @tailwindcss/oxide native/wasm
+      # optional deps (@emnapi/*) aren't fully captured cross-platform in the
+      # lockfile; install resolves them for the runner. Root install = workspace.
+      - name: Install dependencies
+        run: rm -f package-lock.json && npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint -w fulfilment-web
+
+      - name: Type check
+        run: npm run type-check -w fulfilment-web
+
+      - name: Unit tests
+        run: npm run test -w fulfilment-web
+
+      - name: Build
+        run: npm run build -w fulfilment-web

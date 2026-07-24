@@ -6,7 +6,7 @@ import { test, expect, APIRequestContext } from "@playwright/test";
 // hub-ops-arrival.spec.ts (that's what actually reaches READY_FOR_COLLECTION
 // and generates a tracking-eligible shipment), then drives the public,
 // unauthenticated /track/[token] page instead of just checking the toast.
-const API_URL = "https://api-staging-9878.up.railway.app";
+const API_URL = process.env.E2E_API_URL ?? "https://api-staging-9878.up.railway.app";
 const SUPABASE_URL = "https://eqjvtugbyjukuvztdyuc.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_GTBKG2bIEZIoWsX5w4Rjgg_5qvDCfMQ";
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN;
