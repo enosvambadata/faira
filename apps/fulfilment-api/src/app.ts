@@ -13,6 +13,7 @@ import hubOpsRouter from './routes/hubOps';
 import transportRouter from './routes/transport';
 import manifestsRouter from './routes/manifests';
 import trackingRouter from './routes/tracking';
+import adminRouter from './routes/admin';
 
 export interface RequestWithRawBody extends Request {
   rawBody?: Buffer;
@@ -44,6 +45,9 @@ export function createApp(): Express {
   app.use('/api/v1/fulfilment/transport', transportRouter);
   app.use('/api/v1/fulfilment/manifests', manifestsRouter);
   app.use('/api/v1/fulfilment/tracking', trackingRouter);
+  // Paths inside are /fulfilment/* so the full route keeps its original
+  // /api/v1/admin/fulfilment/... shape.
+  app.use('/api/v1/admin', adminRouter);
 
   Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
