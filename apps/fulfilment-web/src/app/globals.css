@@ -59,44 +59,6 @@ body {
   font-family: var(--font-sans);
 }
 
-/*
-  Collect UK product theme — "Trust & Authority" system (navy + trust-blue
-  CTA, Poppins headings / Open Sans body) applied as a SCOPED override so
-  Fulfilment pages keep the shared warm brand that mirrors apps/mobile.
-  Every component that uses the token utilities (bg-primary, text-muted,
-  border-border, ...) restyles automatically inside this scope — do not
-  hardcode Collect UK hex values in components.
-*/
-.theme-collect {
-  --color-primary: #0369a1;
-  --color-primary-dark: #075985;
-  --color-primary-light: #e0f2fe;
-  --color-gold: #d97706;
-  --color-dark: #0f172a;
-  --color-bg: #f8fafc;
-  --color-text: #0f172a;
-  --color-muted: #64748b;
-  --color-border: #e2e8f0;
-  --color-light: #f1f5f9;
-  --color-red: #dc2626;
-  --color-green: #15803d;
-  --color-warning: #d97706;
-
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
-  --shadow-modal: 0 8px 24px rgba(15, 23, 42, 0.16);
-
-  font-family: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
-  background: var(--color-bg);
-  color: var(--color-text);
-}
-
-.theme-collect h1,
-.theme-collect h2,
-.theme-collect h3,
-.theme-collect h4 {
-  font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
