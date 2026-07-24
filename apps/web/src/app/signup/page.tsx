@@ -32,56 +32,20 @@ function validate(form: FormState): Partial<Record<keyof FormState, string>> {
 
 // The redirect param says what the visitor is actually here to do -- the
 // page should speak to that journey, not a generic "create an account".
-function signupContext(redirect: string | null): { title: string; subtitle: string; step2: string } {
-  if (redirect?.startsWith("/collect-uk/register")) {
-    return {
-      title: "Register your shipping company",
-      subtitle: "Get a booking link for your customers and let Vamba Collect handle your UK collections.",
-      step2: "Company details",
-    };
-  }
-  if (redirect?.startsWith("/collect-uk/drive")) {
-    return {
-      title: "Apply to drive for Vamba Collect",
-      subtitle: "Own van, paid collection routes in your area. Have your insurance documents ready.",
-      step2: "Your van & documents",
-    };
-  }
-  if (redirect?.startsWith("/onboarding")) {
-    return {
-      title: "Become a Faira Fulfilment seller",
-      subtitle: "Ship your marketplace orders through Faira's hubs.",
-      step2: "Seller details",
-    };
-  }
-  if (redirect?.startsWith("/market")) {
-    return {
-      title: "Create your Faira account",
-      subtitle: "Buy and sell car parts and engines — protected by escrow.",
-      step2: "Start buying & selling",
-    };
-  }
+function signupContext(): { title: string; subtitle: string; step2: string } {
   return {
-    title: "Create your Vamba Collect account",
-    subtitle: "Register your shipping company's collections — or apply to drive for Vamba Collect.",
-    step2: "Choose your path",
+    title: "Create your Faira account",
+    subtitle: "Buy and sell car parts and engines — protected by escrow.",
+    step2: "Start buying & selling",
   };
-}
-
-// Fulfilment journeys keep the warm brand; everything else (Collect UK is
-// the flagship) gets the navy Collect theme so the signup page matches
-// the page the visitor just came from.
-function isFulfilmentTarget(target: string | null): boolean {
-  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
 }
 
 function SignupForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
-  const context = signupContext(redirect);
-  const isMarket = Boolean(redirect?.startsWith("/market"));
-  const themeClass = isMarket || isFulfilmentTarget(redirect) ? "" : "theme-collect";
-  const brand = isMarket ? "Faira Parts" : "Vamba Collect";
+  const context = signupContext();
+  const themeClass = "";
+  const brand = "Faira Parts";
   const loginHref = redirect ? `/login?next=${encodeURIComponent(redirect)}` : "/login";
   // Where the confirmation link returns — a callback route that establishes the
   // session and forwards to where the user was headed.

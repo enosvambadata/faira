@@ -35,9 +35,9 @@ function LoginForm() {
     })();
   }, []);
 
-  // Bare logins land on the Collect UK home (companies + driver in one
-  // place); Fulfilment surfaces link to /login with an explicit next.
-  const destination = searchParams.get("next") || "/collect-uk";
+  // Bare logins land on the seller dashboard; deeper surfaces link to
+  // /login with an explicit next.
+  const destination = searchParams.get("next") || "/dashboard";
 
   const handleSwitchAccount = async () => {
     await createClient().auth.signOut();
@@ -98,12 +98,10 @@ function LoginForm() {
     );
   }
 
-  const isMarket = Boolean(searchParams.get("next")?.startsWith("/market"));
-
   return (
     <Card>
       <h1 className="text-xl font-semibold text-text">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">{isMarket ? "Welcome back to Faira." : "Welcome back to Vamba Collect."}</p>
+      <p className="mt-1 text-sm text-muted">Welcome back to Faira Fulfilment.</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
         <Field label="Email address" required>
@@ -153,29 +151,12 @@ function LoginForm() {
   );
 }
 
-function isFulfilmentTarget(target: string | null): boolean {
-  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
-}
-
-function ThemedLogin() {
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next");
-  const isMarket = Boolean(next?.startsWith("/market"));
-  // Marketplace + Fulfilment keep the warm Faira brand; Collect UK gets navy.
-  const warm = isMarket || isFulfilmentTarget(next);
-  return (
-    <div className={warm ? "" : "theme-collect"}>
-      <AuthLayout brand={isMarket ? "Faira Parts" : "Vamba Collect"}>
-        <LoginForm />
-      </AuthLayout>
-    </div>
-  );
-}
-
 export default function LoginPage() {
   return (
     <Suspense>
-      <ThemedLogin />
+      <AuthLayout brand="Faira Fulfilment">
+        <LoginForm />
+      </AuthLayout>
     </Suspense>
   );
 }

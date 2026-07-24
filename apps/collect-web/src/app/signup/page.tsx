@@ -47,20 +47,6 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
       step2: "Your van & documents",
     };
   }
-  if (redirect?.startsWith("/onboarding")) {
-    return {
-      title: "Become a Faira Fulfilment seller",
-      subtitle: "Ship your marketplace orders through Faira's hubs.",
-      step2: "Seller details",
-    };
-  }
-  if (redirect?.startsWith("/market")) {
-    return {
-      title: "Create your Faira account",
-      subtitle: "Buy and sell car parts and engines — protected by escrow.",
-      step2: "Start buying & selling",
-    };
-  }
   return {
     title: "Create your Vamba Collect account",
     subtitle: "Register your shipping company's collections — or apply to drive for Vamba Collect.",
@@ -68,20 +54,13 @@ function signupContext(redirect: string | null): { title: string; subtitle: stri
   };
 }
 
-// Fulfilment journeys keep the warm brand; everything else (Collect UK is
-// the flagship) gets the navy Collect theme so the signup page matches
-// the page the visitor just came from.
-function isFulfilmentTarget(target: string | null): boolean {
-  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
-}
-
 function SignupForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
   const context = signupContext(redirect);
-  const isMarket = Boolean(redirect?.startsWith("/market"));
-  const themeClass = isMarket || isFulfilmentTarget(redirect) ? "" : "theme-collect";
-  const brand = isMarket ? "Faira Parts" : "Vamba Collect";
+  // Collect UK's navy theme applies to the whole app.
+  const themeClass = "theme-collect";
+  const brand = "Vamba Collect";
   const loginHref = redirect ? `/login?next=${encodeURIComponent(redirect)}` : "/login";
   // Where the confirmation link returns — a callback route that establishes the
   // session and forwards to where the user was headed.

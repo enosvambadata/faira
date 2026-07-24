@@ -98,12 +98,10 @@ function LoginForm() {
     );
   }
 
-  const isMarket = Boolean(searchParams.get("next")?.startsWith("/market"));
-
   return (
     <Card>
       <h1 className="text-xl font-semibold text-text">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">{isMarket ? "Welcome back to Faira." : "Welcome back to Vamba Collect."}</p>
+      <p className="mt-1 text-sm text-muted">Welcome back to Vamba Collect.</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
         <Field label="Email address" required>
@@ -153,29 +151,15 @@ function LoginForm() {
   );
 }
 
-function isFulfilmentTarget(target: string | null): boolean {
-  return Boolean(target && ["/onboarding", "/dashboard", "/fulfilment", "/shipments", "/hub-ops"].some(p => target.startsWith(p)));
-}
-
-function ThemedLogin() {
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next");
-  const isMarket = Boolean(next?.startsWith("/market"));
-  // Marketplace + Fulfilment keep the warm Faira brand; Collect UK gets navy.
-  const warm = isMarket || isFulfilmentTarget(next);
-  return (
-    <div className={warm ? "" : "theme-collect"}>
-      <AuthLayout brand={isMarket ? "Faira Parts" : "Vamba Collect"}>
-        <LoginForm />
-      </AuthLayout>
-    </div>
-  );
-}
-
 export default function LoginPage() {
   return (
-    <Suspense>
-      <ThemedLogin />
-    </Suspense>
+    // Collect UK's navy "Trust & Authority" theme applies to the whole app.
+    <div className="theme-collect">
+      <Suspense>
+        <AuthLayout brand="Vamba Collect">
+          <LoginForm />
+        </AuthLayout>
+      </Suspense>
+    </div>
   );
 }
